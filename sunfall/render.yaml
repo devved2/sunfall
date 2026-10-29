@@ -1,0 +1,11 @@
+# Alternative to Railway. Needs a paid instance: the free tier sleeps and has no disk, and the city must keep ticking.
+services:
+  - type: web
+    name: sunfall
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk: { name: city, mountPath: /data, sizeGB: 1 }
+    envVars:
+      - { key: DATA_DIR, value: /data }
+      - { key: ADMIN_KEY, generateValue: true }
