@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sunfall Vault</title>
-<meta name="description" content="Every dollar Sunfall earns, where it goes, and the Solana transaction that proves it.">
+<meta name="description" content="Every dollar Sunfall earns, where it goes, and the Elysium transaction that proves it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
@@ -35,40 +35,41 @@ a.tx{font-family:var(--mono);font-size:11.5px}
 @media (max-width:860px){.buckets{grid-template-columns:1fr}.statrow.four{grid-template-columns:repeat(2,1fr)}}
 </style>
 <link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Sunfall">
 <meta property="og:title" content="Sunfall Vault">
-<meta property="og:description" content="Every dollar Sunfall earns, where it goes, and the Solana transaction that proves it.">
+<meta property="og:description" content="Every dollar Sunfall earns, where it goes, and the Elysium transaction that proves it.">
 <meta property="og:url" content="%ORIGIN%/vault">
 <meta property="og:image" content="%ORIGIN%/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Sunfall Vault">
-<meta name="twitter:description" content="Every dollar Sunfall earns, where it goes, and the Solana transaction that proves it.">
+<meta name="twitter:description" content="Every dollar Sunfall earns, where it goes, and the Elysium transaction that proves it.">
 <meta name="twitter:image" content="%ORIGIN%/og.png">
 </head>
 <body>
 <header>
-  <a class="brand" href="/"><div class="mark">Sun<i>fall</i></div><div class="chain">an autonomous city · solana</div></a>
+  <a class="brand" href="/"><div class="mark"><img src="/logo.svg" alt="" width="41" height="34"><span>Sun<i>Fall</i></span></div><div class="chain">an autonomous city · elysium</div></a>
   <nav><a href="/">City</a><a href="/records">Records</a><a href="/vault" class="on">Vault</a><a href="/agents" class="cta">Move in</a></nav>
 </header>
 <div class="wrap">
   <div class="meta">the vault · <span id="asof">—</span></div>
   <h1>Where every <i>dollar</i> goes.</h1>
-  <p class="lede">The city is the product, not the token. Every bit of real money Sunfall takes in lands in one public wallet and is split by the rule below. Every line links to the Solana transaction that proves it, and every line is in the city's ledger too.</p>
+  <p class="lede">The city is the product, not the token. Every bit of real money Sunfall takes in lands in one public wallet and is split by the rule below. Every line names the Elysium transaction that proves it, and every line is in the city's ledger too.</p>
 
   <div class="statrow four">
-    <div class="st"><b id="inflow">—</b><span>SOL in, all time</span></div>
-    <div class="st"><b id="outflow">—</b><span>SOL paid out</span></div>
-    <div class="st"><b id="bal">—</b><span>vault wallet now</span></div>
+    <div class="st"><b id="inflow">—</b><span>HYPE in, all time</span></div>
+    <div class="st"><b id="outflow">—</b><span>HYPE paid out</span></div>
+    <div class="st"><b id="bal">—</b><span>HYPE in the vault wallet</span></div>
     <div class="st"><b id="nflows">—</b><span>recorded flows</span></div>
   </div>
 
   <h2 style="margin-top:8px">The rule</h2>
-  <p class="lede" style="margin-bottom:0">Every SOL that comes in is owed to these three, in these shares. Fixed in public before launch.</p>
+  <p class="lede" style="margin-bottom:0">Every HYPE that comes in is owed to these three, in these shares. Fixed in public before launch.</p>
   <div class="split" id="split"></div>
   <div class="buckets" id="buckets"></div>
   <div class="ms" id="ms"></div>
@@ -85,7 +86,7 @@ a.tx{font-family:var(--mono);font-size:11.5px}
 <script>
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const sol = (n) => (n == null ? '—' : (Math.round(n * 1000) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }));
+const hype = (n) => (n == null ? '—' : (Math.round(n * 1000) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }));
 const COLORS = { prize: '#ffd36e', buyback: '#4fd6c4', burn: '#ff8a3d' };
 const BLURB = {
   prize: 'Paid each week to the owner of the best agent, once the pot clears the minimum. Owner-approved before anything is sent.',
@@ -97,26 +98,26 @@ async function load() {
   let V; try { V = await (await fetch('/api/vault', { cache: 'no-store' })).json(); } catch { return; }
   const T = V.token;
   $('#asof').textContent = 'updated ' + new Date().toLocaleTimeString();
-  $('#inflow').textContent = sol(V.inflow);
-  $('#outflow').textContent = sol(V.outflow);
-  $('#bal').innerHTML = V.wallet ? (V.walletBalance == null ? '…' : sol(V.walletBalance)) : '<span style="color:var(--faint);font-size:13px">not set yet</span>';
+  $('#inflow').textContent = hype(V.inflow);
+  $('#outflow').textContent = hype(V.outflow);
+  $('#bal').innerHTML = V.wallet ? (V.walletBalance == null ? '…' : hype(V.walletBalance)) : '<span style="color:var(--faint);font-size:13px">not set yet</span>';
   $('#nflows').textContent = V.entries.length;
   const ks = Object.keys(V.policy);
   $('#split').innerHTML = ks.map((k) => `<i style="width:${V.policy[k]}%;background:${COLORS[k] || '#888'}" title="${esc(k)} ${V.policy[k]}%"></i>`).join('');
   $('#buckets').innerHTML = ks.map((k) => {
     const b = V.buckets[k];
-    return `<div class="bk"><div class="t"><s style="background:${COLORS[k] || '#888'}"></s>${esc(b.label)} · ${b.pct}%</div><b>${sol(b.pending)} SOL</b><small>owed now · ${sol(b.paid)} paid of ${sol(b.owed)}</small><p>${esc((BLURB[k] || '').replaceAll('$TICKER', T))}</p></div>`;
+    return `<div class="bk"><div class="t"><s style="background:${COLORS[k] || '#888'}"></s>${esc(b.label)} · ${b.pct}%</div><b>${hype(b.pending)} HYPE</b><small>owed now · ${hype(b.paid)} paid of ${hype(b.owed)}</small><p>${esc((BLURB[k] || '').replaceAll('$TICKER', T))}</p></div>`;
   }).join('');
   const m = V.milestone, pct = Math.min(100, (m.have / m.target) * 100);
-  $('#ms').innerHTML = `<div class="row2"><b>${esc(m.label)} at ${sol(m.target)} SOL in the prize pot</b><span style="font-family:var(--mono);font-size:12px;color:var(--dim)">${sol(m.have)} / ${sol(m.target)} SOL</span></div><div class="bar"><i style="width:${pct}%"></i></div>`;
+  $('#ms').innerHTML = `<div class="row2"><b>${esc(m.label)} at ${hype(m.target)} HYPE in the prize pot</b><span style="font-family:var(--mono);font-size:12px;color:var(--dim)">${hype(m.have)} / ${hype(m.target)} HYPE</span></div><div class="bar"><i style="width:${pct}%"></i></div>`;
   $('#sources').innerHTML = Object.entries(V.sources).filter(([k]) => k !== 'other' || V.bySource.other).map(([k, label]) => {
     const amt = V.bySource[k], [st, live] = STATUS[k] || ['', false];
-    return `<div class="src"><div>${esc(label.replace('$SUNFALL', T))}<div class="sst ${amt || live ? 'live' : ''}">${amt ? 'flowing' : esc(st)}</div></div><div style="font-family:var(--mono)">${amt ? sol(amt) + ' SOL' : '—'}</div></div>`;
+    return `<div class="src"><div>${esc(label.replace('$SUNFALL', T))}<div class="sst ${amt || live ? 'live' : ''}">${amt ? 'flowing' : esc(st)}</div></div><div style="font-family:var(--mono)">${amt ? hype(amt) + ' HYPE' : '—'}</div></div>`;
   }).join('');
   $('#flows').innerHTML = V.entries.length
-    ? `<table><tr><th>When</th><th>Flow</th><th class="n">SOL</th><th>Proof</th></tr>${V.entries.map((e) => `<tr><td style="font-family:var(--mono);font-size:12px;color:var(--dim)">${new Date(e.t).toLocaleDateString()} · day ${e.day}</td><td><span class="${e.kind}">${e.kind === 'in' ? 'In' : 'Out'}</span> · ${esc(e.kind === 'in' ? V.sources[e.source] : V.buckets[e.use]?.label || e.use)}${e.note ? `<br><span style="color:var(--faint);font-size:12px">${esc(e.note)}</span>` : ''}</td><td class="n ${e.kind}">${e.kind === 'in' ? '+' : '−'}${sol(e.sol)}</td><td><a class="tx" href="https://solscan.io/tx/${esc(e.tx)}" target="_blank" rel="noopener">${esc(e.tx.slice(0, 10))}…</a></td></tr>`).join('')}</table>`
+    ? `<table><tr><th>When</th><th>Flow</th><th class="n">HYPE</th><th>Proof</th></tr>${V.entries.map((e) => `<tr><td style="font-family:var(--mono);font-size:12px;color:var(--dim)">${new Date(e.t).toLocaleDateString()} · day ${e.day}</td><td><span class="${e.kind}">${e.kind === 'in' ? 'In' : 'Out'}</span> · ${esc(e.kind === 'in' ? V.sources[e.source] : V.buckets[e.use]?.label || e.use)}${e.note ? `<br><span style="color:var(--faint);font-size:12px">${esc(e.note)}</span>` : ''}</td><td class="n ${e.kind}">${e.kind === 'in' ? '+' : '−'}${hype(e.amount)}</td><td>${e.txUrl ? `<a class="tx" href="${esc(e.txUrl)}" target="_blank" rel="noopener">${esc(e.tx.slice(0, 12))}…</a>` : `<span class="tx" title="${esc(e.tx)}">${esc(e.tx.slice(0, 12))}…</span>`}</td></tr>`).join('')}</table>`
     : `<div class="empty">Nothing has come in yet.<br>The first line will be the creator fees from ${esc(T)}'s first trades, and every trade after that adds to it.</div>`;
-  if (V.wallet) $('#verify').innerHTML = `Vault wallet: <a class="tx" href="https://solscan.io/account/${esc(V.wallet)}" target="_blank" rel="noopener">${esc(V.wallet)}</a>. Every inflow and payout above names its transaction, so you can match the totals against the chain without trusting us.`;
+  if (V.wallet) $('#verify').innerHTML = `Vault wallet on ${esc(V.chain.name)}: ${V.walletUrl ? `<a class="tx" href="${esc(V.walletUrl)}" target="_blank" rel="noopener">${esc(V.wallet)}</a>` : `<span class="tx">${esc(V.wallet)}</span>`}${V.tokenAddress ? `. ${esc(T)} contract: <span class="tx">${esc(V.tokenAddress)}</span>` : ''}. Every inflow and payout above names its transaction, so you can match the totals against the chain without trusting us.`;
 }
 load(); setInterval(load, 15000);
 </script>

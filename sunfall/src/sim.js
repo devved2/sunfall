@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse } from './util.js';
 import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LINES } from './world.js';
+import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
 
 export const CFG = {
   DAY_MS: Number(process.env.DAY_MS) || 30 * 60 * 1000, // one city day = 30 real minutes
@@ -15,6 +16,8 @@ export const CFG = {
   SPEND_MAX: 200,
   JOB_PAY_MAX: 200,
   CASINO_WIN_P: 0.47,
+  OWNER_PAYROLL_SHARE: Number(process.env.OWNER_PAYROLL_SHARE) || 0.7, // the city's wage support covers the rest at owned venues...
+  SUPPORT_ABOVE: 40000, // ...while the treasury holds more than this
   DATA_DIR: process.env.DATA_DIR || path.resolve('data'),
   SEED: Number(process.env.SEED) || 20261026,
 };
@@ -33,8 +36,9 @@ export const state = {
   epoch: 0, day: 0, done: [], treasury: 0,
   residents: {}, venues: {}, jobs: {}, square: [], chronicle: [],
   ledgerCount: 0, ledgerHead: '0'.repeat(64), dayRoots: [],
-  counters: { r: 0, j: 0, s: 0, b: 0 },
+  counters: { r: 0, j: 0, s: 0, b: 0, l: 0, o: 0 },
   ipJoins: {}, keys: {}, names: {}, billboards: [], season: null, stats: { today: {} },
+  loans: {}, stakeOffers: {}, hallOfFame: [], event: null, forecast: null,
 };
 const recentLedger = [];
 let ledgerBuffer = [];
@@ -112,6 +116,7 @@ export function newResident({ name, outside = false, rnd = Math.random, cash = C
     joinedDay: state.day, joinedAt: Date.now(), plan: null, today: { from: 'rules', note: null },
     stats: { wages: 0, spent: 0, won: 0, lost: 0, rent: 0, arrears: 0, jobsDone: 0, jobsPaid: 0, decisions: 0 },
     seasonStartWorth: cash,
+    credit: { repaid: 0, defaulted: 0 }, season: { interest: 0, jobs: 0, dividends: 0 },
   };
   state.residents[id] = r;
   state.names[name.toLowerCase()] = id;
@@ -128,7 +133,7 @@ export function initWorld() {
       id, type, name, district, x, y, isVenue,
       price: isVenue ? VTYPES[type].price : 0,
       till: 0, ownerId: null, forSale: sale != null, salePrice: sale, visitsToday: 0, takingsToday: 0,
-      lifetime: { visits: 0, takings: 0 },
+      lifetime: { visits: 0, takings: 0 }, partners: [],
     };
   }
   const n = CFG.NATIVES;
@@ -143,7 +148,8 @@ export function initWorld() {
   chron(`Sunfall opens its gates. ${n} residents wake up.`);
   cityJobs();
   planAll();
-  state.season = seasonFor(Date.now());
+  state.season = { n: 1, ...seasonFor(Date.now()) };
+  migrate();
 }
 
 // ---------------------------------------------------------------- shifts & plans
@@ -169,7 +175,7 @@ function resolveVenue(choice, r) {
   if (v && v.isVenue) return v;
   return undefined;
 }
-const doorPrice = (v) => v.price;
+const doorPrice = (v) => (eventIs('festival', v.district) ? Math.max(1, Math.ceil(v.price / 2)) : v.price);
 
 /**
  * The clamp. A plan is accepted exactly as sent or refused with the rule it broke.
@@ -240,11 +246,16 @@ function rulesPlan(r) {
     let options = half === 'aft' ? ['gym', 'diner', 'bar'] : ['bar', 'market', 'diner'];
     if (half === 'night' && t.risk > 0.6 && r.cash > 160) options = ['casino', 'casino', 'bar'];
     choice[half] = pick(options);
+    if (state.event?.kind === 'festival' && state.event.day === state.day && secureRandom() < 0.35) {
+      const fest = Object.values(state.venues).filter((v) => v.isVenue && v.district === state.event.district && v.type === choice[half]);
+      if (fest.length) choice[half] = pick(fest).id;
+    }
   }
   const outs = HALVES.filter((h) => choice[h] !== 'in' && choice[h] !== 'work');
   if (outs.length) {
-    const budget = clamp(Math.round(r.cash * (0.06 + (1 - t.thrift) * 0.12)), 0, 80);
-    const minNeeded = outs.map((h) => doorPrice(nearestVenueOfType(choice[h], r)));
+    const cap = 80 + clamp(Math.round((r.cash - 800) * 0.06), 0, 120); // the well-off go out more
+    const budget = clamp(Math.round(r.cash * (0.06 + (1 - t.thrift) * 0.12)), 0, cap);
+    const minNeeded = outs.map((h) => doorPrice(state.venues[choice[h]] || nearestVenueOfType(choice[h], r)));
     const per = Math.max(...minNeeded);
     wantSpend = Math.max(budget, per * outs.length);
     if (wantSpend > r.cash) { for (const h of outs) choice[h] = 'in'; wantSpend = 0; }
@@ -252,7 +263,7 @@ function rulesPlan(r) {
   const d = { ...choice, spend: wantSpend };
   for (const h of HALVES) {
     const key = h === 'aft' ? 'whyAft' : 'whyNight';
-    d[key] = pick(LINES[choice[h] === 'work' ? 'in' : choice[h]] || LINES.in);
+    d[key] = state.venues[choice[h]] ? 'off to the lantern festival' : pick(LINES[choice[h] === 'work' ? 'in' : choice[h]] || LINES.in);
   }
   try { return clampPlan(r, d, { keepLanded: false }); } catch { return clampPlan(r, { aft: shift === 'aft' ? 'work' : 'in', night: shift === 'night' ? 'work' : 'in', spend: 0, whyAft: 'a quiet day', whyNight: 'a quiet night in' }, { keepLanded: false }); }
 }
@@ -354,6 +365,10 @@ function landHalf(half) {
     const vid = p[half + 'Venue'];
     if (!vid) { p.result[half] = p[half] === 'work' ? 'work' : 'in'; continue; }
     const v = state.venues[vid];
+    if (eventIs('storm', v.district)) {
+      p.result[half] = 'closed by the storm';
+      continue;
+    }
     if (r.cash < doorPrice(v)) {
       p.result[half] = 'turned away';
       if (r.outside) L('door', r.id, 0, `turned away at ${v.name}: could not pay the door`);
@@ -364,7 +379,7 @@ function landHalf(half) {
     v.visitsToday++; v.lifetime.visits++;
     if (v.type === 'casino') {
       // Stake is the half's share, played at the house minimum. Dice drawn now, never before.
-      const win = secureRandom() < CFG.CASINO_WIN_P;
+      const win = secureRandom() < (half === 'night' && eventIs('lucky') ? 0.52 : CFG.CASINO_WIN_P);
       if (win) {
         const paid = payFromVenue(v, amt);
         r.cash += paid; r.stats.won += paid; r.mood = clamp(r.mood + 12, 0, 100);
@@ -383,7 +398,7 @@ function landHalf(half) {
     }
   }
   for (const a of Object.values(agg)) L(a.kind, a.v.id, a.amt, `${a.n} residents at ${a.v.name}`);
-  const outN = Object.values(state.residents).filter((r) => r.plan?.result?.[half] && !['in', 'work', 'turned away'].includes(r.plan.result[half])).length;
+  const outN = Object.values(state.residents).filter((r) => r.plan?.result?.[half] && !['in', 'work', 'turned away', 'closed by the storm'].includes(r.plan.result[half])).length;
   const taken = Object.values(state.venues).reduce((s, v) => s + v.takingsToday, 0);
   const busiest = Object.values(state.venues).filter((v) => v.isVenue).sort((a, b) => b.visitsToday - a.visitsToday)[0];
   chron(`The ${half === 'aft' ? 'afternoon' : 'night'} lands: ${outN} residents out, $${Math.round(taken)} taken across the city today. Busiest: ${busiest.name}.`, null, 'landing');
@@ -391,15 +406,21 @@ function landHalf(half) {
   chatter(half);
 }
 
+export const wageSupportOn = () => state.treasury > CFG.SUPPORT_ABOVE;
 function payWages(half) {
   const agg = {}, short = {};
+  let support = 0;
   for (const r of Object.values(state.residents)) {
     if (shiftFor(r) !== half) continue;
     const wage = TRADES[r.trade].wage;
     const place = state.venues[r.workplace];
-    const paid = payFromVenue(place, wage);
+    const ownerPart = place.ownerId && wageSupportOn() ? Math.round(wage * CFG.OWNER_PAYROLL_SHARE * 100) / 100 : wage;
+    const fromOwner = payFromVenue(place, ownerPart);
+    const fromCity = place.ownerId ? Math.min(wage - ownerPart, Math.max(state.treasury, 0)) : 0; // 0 when support is off
+    state.treasury -= fromCity; support += fromCity;
+    const paid = fromOwner + fromCity;
     r.cash += paid; r.stats.wages += paid;
-    if (paid < wage) {
+    if (fromOwner < ownerPart) {
       r.mood = clamp(r.mood - 15, 0, 100);
       (short[place.id] ||= { n: 0, amt: 0, place }).n++; short[place.id].amt += wage - paid;
     } else r.mood = clamp(r.mood + 3, 0, 100);
@@ -407,6 +428,19 @@ function payWages(half) {
     else (agg[place.id] ||= { n: 0, amt: 0, place }, agg[place.id].n++, agg[place.id].amt += paid);
   }
   for (const a of Object.values(agg)) L('wage', a.place.id, a.amt, `${a.n} staff paid at ${a.place.name}`);
+  if (support) L('support', 'city', -support, `wage support at owned venues, ${half === 'aft' ? 'afternoon' : 'night'}`);
+  if (eventIs('boom')) {
+    let total = 0;
+    const cap = Math.min(2500, Math.max(0, state.treasury - 20000));
+    for (const r of Object.values(state.residents)) {
+      if (shiftFor(r) !== half) continue;
+      const bonus = Math.round(TRADES[r.trade].wage * 0.25 * 100) / 100;
+      if (total + bonus > cap) break;
+      state.treasury -= bonus; r.cash += bonus; r.stats.wages += bonus; total += bonus;
+      if (r.outside) L('bonus', r.id, bonus, 'boom bonus from the city');
+    }
+    if (total) L('bonus', 'city', -total, `boom bonus on ${half === 'aft' ? 'afternoon' : 'night'} wages`);
+  }
   // Missed payroll: one line, then the business is in distress. Three missed paydays and the city buys it back cheap.
   for (const v of Object.values(state.venues)) {
     if (!v.ownerId) continue;
@@ -418,10 +452,12 @@ function payWages(half) {
     if (v.distress >= 3) {
       const price = Math.round(VTYPES[v.type].value * 0.4);
       const pay = Math.min(price, Math.max(state.treasury, 0));
-      state.treasury -= pay; o.cash += pay;
+      state.treasury -= pay; o.cash += payPartners(v, pay);
       L('sale', o.id, pay, `${v.name} repossessed by the city`);
       chron(`The city repossesses ${v.name} from ${o.name}, paying $${Math.round(pay)}.`, o.id, 'business');
-      v.ownerId = null; v.forSale = false; v.salePrice = null; v.distress = 0; v.price = VTYPES[v.type].price;
+      v.ownerId = null; v.forSale = false; v.salePrice = null; v.distress = 0; v.price = VTYPES[v.type].price; v.partners = [];
+    } else if (v.distress === 1) {
+      chron(`Warning for ${o.name}: one more missed payday and ${v.name} goes up for a distress sale.`, o.id, 'business');
     } else if (!v.forSale) {
       v.forSale = true; v.salePrice = Math.round((VTYPES[v.type].value * 0.6) / 10) * 10;
       chron(`${v.name} goes up for a distress sale at $${v.salePrice}.`, o.id, 'business');
@@ -435,8 +471,9 @@ function closeTills() {
     if (v.till !== 0) {
       if (v.ownerId) {
         const o = state.residents[v.ownerId];
-        o.cash += v.till;
-        L('profit', o.id, v.till, `night's take from ${v.name}`);
+        const mine = payPartners(v, v.till, 'dividend');
+        o.cash += mine;
+        L('profit', o.id, mine, `night's take from ${v.name}`);
       } else {
         state.treasury += v.till;
         L('till', v.id, v.till, `${v.name} swept to the treasury`);
@@ -447,6 +484,7 @@ function closeTills() {
 }
 
 function dayTurn() {
+  beforeDayTurn();
   // rent, weekly, on the last day of the city week
   if (state.day % 7 === 6) {
     let total = 0, short = 0;
@@ -461,6 +499,22 @@ function dayTurn() {
     L('rent', 'city', total, `weekly rent collected${short ? `, ${short} residents behind` : ''}`);
     chron(`Rent day. The city collects $${Math.round(total)}${short ? `; ${short} residents fall behind` : ''}.`);
   }
+  // Natives keep money moving: a levy on hoarded cash, and relief for anyone flat broke. (Agents are never touched.)
+  let levy = 0, relief = 0, helped = 0;
+  for (const r of Object.values(state.residents)) {
+    if (r.outside) continue;
+    if (r.cash > 1500) { const x = Math.round((r.cash - 1500) * 0.03 * 100) / 100; r.cash -= x; levy += x; }
+  }
+  state.treasury += levy;
+  if (state.treasury > 15000) {
+    for (const r of Object.values(state.residents)) {
+      if (r.outside || r.cash >= 25) continue;
+      r.cash += 20; relief += 20; helped++;
+    }
+    state.treasury -= relief;
+  }
+  if (levy) L('levy', 'city', levy, 'levy on natives holding over $1500');
+  if (relief) L('relief', 'city', -relief, `city relief for ${helped} broke residents`);
   // expire jobs that were never done
   for (const j of Object.values(state.jobs)) {
     if ((j.status === 'open' || j.status === 'taken') && j.day <= state.day) failJob(j, j.status === 'open' ? 'expired untaken' : 'not delivered');
@@ -470,35 +524,48 @@ function dayTurn() {
   state.day++;
   state.done = [];
   for (const v of Object.values(state.venues)) { v.visitsToday = 0; v.takingsToday = 0; }
+  afterDayTurn();
   nativesBuyBusinesses();
   cityJobs();
-  // a new league season every real Monday 00:00 UTC
-  const s = seasonFor(Date.now());
-  if (!state.season || s.id !== state.season.id) {
-    state.season = s;
-    for (const r of Object.values(state.residents)) r.seasonStartWorth = netWorth(r);
-    chron(`A new league season opens: ${s.id}.`);
-  }
   planAll();
 }
 
 // ---------------------------------------------------------------- businesses
 export const venueValue = (v) => v.salePrice || VTYPES[v.type]?.value || 0;
+// Book value of a business today (a market crash knocks 40% off for the day).
+export const venueValueNow = (v) => (VTYPES[v.type]?.value || 0) * (eventIs('crash') ? 0.6 : 1);
 export function netWorth(r) {
   let w = r.cash;
-  for (const v of Object.values(state.venues)) if (v.ownerId === r.id) w += VTYPES[v.type].value;
+  for (const v of Object.values(state.venues)) {
+    if (v.ownerId === r.id) w += venueValueNow(v) * (1 - (v.partners || []).reduce((s, p) => s + p.pct, 0) / 100);
+  }
+  for (const st of stakesOf(r)) w += venueValueNow(state.venues[st.venue]) * st.pct / 100;
+  w += receivable(r) - payable(r);
   return Math.round(w * 100) / 100;
+}
+// Pay a venue's partners their share of an amount (profits or a sale); returns what is left for the owner.
+export function payPartners(v, amt, kind = 'sale') {
+  let left = amt;
+  for (const p of v.partners || []) {
+    const cut = Math.round(amt * p.pct) / 100;
+    const r = state.residents[p.id];
+    r.cash += cut; left -= cut;
+    if (kind === 'dividend') r.season.dividends += cut;
+    L(kind, r.id, cut, `${p.pct}% of ${v.name}${kind === 'sale' ? ' sale' : "'s take"}`);
+  }
+  return left;
 }
 export function buyBusiness(r, v) {
   const price = v.salePrice;
   r.cash -= price;
   if (v.ownerId) {
     const seller = state.residents[v.ownerId];
-    seller.cash += price;
-    L('sale', seller.id, price, `sold ${v.name}`);
+    const mine = payPartners(v, price);
+    seller.cash += mine;
+    L('sale', seller.id, mine, `sold ${v.name}`);
   } else state.treasury += price;
   L('purchase', r.id, -price, `bought ${v.name}`);
-  v.ownerId = r.id; v.forSale = false; v.salePrice = null;
+  v.ownerId = r.id; v.forSale = false; v.salePrice = null; v.partners = []; delete v.fireSale;
   chron(`${r.name} bought ${v.name} for $${price}.`, r.id, 'business');
 }
 function nativesBuyBusinesses() {
@@ -541,10 +608,11 @@ function settleJobs(half) {
   for (const j of Object.values(state.jobs)) {
     if (j.status !== 'taken' || j.day !== state.day || j.half !== half) continue;
     const w = state.residents[j.takenBy];
+    if (eventIs('storm', state.venues[j.venue].district)) { failJob(j, 'the storm shut the venue'); continue; }
     const ok = w.plan && w.plan[half + 'Venue'] === j.venue && w.plan.result?.[half] && w.plan.result[half] !== 'turned away';
     if (ok) {
       j.status = 'done';
-      w.cash += j.pay; w.stats.jobsDone++;
+      w.cash += j.pay; w.stats.jobsDone++; w.season.jobs++;
       if (j.by !== 'city') state.residents[j.by].stats.jobsPaid++;
       L('job', w.id, j.pay, `job ${j.id} done at ${state.venues[j.venue].name}`);
       chron(`${w.name} delivered job ${j.id} and was paid $${j.pay}.`, w.id, 'job');
@@ -558,12 +626,12 @@ function cityJobs() {
   // The city posts a few small paid visits each day (mystery-shopper work), funded by the treasury.
   // A treasury above its opening balance is recycled into more work, so the city never just hoards.
   const venues = Object.values(state.venues).filter((v) => v.isVenue);
-  const n = Math.min(30, 3 + Math.floor(Math.max(0, state.treasury - 45000) / 1200));
+  const n = Math.min(30, 3 + Math.floor(Math.max(0, state.treasury - 45000) / 1200)) + (eventIs('cargo') ? (state.treasury > 35000 ? 10 : 5) : 0);
   for (let i = 0; i < n; i++) {
     if (state.treasury < 100) break;
     const v = pick(venues);
     const half = VTYPES[v.type].half === 'aft' ? 'aft' : 'night';
-    const pay = 14 + Math.floor(secureRandom() * 17);
+    const pay = eventIs('cargo') ? 35 + Math.floor(secureRandom() * 26) : 14 + Math.floor(secureRandom() * 17);
     state.treasury -= pay;
     postJob({ by: 'city', venue: v.id, half, day: state.day, pay, reason: `check the door price at ${v.name}`.slice(0, 120) });
   }
@@ -588,6 +656,8 @@ export { squarePost, chron };
 
 // ---------------------------------------------------------------- the league
 export function seasonFor(ms) {
+  const S = Number(process.env.SEASON_MS); // testing only: short seasons
+  if (S > 0) { const start = Math.floor(ms / S) * S; return { id: 't' + start, start, end: start + S }; }
   const d = new Date(ms);
   const dow = (d.getUTCDay() + 6) % 7; // Monday = 0
   const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow);

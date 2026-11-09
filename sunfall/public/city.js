@@ -238,6 +238,7 @@ function build() {
     const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
     scene.add(rockUnder(x0, y0, x1, y1, isl.depth, rnd));
   }
+  buildElysiumGlow();
 
   const bld = [], neon = [], chim = [], trees = [], slabs = [], parks = [], roofs = [], acs = [], tanks = [], antennas = [], awnings = [], palms = [], houses = [], benches = [], parkCells = [], crystals = [], domes = [];
   const venueNear = (cx, cy) => S.venues.some((v) => Math.abs(v.x - cx) < 34 && Math.abs(v.y - cy) < 34);
@@ -497,9 +498,45 @@ function rockUnder(x0, y0, x1, y1, depth, rnd) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
   g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true, side: THREE.DoubleSide }));
+  const rm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true, side: THREE.DoubleSide });
+  rm.onBeforeCompile = (sh) => {
+    sh.uniforms.uNight = nightU;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vRockW;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvRockW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      uniform float uNight; varying vec3 vRockW;
+      float rh(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float rn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+        return mix(mix(mix(rh(i), rh(i+vec3(1,0,0)), f.x), mix(rh(i+vec3(0,1,0)), rh(i+vec3(1,1,0)), f.x), f.y),
+                   mix(mix(rh(i+vec3(0,0,1)), rh(i+vec3(1,0,1)), f.x), mix(rh(i+vec3(0,1,1)), rh(i+vec3(1,1,1)), f.x), f.y), f.z); }`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { vec3 q = vRockW * vec3(0.016, 0.009, 0.016);
+        float v = rn(q) * 0.65 + rn(q * 2.3 + 7.0) * 0.35;
+        float vein = 1.0 - smoothstep(0.0, 0.008, abs(v - 0.5));
+        float depthFade = smoothstep(-6.0, -60.0, vRockW.y);
+        totalEmissiveRadiance += vec3(0.22, 0.78, 1.0) * vein * depthFade * (0.25 + uNight * 1.3); }`);
+  };
+  const m = new THREE.Mesh(g, rm);
   m.castShadow = true; m.receiveShadow = true;
   return m;
+}
+
+// Elysium glow: cyan light along every island edge and down the middle of every street, brighter at night.
+const glowLines = [];
+function buildElysiumGlow() {
+  const rim = [], streets = [];
+  const seg = (arr, ax, ay, bx, by, h) => { const a = W(ax, ay, h), b = W(bx, by, h); arr.push(a.x, a.y, a.z, b.x, b.y, b.z); };
+  for (const isl of ISLANDS) for (const [x0, y0, x1, y1] of isl.parts) {
+    const o = 1.6;
+    for (const h of [0.6, -5.5]) { seg(rim, x0 - o, y0 - o, x1 + o, y0 - o, h); seg(rim, x1 + o, y0 - o, x1 + o, y1 + o, h); seg(rim, x1 + o, y1 + o, x0 - o, y1 + o, h); seg(rim, x0 - o, y1 + o, x0 - o, y0 - o, h); }
+    for (let x = OFF; x <= XMAX; x += GRID) if (x > x0 && x < x1) seg(streets, x, y0 + 2, x, y1 - 2, 0.35);
+    for (let y = OFF; y <= YMAX; y += GRID) if (y > y0 && y < y1) seg(streets, x0 + 2, y, x1 - 2, y, 0.35);
+  }
+  for (const [arr, color, op] of [[rim, 0x5fdcff, 1], [streets, 0x34b7dd, 0.55]]) {
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: op, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
+    const l = new THREE.LineSegments(geo, mat); l.renderOrder = 2; scene.add(l); glowLines.push({ mat, op });
+  }
 }
 
 // soft cloud puff texture
@@ -528,7 +565,7 @@ function waterfall(x, y, top, width, height, facing) {
         float streak = n(vec2(vUv.x * 18.0, vUv.y * 3.0 + uTime * 2.2)) * 0.6 + n(vec2(vUv.x * 40.0, vUv.y * 6.0 + uTime * 3.4)) * 0.4;
         float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
         float fade = smoothstep(0.0, 0.45, vUv.y);
-        vec3 c = mix(vec3(0.78,0.9,1.0), vec3(1.0), streak) * mix(1.0, 0.45, uNight);
+        vec3 c = mix(vec3(0.55,0.88,1.0), vec3(0.92,1.0,1.0), streak) * mix(1.0, 1.25, uNight);
         gl_FragColor = vec4(c, (0.35 + streak * 0.6) * edge * fade);
       }`,
   });
@@ -644,14 +681,14 @@ function buildSkyWorld(rnd) {
   for (let i = 0; i < 12; i++) puff(rnd() * 1000, rnd() * 700, -220 - rnd() * 100, 260 + rnd() * 200, 1);
   // the giant moon hanging in the sky
   const pc = document.createElement('canvas'); pc.width = pc.height = 512; const pg = pc.getContext('2d');
-  const grd = pg.createLinearGradient(0, 0, 512, 512); grd.addColorStop(0, '#e6e9ff'); grd.addColorStop(1, '#b4a9e6'); pg.fillStyle = grd; pg.fillRect(0, 0, 512, 512);
-  const pr = mulberry32(21); for (let i = 0; i < 70; i++) { pg.fillStyle = `rgba(120,110,170,${0.05 + pr() * 0.12})`; pg.beginPath(); pg.arc(pr() * 512, pr() * 512, 6 + pr() * 40, 0, 7); pg.fill(); }
+  const grd = pg.createLinearGradient(0, 0, 512, 512); grd.addColorStop(0, '#3a90ad'); grd.addColorStop(0.35, '#123d50'); grd.addColorStop(1, '#03121a'); pg.fillStyle = grd; pg.fillRect(0, 0, 512, 512);
+  const pr = mulberry32(21); for (let i = 0; i < 70; i++) { pg.fillStyle = `rgba(${pr() < 0.5 ? '190,235,250' : '10,40,55'},${0.05 + pr() * 0.12})`; pg.beginPath(); pg.arc(pr() * 512, pr() * 512, 6 + pr() * 40, 0, 7); pg.fill(); }
   const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace;
   planet = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.MeshBasicMaterial({ map: ptex, transparent: true, opacity: 0.85, fog: false, depthWrite: false }));
   planet.scale.setScalar(650); planet.renderOrder = -0.5; scene.add(planet);
-  planetRing = new THREE.Mesh(new THREE.RingGeometry(1.35, 2.1, 96), new THREE.MeshBasicMaterial({ color: 0xf3e6ff, transparent: true, opacity: 0.28, side: THREE.DoubleSide, fog: false, depthWrite: false }));
+  planetRing = new THREE.Mesh(new THREE.RingGeometry(1.55, 1.72, 128), new THREE.MeshBasicMaterial({ color: 0x8fe6ff, transparent: true, opacity: 0.45, side: THREE.DoubleSide, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
   planetRing.scale.setScalar(650); planetRing.rotation.set(1.25, 0.2, 0.35); planetRing.renderOrder = -0.4; scene.add(planetRing);
-  planetGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(240,230,255,0.7)', 'rgba(240,230,255,0)'), transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+  planetGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(110,215,255,0.75)', 'rgba(110,215,255,0)'), transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
   planetGlow.material.opacity = 0.45; planetGlow.scale.set(1000, 1000, 1); scene.add(planetGlow);
   // waterfalls off the city's edges and into the rifts
   waterfall(15, 450, -3, 18, 300, Math.PI / 2); waterfall(15, 610, -3, 14, 260, Math.PI / 2);
@@ -911,7 +948,7 @@ function buildVenue(v, rnd) {
       add(accent, 30, 2, 6, 0, 6, 15); top = 38;
       for (const sx of [-11, 11]) {
         const bm = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 11, 260, 18, 1, true).translate(0, 130, 0),
-          new THREE.MeshBasicMaterial({ color: 0xfff1cc, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+          new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
         bm.position.set(sx, 37, 0); grp.add(bm); beams.push({ m: bm, ph: sx > 0 ? 0 : 2.1 });
       }
       break;
@@ -1177,11 +1214,11 @@ function updatePeople(h, time) {
 }
 
 // ------------------------------------------------------------------ sky & light
-const SKY_NIGHT = new THREE.Color(0x231a4a), SKY_DAY = new THREE.Color(0xeccbd6), DUSK = new THREE.Color(0xff9478);
-const TOP_NIGHT = new THREE.Color(0x0d0a26), TOP_DAY = new THREE.Color(0x4a82d0), TOP_DUSK = new THREE.Color(0x5b4ea6);
-const SUN_DAY = new THREE.Color(0xfff2df), SUN_DUSK = new THREE.Color(0xff9a5c), MOON = new THREE.Color(0x8fa6ff);
+const SKY_NIGHT = new THREE.Color(0x0f2f38), SKY_DAY = new THREE.Color(0xc4e6ee), DUSK = new THREE.Color(0xffb08a);
+const TOP_NIGHT = new THREE.Color(0x04181c), TOP_DAY = new THREE.Color(0x1f6f8f), TOP_DUSK = new THREE.Color(0x174a60);
+const SUN_DAY = new THREE.Color(0xfff2df), SUN_DUSK = new THREE.Color(0xff9a5c), MOON = new THREE.Color(0x9fe0f0);
 const skyC = new THREE.Color();
-const WATER_DAY = new THREE.Color(0x3b6a88), WATER_NIGHT = new THREE.Color(0x0b1622), HEMI_DAY = new THREE.Color(0xd6e6ff);
+const WATER_DAY = new THREE.Color(0x3b6a88), WATER_NIGHT = new THREE.Color(0x06222a), HEMI_DAY = new THREE.Color(0xd6e6ff);
 function updateSky(h) {
   const el = Math.sin(((h - 6) / 14) * Math.PI);          // sun up 06:00, down 20:00
   const day = smooth(-0.1, 0.35, el);
@@ -1190,8 +1227,8 @@ function updateSky(h) {
   scene.background = skyC; scene.fog.color.copy(skyC);
   skyU.horizon.value.copy(skyC).lerp(DUSK, dusk * 0.35);
   skyU.top.value.copy(TOP_NIGHT).lerp(TOP_DAY, day).lerp(TOP_DUSK, dusk * 0.5);
-  skyTint.light.set(0xfff1ea).lerp(new THREE.Color(0xffc9b8), dusk * 0.6).lerp(new THREE.Color(0x5c4f8f), 1 - day);
-  skyTint.shadow.set(0xb3a7d6).lerp(new THREE.Color(0xd08aa0), dusk * 0.4).lerp(new THREE.Color(0x1d1640), 1 - day);
+  skyTint.light.set(0xf0fbff).lerp(new THREE.Color(0xffd9c4), dusk * 0.45).lerp(new THREE.Color(0x3f7f8f), 1 - day);
+  skyTint.shadow.set(0x8fb9c6).lerp(new THREE.Color(0xb98f96), dusk * 0.3).lerp(new THREE.Color(0x0b2a30), 1 - day);
   if (cloudSea) cloudSea.material.uniforms.uHaze.value.copy(skyC);
   for (const m of puffMats) m.color.copy(skyTint.light).lerp(skyTint.shadow, 0.25);
   glowU.value = 0.12 + (1 - day) * 0.75 + dusk * 0.2;
@@ -1208,7 +1245,8 @@ function updateSky(h) {
   nightU.value = night;
   renderer.toneMappingExposure = 1.05 + 0.2 * (1 - day);
   if (lampPoints) lampPoints.material.opacity = night * 0.9;
-  stars.material.opacity = smooth(0.5, 0.95, night);
+  stars.material.opacity = smooth(0.3, 0.85, night);
+  for (const g of glowLines) g.mat.opacity = g.op * (0.3 + night * 0.7);
   moon.material.opacity = smooth(0.5, 0.95, night) * 0.95;
   for (const m of nightGlows) m.opacity = 0.2 + night * 0.8;
   for (const m of neonMats) m.color.setScalar(0.85 + night * 1.5);
@@ -1236,6 +1274,19 @@ function renderHUD() {
     const d = new Date(e.t), tm = d.toTimeString().slice(0, 8);
     return `<div class="al"><time>${tm}</time><span><span class="n" data-who="${esc(e.id)}">${esc(e.name)} ☼</span> ${esc(e.op)} <span class="${e.ok ? 'ok' : 'no'}">${e.ok ? 'done' : 'refused'}</span></span>${!e.ok && e.reason ? `<span class="why">${esc(e.reason)}</span>` : ''}</div>`;
   }).join('');
+  // season + today's event
+  if (S.season) {
+    const ms = Math.max(0, S.season.end - Date.now()), hrs = Math.floor(ms / 3600000);
+    $('#sn').textContent = `${S.season.n} · ${hrs >= 24 ? Math.floor(hrs / 24) + 'd ' + (hrs % 24) + 'h' : hrs + 'h ' + Math.floor(ms / 60000) % 60 + 'm'}`;
+    const top = S.season.top[0];
+    $('#lead').textContent = top ? `${txt(top.name)} ${money(top.netWorth)}` : 'nobody yet';
+    $('#lead').title = top ? 'Season leader by net worth' : 'No agents this season yet';
+  }
+  const ev = S.event, fc = S.forecast, el = $('#evline');
+  el.className = 'ev' + (ev || fc ? ' on' : '') + (ev ? ' ' + ev.kind : '');
+  el.innerHTML = (ev ? `${esc(ev.icon)} ${esc(ev.title)}` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}</span>` : '');
+  el.title = ev ? ev.effect : fc ? fc.effect : '';
+  setEventFX(ev);
   const feed = $('#feed');
   feed.innerHTML = S.chronicle.slice(0, LITE ? 3 : 6).map((c) => `<div class="fl ${c.who ? 'click' : ''}" ${c.who ? `data-who="${esc(c.who)}"` : ''}><span>day ${c.day}</span>${esc(c.text)}</div>`).join('');
 }
@@ -1331,6 +1382,10 @@ async function renderResident(id) {
       ${x.runsOn ? `<div>Runs on</div><div>${esc(txt(x.runsOn))} <span class="tag">self-declared</span></div>` : ''}
       ${x.wallet ? `<div>Wallet</div><div class="hash">${esc(x.wallet)}</div>` : ''}
       <div>Owns</div><div>${x.owns.length ? x.owns.map((o) => esc(o.name)).join(', ') : '—'}</div>
+      ${x.stakes?.length ? `<div>Stakes</div><div>${x.stakes.map((st) => `${st.pct}% of ${esc(st.name)}`).join(', ')}</div>` : ''}
+      ${x.owesNow ? `<div>Owes</div><div class="neg">${money(x.owesNow)}</div>` : ''}
+      ${x.owedToThem ? `<div>Owed to them</div><div class="pos">${money(x.owedToThem)}</div>` : ''}
+      ${x.credit && (x.credit.repaid || x.credit.defaulted) ? `<div>Credit</div><div>${x.credit.repaid} repaid${x.credit.defaulted ? ` · <span class="neg">${x.credit.defaulted} defaulted</span>` : ''}</div>` : ''}
       <div>Wages</div><div>${money(x.stats.wages)}</div>
       <div>Spent out</div><div>${money(x.stats.spent)}</div>
       <div>Casino</div><div><span class="pos">+${money(x.stats.won)}</span> / <span class="neg">−${money(x.stats.lost)}</span></div>
@@ -1351,7 +1406,7 @@ function selectVenue(vid) {
   $('#dbody').innerHTML = `
     <div class="kicker">${v.isVenue ? esc(v.type) : 'workplace'} · ${esc(v.id)}</div>
     <h3>${esc(v.name)}</h3>
-    <div class="dim">${v.owner ? `Owned by <span class="${kind === 'agent' ? 'agent' : ''}">${esc(v.owner)}</span>` : 'City-owned'}${v.forSale ? ` · <span style="color:#ffd36e">for sale at $${v.salePrice}</span>` : ''}</div>
+    <div class="dim">${v.owner ? `Owned by <span class="${kind === 'agent' ? 'agent' : ''}">${esc(v.owner)}</span>` : 'City-owned'}${v.forSale ? ` · <span style="color:#ffd36e">${v.fireSale ? 'fire sale' : 'for sale'} at $${v.salePrice}</span>` : ''}${v.partners?.length ? `<br>Partners: ${v.partners.map((p) => `<span class="${p.outside ? 'agent' : ''}">${esc(p.name)}</span> ${p.pct}%`).join(', ')}` : ''}</div>
     <div class="kv">
       ${v.isVenue ? `<div>Door</div><div>$${v.price}</div><div>Today</div><div>${v.visitsToday} visits · ${money(v.takingsToday)} taken</div><div>Staff</div><div>${v.staff} · payroll ${money(v.payroll)} a shift</div><div>Lifetime</div><div>${v.lifetime.visits.toLocaleString()} visits · ${money(v.lifetime.takings)}</div>${v.distress ? `<div>Distress</div><div class="neg">${v.distress} missed payday${v.distress > 1 ? 's' : ''}</div>` : ''}` : `<div>Staff</div><div>${v.staff}</div>`}
       <div>Here now</div><div>${inside.length}</div>
@@ -1408,6 +1463,72 @@ function doHover() {
   else { tip.style.display = 'none'; canvas.style.cursor = ''; }
 }
 
+// ------------------------------------------------------------------ city events on the map
+// A storm parks dark cloud over its district and rains on it; a festival floats lanterns over the rooftops.
+const fx = { key: null, group: null, rain: null, rainPos: null, lant: null, lantPos: null, lantSpd: null, clouds: [], rect: null, flash: 0 };
+function setEventFX(ev) {
+  const key = ev && ev.district ? `${ev.kind}:${ev.district}:${ev.day}` : null;
+  if (key === fx.key) return;
+  fx.key = key;
+  if (fx.group) { scene.remove(fx.group); fx.group.traverse((o) => { o.geometry?.dispose?.(); if (o.material && !o.material.userData?.shared) o.material.dispose?.(); }); }
+  fx.group = fx.rain = fx.lant = null; fx.clouds = [];
+  if (!key || !['storm', 'festival'].includes(ev.kind)) return;
+  const d = S.districts.find((x) => x.id === ev.district); if (!d) return;
+  const [x, y, w, h] = d.rect; fx.rect = d.rect;
+  const g = new THREE.Group(); scene.add(g); fx.group = g;
+  const rnd = mulberry32(ev.day * 31 + x);
+  if (ev.kind === 'storm') {
+    const cm = new THREE.SpriteMaterial({ map: puffMats[0].map, transparent: true, depthWrite: false, color: 0x4a4f66, opacity: 0.95 });
+    for (let i = 0; i < 18; i++) {
+      const sp = new THREE.Sprite(cm); const size = 90 + rnd() * 90;
+      sp.scale.set(size, size * 0.55, 1); sp.position.copy(W(x + rnd() * w, y + rnd() * h, 165 + rnd() * 40)); g.add(sp);
+      fx.clouds.push({ sp, base: sp.position.clone(), ph: rnd() * 6.28 });
+    }
+    fx.cloudMat = cm;
+    const N = LITE ? 500 : 1400, pos = new Float32Array(N * 6);
+    for (let i = 0; i < N; i++) {
+      const p = W(x + rnd() * w, y + rnd() * h, rnd() * 165);
+      pos.set([p.x, p.y, p.z, p.x - 0.6, p.y - 7, p.z], i * 6);
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    fx.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xbfd2ff, transparent: true, opacity: 0.45, depthWrite: false }));
+    fx.rainPos = pos; g.add(fx.rain);
+  } else {
+    const N = LITE ? 90 : 220, pos = new Float32Array(N * 3), col = new Float32Array(N * 3); fx.lantSpd = new Float32Array(N);
+    const hues = [[1, 0.55, 0.2], [1, 0.75, 0.3], [1, 0.35, 0.3], [1, 0.85, 0.55]];
+    for (let i = 0; i < N; i++) {
+      const p = W(x + rnd() * w, y + rnd() * h, 30 + rnd() * 150); pos.set([p.x, p.y, p.z], i * 3);
+      col.set(hues[Math.floor(rnd() * hues.length)].map((c) => c * 2.2), i * 3); fx.lantSpd[i] = 4 + rnd() * 6;
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (!fx.dot) {
+      const c = document.createElement('canvas'); c.width = c.height = 64; const g2 = c.getContext('2d');
+      const gr = g2.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g2.fillStyle = gr; g2.fillRect(0, 0, 64, 64); fx.dot = new THREE.CanvasTexture(c);
+    }
+    fx.lant = new THREE.Points(geo, new THREE.PointsMaterial({ size: 5, map: fx.dot, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false, sizeAttenuation: true, blending: THREE.AdditiveBlending }));
+    fx.lantPos = pos; g.add(fx.lant);
+  }
+}
+function updateEventFX(t, dt) {
+  if (!fx.group) return;
+  for (const c of fx.clouds) { c.sp.position.x = c.base.x + Math.sin(t * 0.15 + c.ph) * 8; c.sp.position.y = c.base.y + Math.sin(t * 0.3 + c.ph) * 2; }
+  if (fx.rain) {
+    const p = fx.rainPos, top = 165, fall = 260 * dt;
+    for (let i = 0; i < p.length; i += 6) { p[i + 1] -= fall; p[i + 4] -= fall; if (p[i + 4] < 0) { p[i + 1] += top; p[i + 4] += top; } }
+    fx.rain.geometry.attributes.position.needsUpdate = true;
+    // now and then, lightning lights the cloud from inside
+    fx.flash = Math.max(0, fx.flash - dt * 4);
+    if (Math.random() < dt * 0.25) fx.flash = 1;
+    fx.cloudMat.color.setRGB(0.29 + fx.flash * 0.6, 0.31 + fx.flash * 0.6, 0.4 + fx.flash * 0.55);
+  }
+  if (fx.lant) {
+    const p = fx.lantPos;
+    for (let i = 0, j = 0; i < p.length; i += 3, j++) { p[i + 1] += fx.lantSpd[j] * dt; p[i] += Math.sin(t * 0.7 + j) * dt * 1.5; if (p[i + 1] > 230) p[i + 1] = 25; }
+    fx.lant.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
 // ------------------------------------------------------------------ loop
 let pollN = 0;
 async function poll() {
@@ -1437,6 +1558,7 @@ function frame() {
   updatePeople(h, t);
   updateCars(dt);
   updateSkyWorld(t, dt);
+  updateEventFX(t, dt);
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   moon.position.copy(camera.position).add(new THREE.Vector3(-1500, 1700, -1900));
   for (const b of boats) { b.g.position.y = b.y0 + Math.sin(t * 0.8 + b.ph) * 1.2; b.g.rotation.z = Math.sin(t * 0.6 + b.ph) * 0.03; }
@@ -1496,5 +1618,5 @@ addEventListener('resize', () => { fitOrtho(); persp.aspect = innerWidth / inner
   $('#enter').onclick = close;
   $('#intro-agent').onclick = () => { try { sessionStorage.setItem('sf_intro', '1'); } catch {} };
 })();
-window.__sunfall = { selectResident, selectVenue, people: () => people, flyTo, frameOn, setView, W, scene, sky, puffs, get planet() { return planet; }, get planetGlow() { return planetGlow; }, get camera() { return camera; } };
+window.__sunfall = { setEventFX, selectResident, selectVenue, people: () => people, flyTo, frameOn, setView, W, scene, sky, puffs, get planet() { return planet; }, get planetGlow() { return planetGlow; }, get camera() { return camera; } };
 poll(); setInterval(poll, 3000); frame();

@@ -78,7 +78,7 @@ export function isSolanaAddress(s) {
 const BANNED_WORDS = new Set([
   'sunfall', 'admin', 'administrator', 'mod', 'moderator', 'official', 'system', 'treasury', 'mayor', 'city',
   'claude', 'anthropic', 'openai', 'chatgpt', 'gpt', 'grok', 'xai', 'gemini', 'google', 'meta', 'llama',
-  'elon', 'musk', 'trump', 'biden', 'solana', 'phantom', 'binance', 'coinbase', 'pump', 'pumpfun', 'jupiter', 'raydium',
+  'elon', 'musk', 'trump', 'biden', 'solana', 'phantom', 'elysium', 'kinetiq', 'hyperliquid', 'metamask', 'rabby', 'binance', 'coinbase', 'pump', 'pumpfun', 'jupiter', 'raydium',
 ]);
 const BANNED_SQUASHED = ['elonmusk', 'chatgpt', 'openai', 'anthropic', 'donaldtrump', 'pumpfun', 'sunfallcity'];
 const looksLikeAddressOrLink = /(https?:|www\.|\.(com|xyz|io|fun|net|org|gg)\b|@|0x[0-9a-f]{6,}|[1-9A-HJ-NP-Za-km-z]{25,})/i;

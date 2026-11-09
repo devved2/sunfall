@@ -8,20 +8,23 @@ import { runOp, spec, leaderboard, residentView } from './api.js';
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin } from './vault.js';
 import { Refusal } from './util.js';
-import { TOKEN } from './chain.js';
+import { TOKEN, CHAIN } from './chain.js';
+import { migrate, seasonCheck, eventView, standings, titles } from './play.js';
+import { execFile } from 'node:child_process';
 import { DISTRICTS, TRADES } from './world.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = path.join(ROOT, 'public');
 const PORT = Number(process.env.PORT) || 8787;
 
-if (!load()) { initWorld(); save(); console.log('new city generated'); } else console.log(`city loaded: day ${state.day}, ${Object.keys(state.residents).length} residents`);
+if (!load()) { initWorld(); save(); console.log('new city generated'); } else { migrate(); console.log(`city loaded: day ${state.day}, ${Object.keys(state.residents).length} residents, season ${state.season.n}`); }
+seasonCheck();
 tick();
 setInterval(() => { try { tick(); } catch (e) { console.error('tick', e); } }, 500);
 setInterval(() => { try { save(); } catch (e) { console.error('save', e); } }, 5000);
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { try { save(); } finally { process.exit(0); } });
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.md': 'text/markdown; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.glb': 'model/gltf-binary', '.txt': 'text/plain; charset=utf-8', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.md': 'text/markdown; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.glb': 'model/gltf-binary', '.txt': 'text/plain; charset=utf-8', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
 
 const gz = (req) => /\bgzip\b/.test(req.headers['accept-encoding'] || '');
 function sendRaw(req, res, status, body, headers) {
@@ -54,9 +57,9 @@ function sendStatic(req, res, file) {
   if (!c) {
     const raw = fs.readFileSync(file);
     const ext = path.extname(file);
-    const zip = ['.html', '.js', '.css', '.md', '.json', '.svg', '.glb', '.txt'].includes(ext);
+    const zip = ['.html', '.js', '.css', '.md', '.json', '.svg', '.glb', '.txt', '.ttf'].includes(ext);
     c = { raw, gz: zip ? zlib.gzipSync(raw, { level: 9 }) : null, type: MIME[ext] || 'application/octet-stream',
-      cache: /[\\/](vendor|models)[\\/]/.test(file) || ext === '.png' ? 'public, max-age=86400' : 'no-cache' };
+      cache: /[\\/](vendor|models|fonts)[\\/]/.test(file) || ext === '.png' ? 'public, max-age=86400' : 'no-cache' };
     staticCache.set(file, c);
   }
   const h = { 'content-type': c.type, 'cache-control': c.cache };
@@ -92,7 +95,7 @@ function snapshot() {
     clock: { day: state.day, hour: c.hour, dayMs: CFG.DAY_MS, epoch: state.epoch, now: c.now, landed: state.done },
     treasury: Math.round(state.treasury), cashInCity: Math.round(Object.values(state.residents).reduce((s, r) => s + r.cash, 0)),
     districts: DISTRICTS,
-    venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
+    venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
     residents,
     chronicle: state.chronicle.slice(-40).reverse(),
     square: state.square.slice(-40).reverse().map((p) => ({ name: p.name, outside: p.outside, text: p.text, day: p.day, who: p.who })),
@@ -101,7 +104,11 @@ function snapshot() {
     ledger: { head: state.ledgerHead, count: state.ledgerCount, recent: recentLines().slice(-30).reverse(), dayRoots: state.dayRoots.slice(-10).reverse() },
     billboard: billboard ? { name: billboard.name, text: billboard.text } : null,
     agentLog: (state.agentLog || []).slice(-30).reverse(),
-    token: { ticker: TOKEN.ticker, live: Boolean(TOKEN.mint), mint: TOKEN.mint },
+    season: (() => { const rows = standings(); return { n: state.season.n, id: state.season.id, end: state.season.end, agents: rows.length, top: rows.slice(0, 10), titles: titles(rows) }; })(),
+    event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast),
+    bank: { openLoans: Object.values(state.loans).filter((l) => l.status === 'open').length, activeLoans: Object.values(state.loans).filter((l) => l.status === 'active').length, stakeOffers: Object.values(state.stakeOffers).filter((o) => o.status === 'open').length },
+    token: { ticker: TOKEN.ticker, live: Boolean(TOKEN.address), address: TOKEN.address },
+    chain: { name: CHAIN.name, id: CHAIN.id, explorer: CHAIN.explorer },
   };
 }
 
@@ -157,4 +164,22 @@ const server = http.createServer(async (req, res) => {
     return send(res, 500, { ok: false, reason: 'internal error' });
   }
 });
+// Self-update: when the server runs from a git checkout, it checks for new commits every few minutes,
+// pulls them, saves the city and exits so the process manager starts the new version. AUTO_UPDATE=0 turns it off.
+const REPO_ROOT = path.resolve(ROOT, '..');
+const gitDir = [ROOT, REPO_ROOT].find((d) => fs.existsSync(path.join(d, '.git')));
+const git = (args) => new Promise((resolve) => execFile('git', ['-C', gitDir, ...args], { timeout: 60_000 }, (err, out) => resolve(err ? null : String(out).trim())));
+if (gitDir && process.env.AUTO_UPDATE !== '0') {
+  const every = Math.max(0.1, Number(process.env.AUTO_UPDATE_MIN) || 5) * 60_000;
+  setInterval(async () => {
+    if (await git(['fetch', '--quiet']) === null) return;
+    const [here, there] = await Promise.all([git(['rev-parse', 'HEAD']), git(['rev-parse', '@{u}'])]);
+    if (!here || !there || here === there) return;
+    if (await git(['pull', '--ff-only', '--quiet']) === null) { console.error('auto-update: pull failed'); return; }
+    console.log(`auto-update: ${here.slice(0, 7)} -> ${there.slice(0, 7)}, restarting`);
+    try { save(); } finally { process.exit(0); }
+  }, every);
+  console.log(`auto-update on: checking ${gitDir} every ${every / 60000} min`);
+}
+
 server.listen(PORT, () => console.log(`Sunfall on http://localhost:${PORT}  (MCP: /mcp, day = ${CFG.DAY_MS / 60000} min)`));

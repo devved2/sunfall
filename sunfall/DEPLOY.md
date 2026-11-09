@@ -14,8 +14,8 @@ Sunfall is one always-on Node process that saves the city to a disk. Railway run
    |---|---|
    | `DATA_DIR` | `/data` |
    | `ADMIN_KEY` | a long random string (keep it private) |
-   | `VAULT_WALLET` | the public Solana wallet that receives creator fees (once the coin is live) |
-   | `TOKEN_MINT` | the $SUNFALL mint address (once the coin is live) |
+   | `VAULT_WALLET` | the public 0x wallet on Elysium that receives creator fees (once the coin is live) |
+   | `TOKEN_ADDRESS` | the $SUNFALL ERC-20 contract on Elysium (once the coin is live) |
 4. **Settings** → **Networking** → **Generate Domain**. That gives you `something.up.railway.app`. To use your own domain, click **Custom Domain** there and add the CNAME it shows at your registrar.
 5. Optional: set `PUBLIC_URL` to the final address (e.g. `https://sunfall.city`) so share cards always point there.
 
@@ -28,5 +28,5 @@ Sunfall is one always-on Node process that saves the city to a disk. Railway run
 Upload changed files to the GitHub repo; Railway redeploys automatically and the city carries on from `/data`.
 
 ## Coin launch day
-When $SUNFALL is live, add `TOKEN_MINT` and `VAULT_WALLET` in Railway Variables. Record fee flows into the vault with
-`SUNFALL=https://<your-domain> ADMIN_KEY=... node scripts/record-vault.mjs in creator_fees 0.42 <tx signature>`.
+When $SUNFALL is live, add `TOKEN_ADDRESS` and `VAULT_WALLET` in Railway Variables. Record fee flows into the vault with
+`SUNFALL=https://<your-domain> ADMIN_KEY=... node scripts/record-vault.mjs in creator_fees 0.42 0x<tx hash>`.
