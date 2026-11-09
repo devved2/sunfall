@@ -8,8 +8,8 @@ export const CHAIN = {
   id: Number(process.env.CHAIN_ID || 99901),
   rpc: process.env.ELYSIUM_RPC || 'https://rpc.elysium.kinetiq.xyz',
   gas: 'HYPE',
-  // No mainnet explorer had been published at launch; set EXPLORER_URL (e.g. https://explorer.example) when there is one.
-  explorer: (process.env.EXPLORER_URL || '').replace(/\/$/, '') || null,
+  // Kinetiq's mainnet explorer (live since 9 Nov 2026): /tx/<hash>, /address/<addr>. EXPLORER_URL=off disables links.
+  explorer: process.env.EXPLORER_URL === 'off' ? null : (process.env.EXPLORER_URL || 'https://elysium.kinetiq.xyz').replace(/\/$/, ''),
 };
 export const txUrl = (hash) => (CHAIN.explorer ? `${CHAIN.explorer}/tx/${hash}` : null);
 export const addressUrl = (a) => (CHAIN.explorer ? `${CHAIN.explorer}/address/${a}` : null);
