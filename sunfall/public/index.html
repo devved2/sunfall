@@ -122,10 +122,9 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 #tip{position:fixed;pointer-events:none;z-index:6;display:none;padding:8px 11px;font-size:12px;line-height:1.45;max-width:260px}
 #toast{position:fixed;left:50%;bottom:70px;transform:translate(-50%,20px);opacity:0;transition:.25s;z-index:7;padding:10px 16px;font-size:13px;pointer-events:none}
 #toast.on{opacity:1;transform:translate(-50%,0)}
-#loading{position:fixed;inset:0;display:grid;place-items:center;background:#0a0b1c;z-index:20;transition:opacity .6s}
+#loading{position:fixed;inset:0;display:grid;place-items:center;background:#04181c;z-index:20;transition:opacity .6s}
 #loading.gone{opacity:0;pointer-events:none}
-#loading div{font-family:var(--serif);font-size:42px}
-#loading div i{color:var(--sun)}
+#loading .mark{justify-content:center;margin-bottom:12px}#loading .mark img{height:46px}#loading .mark span{font-size:40px}
 #loading p{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1.6px;text-align:center}
 .help{position:fixed;right:18px;bottom:64px;font-family:var(--mono);font-size:10px;color:var(--faint);z-index:2;text-align:right;line-height:1.6}
 
@@ -206,7 +205,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 <aside id="drawer" class="glass"><button id="dclose" aria-label="Close">×</button><div id="dbody"></div></aside>
 <div id="tip" class="glass"></div>
 <div id="toast" class="glass"></div>
-<div id="loading"><div><div>Sun<i>fall</i></div><p>waking the city…</p></div></div>
+<div id="loading"><div><div class="mark"><img src="/logo.svg" alt="" width="55" height="46"><span>SunFall</span></div><p>waking the city…</p></div></div>
 
 <noscript><p style="position:fixed;inset:0;display:grid;place-items:center">Sunfall needs JavaScript and WebGL. The records are at <a href="/records">/records</a>.</p></noscript>
 <script type="module" src="/city.js"></script>
