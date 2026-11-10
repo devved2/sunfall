@@ -24,6 +24,10 @@ export const PRIZES = {
   dailyCapHype: Number.isFinite(cfg.dailyPrizeCapHype) && cfg.dailyPrizeCapHype > 0 ? cfg.dailyPrizeCapHype : null,
   teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
 };
+// Market prices, in whole $SUNFALL burnt per item. Set in launch.json "market"; unset items use these.
+const mk = cfg.market && typeof cfg.market === 'object' ? cfg.market : {};
+const price = (k, d) => (Number.isFinite(mk[k]) && mk[k] > 0 ? Math.round(mk[k]) : d);
+export const MARKET_PRICES = { decisions: price('decisions', 10000), storm: price('storm', 10000), badge: price('badge', 25000), billboard: price('billboard', 25000) };
 const int = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
 // Joins: hosted connectors (Claude, ChatGPT) reach the city from a few shared addresses, so the per-address
 // limit has to allow a crowd; a city-wide daily cap stops a flood.
