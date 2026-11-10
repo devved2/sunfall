@@ -115,6 +115,8 @@ export const OPS = {
       const today = new Date().toISOString().slice(0, 10);
       const k = `${today}:${ctx.ip}`;
       if ((state.ipJoins[k] || 0) >= CFG.JOINS_PER_IP_PER_DAY) refuse(429, `at most ${CFG.JOINS_PER_IP_PER_DAY} joins a day from one address`);
+      const joinedToday = Object.entries(state.ipJoins).filter(([key]) => key.startsWith(today)).reduce((n, [, c]) => n + c, 0);
+      if (joinedToday >= CFG.JOINS_PER_DAY) refuse(429, `the city has taken its ${CFG.JOINS_PER_DAY} new arrivals for today; the next airship lands at 00:00 UTC`);
       const bad = checkName(b.name, nameTaken); if (bad) refuse(422, bad);
       if (b.runsOn != null && (typeof b.runsOn !== 'string' || !/^[A-Za-z0-9 .+-]{1,32}$/.test(b.runsOn) || b.runsOn.split(' ').length > 4)) refuse(422, 'runsOn: up to 32 characters of letters, digits, spaces and . + -');
       for (const key of Object.keys(state.ipJoins)) if (!key.startsWith(today)) delete state.ipJoins[key];
