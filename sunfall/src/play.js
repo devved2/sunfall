@@ -257,6 +257,41 @@ export function prizePlaces(rows = standings()) {
     .slice(0, PRIZES.split.length)
     .map((r, i) => ({ place: i + 1, sharePct: PRIZES.split[i], id: r.id, name: r.name, wallet: r.wallet, prizeScore: r.prizeScore }));
 }
+// A small daily prize: each UTC day, the eligible agent whose prize score grew the most that day.
+// Winners build up over the week and are paid with the weekly prizes, from the daily share of the pot.
+const utcDay = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
+function dailyState() {
+  state.daily ||= { date: utcDay(), base: {}, winners: [] };
+  return state.daily;
+}
+function dailyGains(rows = standings()) {
+  const d = dailyState();
+  return rows.filter((r) => r.prizeEligible)
+    .map((r) => ({ id: r.id, name: r.name, wallet: r.wallet, gain: r.prizeScore - (d.base[r.id] ?? CFG.START_CASH) }))
+    .filter((r) => r.gain > 0)
+    .sort((a, b) => b.gain - a.gain);
+}
+export function dailyCheck(now = Date.now()) {
+  const d = dailyState(), today = utcDay(now);
+  if (d.date === today) return false;
+  const rows = standings();
+  const best = dailyGains(rows)[0];
+  if (best) {
+    d.winners.push({ date: d.date, id: best.id, name: best.name, wallet: best.wallet, gain: Math.round(best.gain) });
+    if (d.winners.length > 120) d.winners.shift();
+    L('season', 'city', 0, `daily prize ${d.date}: ${best.id} grew ${money(best.gain)}`);
+    chron(`${best.name.quoted} had the best day in Sunfall (${d.date}): up ${money(best.gain)}.`, best.id, 'season');
+  }
+  d.date = today;
+  d.base = Object.fromEntries(rows.map((r) => [r.id, r.prizeScore]));
+  return true;
+}
+export function dailyView(rows = standings()) {
+  const d = dailyState();
+  const lead = dailyGains(rows)[0] || null;
+  return { sharePct: PRIZES.dailyPct, date: d.date, leader: lead ? { id: lead.id, name: lead.name, gain: Math.round(lead.gain) } : null,
+    recent: d.winners.slice(-7).reverse().map((w) => ({ date: w.date, id: w.id, name: w.name, gain: w.gain })) };
+}
 export function titles(rows = standings()) {
   const top = (key, min = 1) => { const s = [...rows].sort((a, b) => b[key] - a[key] || b.netWorth - a.netWorth)[0]; return s && s[key] >= min ? { id: s.id, name: s.name, value: s[key] } : null; };
   return {
@@ -272,7 +307,8 @@ export function seasonView() {
     rule: `Every agent starts the season with $${CFG.START_CASH}. The highest net worth (cash + businesses + stakes + money owed to you, minus your debts) when the season closes wins.`,
     titles: titles(rows), standings: rows.slice(0, 100),
     prizes: { enabled: PRIZES.enabled, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
-      rule: `The top ${PRIZES.split.length} wallet-linked agents by prize score share the Vault's prize pot (${PRIZES.split.join('/')}%). Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. Team agents can't win. Paid from the Vault wallet after the season closes; every payout is listed with its transaction.` },
+      daily: dailyView(rows),
+      rule: `Each week ${100 - PRIZES.dailyPct}% of the Vault's prize pot goes to the top ${PRIZES.split.length} wallet-linked agents by prize score (${PRIZES.split.join('/')}%), and ${PRIZES.dailyPct}% is shared by the week's daily winners: the agent whose prize score grew most each UTC day. Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. Team agents can't win. Paid from the Vault wallet after the season closes; every payout is listed with its transaction.` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
@@ -281,7 +317,7 @@ function closeSeason() {
   const rows = standings();
   const t = titles(rows);
   const places = prizePlaces(rows);
-  state.hallOfFame.push({ n: s.n, id: s.id, start: s.start, end: s.end, agents: rows.length, titles: t, top: rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth, prizeScore: r.prizeScore, wallet: r.wallet })), prizes: PRIZES.enabled ? places : [] });
+  state.hallOfFame.push({ n: s.n, id: s.id, start: s.start, end: s.end, agents: rows.length, titles: t, top: rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth, prizeScore: r.prizeScore, wallet: r.wallet })), prizes: PRIZES.enabled ? places : [], dailyWinners: (state.daily?.winners || []).filter((w) => w.date >= new Date(s.start).toISOString().slice(0, 10)) });
   if (PRIZES.enabled && places.length) L('season', 'city', 0, `season ${s.n} prize places: ${places.map((p) => `${p.place}. ${p.id} (${p.sharePct}%)`).join(', ')}`);
   if (state.hallOfFame.length > 200) state.hallOfFame.shift();
   L('season', 'city', 0, `season ${s.n} closed: ${rows.length} agents${t.champion ? `, champion ${t.champion.id} at ${money(t.champion.value)}` : ''}`);
@@ -326,6 +362,7 @@ export function afterDayTurn() {
   endEvent();
   startEvent();
   rollForecast();
+  dailyCheck();
   seasonCheck();
   cityBank();
   nativesFinance();
