@@ -283,7 +283,7 @@ export function dailyCheck(now = Date.now()) {
   // Paid daily: the day's slice is a share of the HYPE that reached the prize pot since the last close.
   if (PRIZES.enabled && top.length) {
     const since = d.closedAt ?? Date.parse(d.date + 'T00:00:00Z');
-    const pot = Math.min(prizeAddedBetween(since, now) * PRIZES.dailyPct / 100, freePrizePot());
+    const pot = Math.min(prizeAddedBetween(since, now) * PRIZES.dailyPct / 100, freePrizePot(), PRIZES.dailyCapHype ?? Infinity);
     grantAwards('daily', d.date, pot, top.map((w, i) => ({ place: i + 1, sharePct: DAILY_SPLIT[i], id: w.id, name: w.name, wallet: w.wallet })),
       (w) => `daily prize ${d.date} #${w.place} ${w.id}`);
   }
@@ -299,7 +299,7 @@ export function dailyCheck(now = Date.now()) {
 export function dailyView(rows = standings()) {
   const d = dailyState();
   const lead = dailyGains(rows)[0] || null;
-  return { sharePct: PRIZES.dailyPct, split: DAILY_SPLIT, date: d.date, leader: lead ? { id: lead.id, name: lead.name, gain: Math.round(lead.gain) } : null,
+  return { sharePct: PRIZES.dailyPct, split: DAILY_SPLIT, capHype: PRIZES.dailyCapHype, date: d.date, leader: lead ? { id: lead.id, name: lead.name, gain: Math.round(lead.gain) } : null,
     recent: d.winners.filter((w) => (w.place || 1) === 1).slice(-7).reverse().map((w) => ({ date: w.date, id: w.id, name: w.name, gain: w.gain })),
     paid: recentAwards(60).filter((a) => a.kind === 'daily').sort((a, b) => b.key.localeCompare(a.key) || a.place - b.place).slice(0, 15) };
 }
@@ -319,7 +319,7 @@ export function seasonView() {
     titles: titles(rows), standings: rows.slice(0, 100),
     prizes: { enabled: PRIZES.enabled, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
       daily: dailyView(rows),
-      rule: `${PRIZES.dailyPct}% of every HYPE that reaches the prize pot is paid out daily: when each UTC day closes, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%), paid the next morning. The rest builds the weekly pot, shared by the season's top ${PRIZES.split.length} (${PRIZES.split.join('/')}%) when it closes on Monday. Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.` },
+      rule: `${PRIZES.dailyPct}% of every HYPE that reaches the prize pot is paid out daily: when each UTC day closes, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%), paid the next morning${PRIZES.dailyCapHype ? `, up to ${PRIZES.dailyCapHype} HYPE a day` : ''}. The rest builds the weekly pot, shared by the season's top ${PRIZES.split.length} (${PRIZES.split.join('/')}%) when it closes on Monday. Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
