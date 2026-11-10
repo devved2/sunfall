@@ -245,7 +245,7 @@ function build() {
   buildElysiumGlow();
 
   const bld = [], neon = [], chim = [], trees = [], slabs = [], parks = [], roofs = [], acs = [], tanks = [], antennas = [], awnings = [], palms = [], houses = [], benches = [], parkCells = [], crystals = [], domes = [];
-  const venueNear = (cx, cy) => S.venues.some((v) => Math.abs(v.x - cx) < 34 && Math.abs(v.y - cy) < 34);
+  const venueNear = (cx, cy) => S.venues.some((v) => { const [rx, ry] = v.type === 'stadium' ? [70, 50] : [34, 34]; return Math.abs(v.x - cx) < rx && Math.abs(v.y - cy) < ry; });
   for (let i = 0; i < 24; i++) {
     for (let j = 0; j < 17; j++) {
       const cx = OFF + GRID * i + 20, cy = OFF + GRID * j + 20;
@@ -1035,6 +1035,28 @@ function signTexture(v, prev) {
   if (prev) { prev.needsUpdate = true; return prev; }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
+// The Arena's big screen: the live score, or the next kick-off.
+const arenaScreen = { canvas: null, tex: null, key: '' };
+function drawArenaScreen(m) {
+  const c = arenaScreen.canvas; if (!c) return;
+  const key = JSON.stringify(m); if (key === arenaScreen.key) return; arenaScreen.key = key;
+  const g = c.getContext('2d');
+  g.fillStyle = '#05080c'; g.fillRect(0, 0, 768, 256);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#7dffa8'; g.font = '600 26px "JetBrains Mono", monospace'; g.fillText('SUNFALL ARENA', 384, 34);
+  if (!m) { g.fillStyle = '#f3fbf5'; g.font = '700 56px Inter, sans-serif'; g.fillText('SUNFALL LEAGUE', 384, 140); }
+  else {
+    const short = (s) => s.replace(/ (FC|City|United|Athletic|Rovers|Albion)$/, '').toUpperCase();
+    g.font = '700 46px Inter, sans-serif';
+    g.fillStyle = m.hc; g.fillRect(40, 92, 14, 70); g.fillStyle = m.ac; g.fillRect(714, 92, 14, 70);
+    g.fillStyle = '#f3fbf5'; g.textAlign = 'left'; g.fillText(short(m.home), 68, 128, 230); g.textAlign = 'right'; g.fillText(short(m.away), 700, 128, 230);
+    g.textAlign = 'center'; g.font = '700 84px "JetBrains Mono", monospace'; g.fillStyle = '#ffffff'; g.fillText(m.score ? `${m.score[0]}-${m.score[1]}` : 'v', 384, 130);
+    g.font = '600 28px "JetBrains Mono", monospace';
+    g.fillStyle = m.status === 'live' ? '#ff6b6b' : '#9fb3c8';
+    g.fillText(m.status === 'live' ? `LIVE ${m.minute}'` : m.status === 'ft' ? 'FULL TIME' : 'NEXT UP', 384, 214);
+  }
+  arenaScreen.tex.needsUpdate = true;
+}
 const neonMats = [];
 function neonTexture(text, col) {
   const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const g = c.getContext('2d');
@@ -1100,6 +1122,52 @@ function buildVenue(v, rnd) {
       for (let i = 0; i < 6; i++) add(std(cc[i % 4]), 12, 5, 5, 8, 6 + Math.floor(i / 3) * 5, -8 + (i % 3) * 5.5);
       top = 46; break;
     }
+    case 'stadium': {
+      // Sunfall Arena: a pitch, three tiers of stands on every side, a roof over the long stands, four floodlights,
+      // a crowd, and a big screen showing the live score.
+      const pc = document.createElement('canvas'); pc.width = 512; pc.height = 320; const g = pc.getContext('2d');
+      for (let i = 0; i < 12; i++) { g.fillStyle = i % 2 ? '#2f8a45' : '#2a7d3e'; g.fillRect(i * 512 / 12, 0, 512 / 12 + 1, 320); }
+      g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 3; g.strokeRect(14, 14, 484, 292); g.beginPath(); g.moveTo(256, 14); g.lineTo(256, 306); g.stroke();
+      g.beginPath(); g.arc(256, 160, 40, 0, Math.PI * 2); g.stroke(); g.strokeRect(14, 90, 64, 140); g.strokeRect(434, 90, 64, 140); g.strokeRect(14, 125, 22, 70); g.strokeRect(476, 125, 22, 70);
+      const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace; ptex.anisotropy = 4;
+      const pitch = new THREE.Mesh(new THREE.PlaneGeometry(68, 42), new THREE.MeshStandardMaterial({ map: ptex, roughness: 0.95 }));
+      pitch.rotation.x = -Math.PI / 2; pitch.position.y = 0.35; pitch.receiveShadow = true; pitch.userData.vid = v.id; grp.add(pitch); venueMeshes.push(pitch);
+      add(std(0x2d3138), 104, 0.3, 66, 0, 0, 0);
+      const seat = [std(0x2b4a7a), std(0x30558a), std(0x3a63a0)];
+      for (let t = 0; t < 3; t++) {
+        const h = 3 + t * 3.2, off = t * 5;
+        for (const sz of [-1, 1]) add(seat[t], 78 + off * 2, h, 5, 0, 0, sz * (23.5 + off));
+        for (const sx of [-1, 1]) add(seat[t], 5, h, 48 + off * 2, sx * (37.5 + off), 0, 0);
+      }
+      const wall = std(0x8c93a0); for (const sz of [-1, 1]) add(wall, 100, 13, 1.2, 0, 0, sz * 33.4); for (const sx of [-1, 1]) add(wall, 1.2, 13, 66, sx * 50, 0, 0);
+      const roof = new THREE.MeshStandardMaterial({ color: 0xd9dee6, roughness: 0.4, metalness: 0.3, transparent: true, opacity: 0.88 });
+      for (const sz of [-1, 1]) { const r = add(roof, 92, 0.8, 13, 0, 15.5, sz * 28); r.rotation.x = sz * 0.12; }
+      // floodlights
+      const mast = std(0x9aa1ab, { metalness: 0.6, roughness: 0.35 });
+      const fl = [];
+      for (const [mx, mz] of [[-49, -32], [49, -32], [-49, 32], [49, 32]]) { add(mast, 1.2, 36, 1.2, mx, 0, mz); add(new THREE.MeshStandardMaterial({ color: 0xfafcff, emissive: 0xe8f4ff, emissiveIntensity: 0.6 }), 7, 4, 1, mx, 35, mz); fl.push(new THREE.Vector3(mx, 37, mz)); }
+      const lights = new THREE.Points(new THREE.BufferGeometry().setFromPoints(fl), new THREE.PointsMaterial({ map: GLOW, size: 46, color: 0xeaf6ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      grp.add(lights); nightGlows.push(lights.material);
+      // the crowd
+      const crowd = [], cc = [], palette = [0xa77bd6, 0x5fbf8a, 0xff4fa3, 0xe2a63c, 0x4fb8e8, 0xf2f2f2, 0xffd24a].map((x) => new THREE.Color(x));
+      for (let i = 0; i < 900; i++) {
+        const t = Math.floor(rnd() * 3), off = t * 5, h = 3.6 + t * 3.2;
+        const long = rnd() < 0.62, s = rnd() < 0.5 ? -1 : 1;
+        if (long) crowd.push(new THREE.Vector3((rnd() - 0.5) * (76 + off * 2), h, s * (23.5 + off + (rnd() - 0.5) * 3)));
+        else crowd.push(new THREE.Vector3(s * (37.5 + off + (rnd() - 0.5) * 3), h, (rnd() - 0.5) * (46 + off * 2)));
+        const c = palette[Math.floor(rnd() * palette.length)]; cc.push(c.r, c.g, c.b);
+      }
+      const cg = new THREE.BufferGeometry().setFromPoints(crowd); cg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
+      grp.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: 1.3, vertexColors: true })));
+      // the big screen above the north stand
+      arenaScreen.canvas = document.createElement('canvas'); arenaScreen.canvas.width = 768; arenaScreen.canvas.height = 256;
+      arenaScreen.tex = new THREE.CanvasTexture(arenaScreen.canvas); arenaScreen.tex.colorSpace = THREE.SRGBColorSpace;
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(30, 10), new THREE.MeshBasicMaterial({ map: arenaScreen.tex, toneMapped: false, side: THREE.DoubleSide }));
+      scr.position.set(0, 25, -34.5); scr.userData.vid = v.id; grp.add(scr); venueMeshes.push(scr);
+      add(std(0x22252b), 31.5, 11.5, 1, 0, 19.25, -35.3); add(mast, 1, 20, 1, -12, 0, -35.3); add(mast, 1, 20, 1, 12, 0, -35.3);
+      drawArenaScreen(null);
+      top = 34; break;
+    }
     case 'yard': {
       const cc = [0xb8483a, 0x3a7cb8, 0x4f9a5a, 0xc9893a, 0x7a5ab8];
       for (let i = 0; i < 12; i++) add(std(cc[Math.floor(rnd() * 5)]), 12, 5, 5.5, -9 + (i % 2) * 14, Math.floor(i / 6) * 5, -12 + (Math.floor(i / 2) % 3) * 7.5);
@@ -1107,7 +1175,7 @@ function buildVenue(v, rnd) {
     }
   }
   // a neon sign on the building itself
-  const NEON = { bar: ['#ff4fa3', 20, 12.5, 10.4], gym: ['#3df2ff', 22, 14.2, 11.1], casino: ['#ffd24a', 28, 27, 13.4], market: ['#ffb04a', 22, 13.5, 16], diner: ['#ff5a4a', 20, 12.4, 8], office: ['#9fd4ff', 20, 86, 12.4], docks: ['#ffe08a', 26, 9, 10.4], yard: ['#9dff8a', 18, 16.5, 4.2] }[v.type];
+  const NEON = { stadium: ['#7dffa8', 34, 9.5, 34.2], bar: ['#ff4fa3', 20, 12.5, 10.4], gym: ['#3df2ff', 22, 14.2, 11.1], casino: ['#ffd24a', 28, 27, 13.4], market: ['#ffb04a', 22, 13.5, 16], diner: ['#ff5a4a', 20, 12.4, 8], office: ['#9fd4ff', 20, 86, 12.4], docks: ['#ffe08a', 26, 9, 10.4], yard: ['#9dff8a', 18, 16.5, 4.2] }[v.type];
   if (NEON) {
     const [col, w, y, z] = NEON;
     const sm = new THREE.MeshBasicMaterial({ map: neonTexture(v.name, col), transparent: true, toneMapped: false, alphaTest: 0.04, side: THREE.DoubleSide });
@@ -1127,6 +1195,7 @@ function buildVenue(v, rnd) {
   venueObjs[v.id] = { v, sign, glow, key: '' };
 }
 function updateVenues() {
+  drawArenaScreen(S.football ? { home: S.football.home, away: S.football.away, hc: S.football.hc, ac: S.football.ac, score: S.football.score, status: S.football.status, minute: S.football.minute } : null);
   for (const v of S.venues) {
     const o = venueObjs[v.id]; if (!o) continue;
     const key = [v.price, v.visitsToday, v.owner, v.forSale, v.salePrice].join('|');
@@ -1225,12 +1294,13 @@ function updateCars(dt) {
     const t = c.dir > 0 ? c.s : span - c.s;
     const lane = 3 * c.dir;
     const x = c.horiz ? OFF + t : c.line + lane, y = c.horiz ? c.line - lane : OFF + t;
-    dummy.position.copy(W(x, y, 0)); dummy.rotation.set(0, c.horiz ? (c.dir > 0 ? 0 : Math.PI) : (c.dir > 0 ? -Math.PI / 2 : Math.PI / 2), 0); dummy.scale.set(1, 1, 1);
+    const hid = x > 826 && x < 934 && y > 544 && y < 616; // no driving through Sunfall Arena
+    dummy.position.copy(W(x, y, hid ? -40 : 0)); dummy.rotation.set(0, c.horiz ? (c.dir > 0 ? 0 : Math.PI) : (c.dir > 0 ? -Math.PI / 2 : Math.PI / 2), 0); dummy.scale.set(1, 1, 1);
     dummy.updateMatrix(); carMesh.setMatrixAt(i, dummy.matrix); cabinMesh.setMatrixAt(i, dummy.matrix);
     const fx = c.horiz ? x + 3 * c.dir : x, fy = c.horiz ? y : y + 3 * c.dir;
-    const p = W(fx, fy, 1.5); pos.setXYZ(i, p.x, p.y, p.z);
+    const p = W(fx, fy, hid ? -40 : 1.5); pos.setXYZ(i, p.x, p.y, p.z);
     const bx = c.horiz ? x - 2.9 * c.dir : x, by = c.horiz ? y : y - 2.9 * c.dir;
-    const tp = W(bx, by, 1.5); tpos.setXYZ(i, tp.x, tp.y, tp.z);
+    const tp = W(bx, by, hid ? -40 : 1.5); tpos.setXYZ(i, tp.x, tp.y, tp.z);
   });
   carMesh.instanceMatrix.needsUpdate = true; cabinMesh.instanceMatrix.needsUpdate = true; pos.needsUpdate = true; tpos.needsUpdate = true;
 }
@@ -1527,7 +1597,7 @@ function selectVenue(vid) {
   follow = null;
   const v = S.venues.find((x) => x.id === vid); if (!v) return;
   const c = W(v.x, v.y);
-  const tall = { casino: 60, office: 120, docks: 40 }[v.type] || 0;
+  const tall = { casino: 60, office: 120, docks: 40, stadium: 70 }[v.type] || 0;
   $('#drawer').classList.add('open');
   frameOn(c, new THREE.Vector3(30, 150 + tall * 1.6, 115), tall > 80 ? 2.2 : 3.4);
   const inside = people.filter((p) => !p.walk && p.vis && p.vid === vid);
@@ -1541,6 +1611,7 @@ function selectVenue(vid) {
       <div>Here now</div><div>${inside.length}</div>
     </div>
     ${v.type === 'casino' ? '<a href="/casino" style="display:inline-block;margin:10px 0 4px;color:#ffd36e;font-weight:600">See every hand at the tables →</a>' : ''}
+    ${v.type === 'stadium' ? `${S.football ? `<div style="margin:10px 0 2px;font-family:var(--mono);font-size:13px">${S.football.status === 'live' ? `<span style="color:#ff6b6b">LIVE ${S.football.minute}'</span> ` : S.football.status === 'ft' ? 'Full time: ' : 'Next: '}${esc(S.football.home)} ${S.football.score ? S.football.score.join('-') : 'v'} ${esc(S.football.away)}</div>` : ''}<a href="/stadium" style="display:inline-block;margin:8px 0 4px;color:#7dffa8;font-weight:600">Fixtures, odds and agents' bets →</a>` : ''}
     <div class="who">${inside.slice(0, 40).map((p) => `<button data-who="${esc(p.r[0])}" class="${p.r[6] ? 'agent' : ''}">${esc(p.r[1])}</button>`).join('') || '<span class="dim">Nobody right now.</span>'}</div>`;
   $('#drawer').classList.add('open');
 }
