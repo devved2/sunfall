@@ -34,7 +34,7 @@ const r4 = (x) => Math.round(x * 1e4) / 1e4;
 const amt = (e) => e.amount ?? e.sol ?? 0;
 
 /** Record a flow. kind 'in' needs a source; kind 'out' needs a use (a bucket). Amounts in HYPE. */
-export function recordFlow({ kind, source, use, amount, sol, tx, note }) {
+export function recordFlow({ kind, source, use, amount, sol, tx, note, award }) {
   amount ??= sol; // older clients sent `sol`
   if (kind !== 'in' && kind !== 'out') refuse(422, 'kind must be in or out');
   if (!(typeof amount === 'number' && amount > 0 && amount < 1e7)) refuse(422, 'amount must be a positive number of HYPE');
@@ -48,8 +48,17 @@ export function recordFlow({ kind, source, use, amount, sol, tx, note }) {
     const avail = s.buckets[use].pending;
     if (amount > avail + 1e-9) refuse(422, `the ${use} bucket only has ${avail} HYPE owed to it`);
   }
-  const e = { i: ++v().n, t: Date.now(), day: state.day, kind, source: source || null, use: use || null, amount: r4(amount), tx, note: note || null };
+  let aw = null;
+  if (award != null) {
+    aw = awards().find((a) => a.id === award);
+    if (!aw) refuse(404, `no prize award ${award}`);
+    if (kind !== 'out' || use !== 'prize') refuse(422, 'an award is paid as kind out, use prize');
+    if (aw.tx) refuse(409, `award ${award} is already paid (tx ${aw.tx})`);
+    if (Math.abs(amount - aw.hype) > 1e-6) refuse(422, `award ${award} is ${aw.hype} HYPE, not ${amount}`);
+  }
+  const e = { i: ++v().n, t: Date.now(), day: state.day, kind, source: source || null, use: use || null, amount: r4(amount), tx, note: note || (aw ? aw.label : null), award: aw ? aw.id : null };
   v().entries.push(e);
+  if (aw) { aw.tx = tx; aw.paidAt = e.t; }
   L('vault', 'vault', kind === 'in' ? e.amount : -e.amount, `${kind === 'in' ? `in: ${source}` : `out: ${use}`} ${e.amount} HYPE, tx ${tx.slice(0, 14)}`);
   return e;
 }
@@ -64,6 +73,12 @@ export function summary() {
     const owed = (inflow * pct) / 100;
     const paid = es.filter((e) => e.kind === 'out' && e.use === k).reduce((a, e) => a + amt(e), 0);
     buckets[k] = { pct, label: USES[k] || k, owed: r4(owed), paid: r4(paid), pending: r4(Math.max(0, owed - paid)) };
+  }
+  // Prize money already promised to named winners but not yet sent is held back from the free pot.
+  if (buckets.prize) {
+    const committed = r4(awards().filter((a) => !a.tx).reduce((s, a) => s + a.hype, 0));
+    buckets.prize.committed = committed;
+    buckets.prize.free = r4(Math.max(0, buckets.prize.pending - committed));
   }
   return {
     inflow: r4(inflow), outflow: r4(es.filter((e) => e.kind === 'out').reduce((a, e) => a + amt(e), 0)),
@@ -88,8 +103,37 @@ export async function vaultView() {
     token: TOKEN.ticker, tokenAddress: TOKEN.address, tokenUrl: TOKEN.address ? addressUrl(TOKEN.address) : null,
     policy: VAULT.policy, uses: USES, ...summary(),
     entries: v().entries.slice(-150).reverse().map((e) => ({ ...e, amount: amt(e), txUrl: txUrl(e.tx) })),
+    awards: recentAwards(),
   };
 }
+
+// ---------------------------------------------------------------- prize awards
+// Every prize is turned into an exact HYPE amount for a named wallet the moment it is won, so it can be paid
+// straight away and shown as paid (with its transaction) or still due.
+const awards = () => (v().awards ||= []);
+const prizePct = () => (VAULT.policy.prize || 0) / 100;
+/** HYPE that reached the prize pot between two moments (by when the inflow was recorded). */
+export function prizeAddedBetween(t0, t1) {
+  return v().entries.filter((e) => e.kind === 'in' && e.t > t0 && e.t <= t1).reduce((s, e) => s + amt(e), 0) * prizePct();
+}
+export function freePrizePot() { return summary().buckets.prize?.free || 0; }
+/** Create awards for a list of winners [{place, sharePct, id, name, wallet}] from a pot of HYPE. Shares of empty places stay in the pot. */
+export function grantAwards(kind, key, pot, winners, labelOf) {
+  const made = [];
+  for (const w of winners) {
+    const hype = Math.floor(pot * w.sharePct / 100 * 1e6) / 1e6;
+    if (!(hype > 0) || !w.wallet) continue;
+    const a = { id: `${kind === 'daily' ? 'd' : 'w'}:${key}:${w.place}`, kind, key, place: w.place, rid: w.id, name: w.name, wallet: w.wallet, hype, t: Date.now(), tx: null, label: labelOf(w) };
+    if (awards().some((x) => x.id === a.id)) continue;
+    awards().push(a); made.push(a);
+  }
+  const unpaid = awards().filter((a) => !a.tx), paid = awards().filter((a) => a.tx);
+  if (paid.length > 600) v().awards = [...paid.slice(-600), ...unpaid];
+  if (made.length) L('vault', 'vault', 0, `${kind} prizes ${key}: ${made.map((a) => `${a.rid} ${a.hype} HYPE`).join(', ')}`);
+  return made;
+}
+export const dueAwards = () => awards().filter((a) => !a.tx);
+export const recentAwards = (n = 40) => awards().slice(-n).reverse().map((a) => ({ id: a.id, kind: a.kind, key: a.key, place: a.place, rid: a.rid, name: a.name, wallet: a.wallet, hype: a.hype, tx: a.tx, txUrl: a.tx ? txUrl(a.tx) : null }));
 
 export function checkAdmin(key) {
   if (!VAULT.adminKey) refuse(503, 'recording is off: set ADMIN_KEY on the server');
