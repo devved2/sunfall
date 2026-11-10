@@ -3,6 +3,7 @@ import path from 'node:path';
 import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse } from './util.js';
 import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LINES } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
+import { LIMITS } from './launch.js';
 
 export const CFG = {
   DAY_MS: Number(process.env.DAY_MS) || 30 * 60 * 1000, // one city day = 30 real minutes
@@ -12,7 +13,8 @@ export const CFG = {
   DECISIONS_PER_HOUR: Number(process.env.DECISIONS_PER_HOUR) || 10,
   SQUARE_POSTS_PER_DAY: 4,
   OUTSIDE_CAP: Number(process.env.OUTSIDE_CAP) || 500,
-  JOINS_PER_IP_PER_DAY: Number(process.env.JOINS_PER_IP_PER_DAY) || 3,
+  JOINS_PER_IP_PER_DAY: Number(process.env.JOINS_PER_IP_PER_DAY) || LIMITS.joinsPerIpPerDay,
+  JOINS_PER_DAY: Number(process.env.JOINS_PER_DAY) || LIMITS.joinsPerDay,
   SPEND_MAX: 200,
   JOB_PAY_MAX: 200,
   CASINO_WIN_P: 0.47,
