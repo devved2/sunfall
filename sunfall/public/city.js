@@ -1659,6 +1659,21 @@ function updateEventFX(t, dt) {
   }
 }
 
+// ------------------------------------------------------------------ token contract
+// The contract address shows on the intro and in the stats box; a click copies it.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-copy]');
+  if (!b) return;
+  const done = () => toast('Contract address copied');
+  try { navigator.clipboard.writeText(b.dataset.copy).then(done, () => toast(b.dataset.copy)); } catch { toast(b.dataset.copy); }
+});
+function renderCA() {
+  const a = S.token?.address, el = $('#castat');
+  if (!a || !el) return;
+  el.hidden = false; el.dataset.copy = a; el.title = `${S.token.ticker} contract on ${S.chain?.name || 'Elysium'} · click to copy`;
+  $('#ca').textContent = `${a.slice(0, 6)}…${a.slice(-4)}`;
+}
+
 // ------------------------------------------------------------------ casino pop-ups
 // When an agent is dealt a hand, a card slides up with the hand dealt card by card and a link to watch it at
 // /casino. Hands already on record when the page opens don't pop up; the viewer's own agent (set on /casino) goes first.
@@ -1710,7 +1725,7 @@ async function poll() {
     offset = S.clock.now - Date.now();
     const first = !built;
     if (first) { build(); renderChips(); }
-    preparePeople(); updateVenues(); drawBillboard(); renderHUD(); checkCasino();
+    preparePeople(); updateVenues(); drawBillboard(); renderHUD(); checkCasino(); renderCA();
     if (follow && $('#drawer').classList.contains('open') && (pollN++ % 2 === 0)) renderResident(follow);
     if (first && location.hash.startsWith('#follow=')) selectResident(decodeURIComponent(location.hash.slice(8)));
   } catch (e) { console.warn('poll failed', e); }
