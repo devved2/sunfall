@@ -1,5 +1,6 @@
 // Public launch settings kept in the repo (launch.json), so the token and Vault wallet can be switched on
 // with a commit: the server pulls it within minutes. Environment variables still win when set.
+// $SUNFALL went live on Elysium on 10 Nov 2026.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
