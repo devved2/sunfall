@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth } from './sim.js';
 import { runOp, spec, leaderboard, residentView } from './api.js';
 import { mcpHandler } from './mcp.js';
-import { vaultView, recordFlow, checkAdmin } from './vault.js';
+import { vaultView, recordFlow, checkAdmin, dueAwards } from './vault.js';
 import { Refusal } from './util.js';
 import { TOKEN, CHAIN } from './chain.js';
 import { migrate, seasonCheck, eventView, standings, titles } from './play.js';
@@ -132,6 +132,10 @@ const server = http.createServer(async (req, res) => {
       return r ? send(res, 200, { ok: true, resident: residentView(r) }) : send(res, 404, { ok: false, reason: 'no such resident' });
     }
     if (p === '/api/vault' && req.method === 'GET') return send(res, 200, { ok: true, ...(await vaultView()) });
+    if (p === '/api/admin/payouts' && req.method === 'GET') {
+      checkAdmin(req.headers['x-admin-key']);
+      return send(res, 200, { ok: true, due: dueAwards() });
+    }
     if (p === '/api/admin/vault' && req.method === 'POST') {
       checkAdmin(req.headers['x-admin-key']);
       let body; try { body = JSON.parse((await readBody(req)) || '{}'); } catch { return send(res, 400, { ok: false, reason: 'body must be JSON' }); }
