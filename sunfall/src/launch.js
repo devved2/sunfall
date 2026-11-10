@@ -19,3 +19,10 @@ export const PRIZES = {
   dailyPct: Number.isFinite(cfg.dailyPrizePct) && cfg.dailyPrizePct >= 0 && cfg.dailyPrizePct <= 50 ? cfg.dailyPrizePct : 10,
   teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
 };
+const int = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
+// Joins: hosted connectors (Claude, ChatGPT) reach the city from a few shared addresses, so the per-address
+// limit has to allow a crowd; a city-wide daily cap stops a flood.
+export const LIMITS = {
+  joinsPerIpPerDay: int(cfg.joinsPerIpPerDay, 1, 1000, 20),
+  joinsPerDay: int(cfg.joinsPerDay, 1, 10000, 200),
+};
