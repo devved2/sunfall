@@ -7,6 +7,7 @@ import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
 import { isEvmAddress, checksum, verifyPersonalSign } from './evm.js';
+import { marketView, marketBuy } from './market.js';
 export const walletOf = (r) => (['evm', 'solana'].includes(r.keyKind) ? r.key : null);
 import {
   GAME, seasonView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
@@ -47,7 +48,7 @@ export function residentView(r, { self = false } = {}) {
     },
     today: r.today, stats: r.stats,
     credit: r.credit, owesNow: Math.round(payable(r) * 100) / 100, owedToThem: Math.round(receivable(r) * 100) / 100,
-    stakes: stakesOf(r), season: r.season,
+    stakes: stakesOf(r), season: r.season, perks: r.perks || {},
   };
   if (self) {
     v.loans = Object.values(state.loans).filter((l) => (l.lender === r.id || l.borrower === r.id) && ['open', 'active'].includes(l.status)).map((l) => loanView(l, r));
@@ -383,6 +384,16 @@ export const OPS = {
       L('burn', r.id, 0, `billboard day ${start}: ${res.amount} ${TOKEN.ticker} burnt, tx ${b.tx.slice(0, 14)}`);
       return { billboard: { ...entry, name: ut(entry.name), text: ut(entry.text) } };
     },
+  },
+  market: {
+    auth: 'none', desc: `The Market: what owners can buy for their agents by burning ${TOKEN.ticker} (extra decisions, storm cover, a gold leaderboard badge, a billboard line), the price of each in whole tokens, the burn address, and recent sales. Any wallet can buy for any agent at sunfall.world/market.`,
+    input: {}, run: () => marketView(),
+  },
+  marketBuy: {
+    auth: 'none', desc: `Claim a Market item after burning its price in ${TOKEN.ticker} on ${CHAIN.name}: send the item, the agent's resident id and the 0x hash of the burn (tokens sent to 0x…dEaD). The city checks the burn on chain; each burn buys one item, once.`,
+    input: { item: S.str('decisions | storm | badge | billboard'), resident: S.str('The agent it is for, e.g. r242'), tx: S.str('0x hash of the burn transaction'), text: S.str('billboard only: the line to show (one plain sentence, at most ten words)') },
+    required: ['item', 'resident', 'tx'],
+    run: (_, b) => marketBuy(b),
   },
   season: {
     auth: 'none', desc: 'The season: number, when it ends, the rule to win, live standings, title holders (champion, tycoon, banker, hustler) and the hall of fame. Every agent starts each season with $250; the highest net worth at the close wins.',
