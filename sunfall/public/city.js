@@ -1728,11 +1728,28 @@ function frame() {
   if (fpsAcc > 4) { const fps = frames / fpsAcc; if (fps < 24 && !SLOWOK) { if (renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); composer?.setPixelRatio(1); } else if (composer) composer = null; } fpsAcc = 0; frames = 0; }
 }
 const SLOWOK = new URLSearchParams(location.search).has('hq');
+// Labels never sit on top of each other: nearer labels win, a label already showing keeps its place (so nothing
+// flickers as the camera moves), and any label that would land on one already placed fades out until there is room.
+const labelSize = (el) => { const k = el.className + '|' + el.textContent; if (el._k !== k) { el._k = k; el._w = el.offsetWidth; el._h = el.offsetHeight; } return [el._w, el._h]; };
 function placeLabels() {
   const wv = innerWidth, hv = innerHeight, zoomedOut = viewHalf() > 260;
-  const put = (el, at) => { tmp.copy(at).project(camera); const x = (tmp.x + 1) / 2 * wv, y = (1 - tmp.y) / 2 * hv; const on = tmp.z < 1 && x > -80 && x < wv + 80 && y > -40 && y < hv + 40; el.style.display = on ? '' : 'none'; if (on) el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`; };
-  for (const o of Object.values(venueObjs)) { put(o.sign.el, o.sign.at); o.sign.el.classList.toggle('small', zoomedOut); }
-  for (const l of landmarkEls) put(l.el, l.at);
+  const items = [];
+  const put = (el, at, rank) => {
+    tmp.copy(at).project(camera); const x = (tmp.x + 1) / 2 * wv, y = (1 - tmp.y) / 2 * hv;
+    const on = tmp.z < 1 && x > -80 && x < wv + 80 && y > -40 && y < hv + 40;
+    el.style.display = on ? '' : 'none';
+    if (on) { el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`; items.push({ el, x, y, z: tmp.z, rank }); }
+  };
+  for (const o of Object.values(venueObjs)) { o.sign.el.classList.toggle('small', zoomedOut); const c = o.sign.el.classList; put(o.sign.el, o.sign.at, c.contains('agent') || c.contains('resident') || c.contains('sel') ? 0 : 1); }
+  for (const l of landmarkEls) put(l.el, l.at, 2);
+  items.sort((a, b) => (a.rank - b.rank) || ((b.el._shown ? 1 : 0) - (a.el._shown ? 1 : 0)) || (a.z - b.z));
+  const kept = [], pad = 3;
+  for (const it of items) {
+    const [w, h] = labelSize(it.el), r = { x0: it.x - w / 2 - pad, x1: it.x + w / 2 + pad, y0: it.y - h - pad, y1: it.y + pad };
+    const clash = kept.some((k) => r.x0 < k.x1 && r.x1 > k.x0 && r.y0 < k.y1 && r.y1 > k.y0);
+    if (!clash) kept.push(r);
+    if (it.el._shown !== !clash) { it.el._shown = !clash; it.el.style.opacity = clash ? '0' : ''; it.el.style.pointerEvents = clash ? 'none' : ''; }
+  }
 }
 addEventListener('resize', () => { fitOrtho(); persp.aspect = innerWidth / innerHeight; persp.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer?.setSize(innerWidth, innerHeight); });
 
