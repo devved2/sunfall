@@ -752,16 +752,19 @@ function buildSkyWorld(rnd) {
                    mix(mix(h(i+vec3(0,0,1)), h(i+vec3(1,0,1)), f.x), mix(h(i+vec3(0,1,1)), h(i+vec3(1,1,1)), f.x), f.y), f.z); }
       float fbm(vec3 p){ float v = 0.0, a = 0.5; for (int i = 0; i < OCT; i++){ v += a * n(p); p *= 2.07; a *= 0.5; } return v; }
       void main(){
-        vec3 p = vObj;
-        float bands = sin(p.y * 9.0 + fbm(p * 3.0 + vec3(uTime * 0.004, 0.0, 0.0)) * 5.0) * 0.5 + 0.5;
-        float clouds = smoothstep(0.45, 0.8, fbm(p * 4.2 + vec3(0.0, uTime * 0.002, 0.0)));
-        float ndl = dot(vN, vLv);
-        float lit = smoothstep(-0.18, 0.55, ndl);
-        vec3 deep = mix(vec3(0.008, 0.04, 0.06), vec3(0.02, 0.085, 0.12), bands);
-        vec3 day = mix(vec3(0.07, 0.24, 0.33), vec3(0.36, 0.58, 0.68), bands * 0.5 + clouds * 0.6);
-        vec3 c = mix(deep, day, lit);
-        float fres = pow(1.0 - max(dot(vN, vV), 0.0), 4.0);
-        c += vec3(0.30, 0.78, 0.95) * fres * (0.12 + 0.85 * smoothstep(-0.35, 0.6, ndl));
+        // a real-looking sun: granulation, limb darkening (hot white centre, deep orange edge), faculae and a few sunspots
+        vec3 p = normalize(vObj);
+        float mu = clamp(dot(vN, vV), 0.0, 1.0);
+        float ld = 1.0 - 0.6 * (1.0 - pow(mu, 0.55));
+        float gran = n(p * 90.0 + vec3(uTime * 0.04, 0.0, uTime * 0.03)) * 0.45 + fbm(p * 26.0 + vec3(0.0, uTime * 0.008, 0.0)) * 0.55;
+        float spot = smoothstep(0.74, 0.8, fbm(p * 3.4 + 11.0)) * (1.0 - smoothstep(0.25, 0.55, abs(p.y)));
+        float fac = smoothstep(0.6, 0.74, fbm(p * 7.0 + 3.0)) * (1.0 - mu);
+        vec3 hot = vec3(1.0, 0.76, 0.34), warm = vec3(1.0, 0.46, 0.1), rim = vec3(0.6, 0.11, 0.02);
+        vec3 c = mix(rim, mix(warm, hot, smoothstep(0.35, 0.95, mu)), smoothstep(0.0, 0.45, mu));
+        c *= ld * (0.72 + 0.56 * gran);
+        c += vec3(1.0, 0.72, 0.42) * fac * 0.3;
+        c *= 1.0 - spot * 0.78;
+        c *= 0.92;
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -774,11 +777,12 @@ function buildSkyWorld(rnd) {
     vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vLv; uniform vec3 uL;
       void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); vLv = normalize((viewMatrix * vec4(uL, 0.0)).xyz); gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `varying vec3 vN; varying vec3 vV; varying vec3 vLv;
-      void main(){ float d = max(dot(-vN, vV), 0.0); float rim = pow(1.0 - d, 1.6) * smoothstep(0.0, 0.35, d);
-        float side = 0.35 + 1.4 * smoothstep(-0.5, 0.8, dot(-vN, vLv) * -1.0);
-        gl_FragColor = vec4(vec3(0.3, 0.8, 1.0) * rim * side * 0.45, 1.0); }`,
+      // soft corona: brightest right at the sun's edge and fading smoothly outwards; nothing drawn over the disc itself
+      void main(){ float d = max(dot(-vN, vV), 0.0); const float d0 = 0.745; // the disc's edge, for a shell 1.5x the sun
+        float k = clamp(d / d0, 0.0, 1.0); float glow = (pow(k, 5.0) * 0.8 + pow(k, 14.0) * 0.6) * step(d, d0);
+        gl_FragColor = vec4(vec3(1.0, 0.48, 0.14) * glow * 0.75, 1.0); }`,
   }));
-  planetGlow.scale.setScalar(PLANET_R * 1.07); planetGlow.renderOrder = -0.45; scene.add(planetGlow);
+  planetGlow.scale.setScalar(PLANET_R * 1.5); planetGlow.renderOrder = -0.45; scene.add(planetGlow);
   // thin rings: two fine bright lines rather than a band
   const ringMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
@@ -844,7 +848,7 @@ function updateSkyWorld(t, dt) {
   }
   if (planet) {
     const show = !iso;
-    planet.visible = planetRing.visible = planetGlow.visible = planetFlare.visible = show;
+    planet.visible = planetGlow.visible = show; planetRing.visible = planetFlare.visible = false; // a sun has no rings
     planet.position.copy(camera.position).addScaledVector(PLANET_DIR, 4300);
     planetRing.position.copy(planet.position); planetGlow.position.copy(planet.position);
     // the star sits behind the planet's upper-left limb, so the planet shows a lit crescent
