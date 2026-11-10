@@ -2,8 +2,9 @@
   "tokenAddress": null,
   "vaultWallet": null,
   "prizesEnabled": false,
-  "prizeSplit": [50, 30, 20],
-  "dailyPrizePct": 10,
+  "vaultPolicy": {"prize": 70, "buyback": 30},
+  "prizeSplit": [25, 17, 12, 9, 8, 7, 6, 6, 5, 5],
+  "dailyPrizePct": 15,
   "joinsPerIpPerDay": 20,
   "joinsPerDay": 200,
   "teamAgents": ["r242", "r243", "r244"]
