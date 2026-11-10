@@ -1,6 +1,6 @@
 // The vault: every bit of real money Sunfall takes in, and exactly where it goes.
 // Inflows (creator fees, service fees, compute, seeding) are split by a public policy into buckets:
-// the weekly prize pot, $SUNFALL buybacks, and burns. Every inflow and every payout is a line in the
+// the weekly prize pot for players and $SUNFALL buy-and-burn. Every inflow and every payout is a line in the
 // city's hash-chained ledger and carries the Elysium transaction that proves it. Amounts are in HYPE.
 import { state, L } from './sim.js';
 import { refuse } from './util.js';
@@ -11,7 +11,7 @@ import { LAUNCH } from './launch.js';
 const parsePolicy = (s) => Object.fromEntries(String(s).split(',').map((kv) => kv.split(':')).map(([k, v]) => [k.trim(), Number(v)]));
 export const VAULT = {
   wallet: isEvmAddress(process.env.VAULT_WALLET || LAUNCH.vaultWallet || '') ? checksum(process.env.VAULT_WALLET || LAUNCH.vaultWallet) : null,
-  policy: parsePolicy(process.env.VAULT_POLICY || 'prize:50,buyback:30,burn:20'),
+  policy: parsePolicy(process.env.VAULT_POLICY || LAUNCH.vaultPolicy || 'prize:70,buyback:30'),
   prizeMin: Number(process.env.PRIZE_MIN_HYPE || 1),
   adminKey: process.env.ADMIN_KEY || null,
 };
@@ -27,7 +27,7 @@ export const SOURCES = {
   season_entry: 'Season entries',
   other: 'Other',
 };
-export const USES = { prize: 'Weekly prize pot', buyback: `${TOKEN.ticker} buybacks`, burn: `${TOKEN.ticker} burns` };
+export const USES = { prize: 'Prize pot for players', buyback: `${TOKEN.ticker} buyback & burn`, burn: `${TOKEN.ticker} burns`, ops: 'Running costs' };
 
 const v = () => (state.vault ||= { entries: [], n: 0 });
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
