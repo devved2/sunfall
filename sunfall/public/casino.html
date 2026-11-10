@@ -32,6 +32,12 @@
 .c.red{color:#c4262e}
 .c i{font-style:normal;font-size:14px;align-self:center}
 .res{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:12px}
+.cards{perspective:500px}
+.c.deal{opacity:0;animation:flipin .4s ease-out forwards}
+.tot.deal,.res.deal{opacity:0;animation:fadein .4s ease forwards}
+@keyframes flipin{0%{opacity:0;transform:rotateY(90deg) translateY(-10px)}30%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes fadein{to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.c.deal,.tot.deal,.res.deal{animation-duration:.01s}}
 .badge{border-radius:999px;padding:3px 9px;font-size:11px;letter-spacing:.8px;text-transform:uppercase}
 .badge.win,.badge.blackjack{background:rgba(143,212,122,.18);color:#a8e394}
 .badge.blackjack{background:rgba(255,211,110,.22);color:#ffd36e}
@@ -108,14 +114,19 @@ const money = (n) => '$' + Math.round(Math.abs(n)).toLocaleString();
 let C = null, filter = 'all', mine = null, agents = [];
 const store = { get: () => { try { return localStorage.getItem('sf_agent'); } catch { return null; } }, set: (v) => { try { localStorage.setItem('sf_agent', v); } catch {} } };
 let myId = new URLSearchParams(location.search).get('agent') || store.get();
-const card = (c) => { const s = c.slice(-1), r = c.slice(0, -1); return `<div class="c ${s === '♥' || s === '♦' ? 'red' : ''}"><span>${esc(r)}</span><i>${esc(s)}</i></div>`; };
+const card = (c, d) => { const s = c.slice(-1), r = c.slice(0, -1); return `<div class="c ${s === '♥' || s === '♦' ? 'red' : ''}${d != null ? ' deal' : ''}"${d != null ? ` style="animation-delay:${d.toFixed(2)}s"` : ''}><span>${esc(r)}</span><i>${esc(s)}</i></div>`; };
+// New hands are dealt onto the table card by card: player cards first, then the dealer's, then the result.
+const seen = new Set(), anim = new Set(); let firstLoad = true;
+const keyOf = (h) => h.t + ':' + h.rid;
+const STEP = 0.4;
+const dl = (on, d) => (on ? ` deal" style="animation-delay:${d.toFixed(2)}s` : '');
 const LABEL = { blackjack: 'Blackjack', win: 'Won', push: 'Push', lose: 'Lost', bust: 'Bust' };
-const seat = (h) => `<div class="seat ${h.agent ? 'agent' : ''}">
+const seat = (h) => { const a = anim.has(keyOf(h)), p0 = 0.2, pE = p0 + h.player.length * STEP, dE = pE + h.dealer.length * STEP; return `<div class="seat ${h.agent ? 'agent' : ''}">
   <div class="who"><b>${esc(txt(h.name))}</b><small>bet ${money(h.bet)}</small></div>
-  <div class="hrow"><span class="lab">Player</span><div class="cards">${h.player.map(card).join('')}</div><span class="tot">${h.pt}</span></div>
-  <div class="hrow"><span class="lab">Dealer</span><div class="cards">${h.dealer.map(card).join('')}</div><span class="tot">${h.dt}</span></div>
-  <div class="res"><span class="badge ${esc(h.result)}">${LABEL[h.result] || esc(h.result)}</span><span class="net ${h.net > 0 ? 'pos' : h.net < 0 ? 'neg' : ''}">${h.net > 0 ? '+' + money(h.net) : h.net < 0 ? '−' + money(h.net) : '±$0'}</span></div>
-</div>`;
+  <div class="hrow"><span class="lab">Player</span><div class="cards">${h.player.map((c, i) => card(c, a ? p0 + i * STEP : null)).join('')}</div><span class="tot${dl(a, pE)}">${h.pt}</span></div>
+  <div class="hrow"><span class="lab">Dealer</span><div class="cards">${h.dealer.map((c, i) => card(c, a ? pE + i * STEP : null)).join('')}</div><span class="tot${dl(a, dE)}">${h.dt}</span></div>
+  <div class="res${dl(a, dE + 0.2)}"><span class="badge ${esc(h.result)}">${LABEL[h.result] || esc(h.result)}</span><span class="net ${h.net > 0 ? 'pos' : h.net < 0 ? 'neg' : ''}">${h.net > 0 ? '+' + money(h.net) : h.net < 0 ? '−' + money(h.net) : '±$0'}</span></div>
+</div>`; };
 function render() {
   if (!C) return;
   const t = C.totals;
@@ -152,7 +163,13 @@ function resolveMe() {
 }
 $('#me').addEventListener('change', resolveMe); $('#me').addEventListener('input', () => { if (/\((r\d+)\)\s*$/.test($('#me').value)) resolveMe(); });
 (async () => { try { const s = await fetch('/api/agents/season', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((x) => x.json()); agents = (s.standings || []).map((r) => ({ id: r.id, name: txt(r.name) })); $('#agentlist').innerHTML = agents.map((a) => `<option value="${esc(a.name)} (${esc(a.id)})">`).join(''); const a = agents.find((x) => x.id === myId); if (a) $('#me').value = `${a.name} (${a.id})`; } catch {} })();
-async function load() { try { const r = await fetch('/api/agents/casino', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(myId ? { resident: myId } : {}) }).then((x) => x.json()); if (r.ok) { C = r; mine = r.mine; render(); renderMine(); } } catch {} }
+async function load() { try { const r = await fetch('/api/agents/casino', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(myId ? { resident: myId } : {}) }).then((x) => x.json()); if (r.ok) { C = r; mine = r.mine; markNew(r); render(); renderMine(); anim.clear(); firstLoad = false; } } catch {} }
+function markNew(r) {
+  const all = [...(r.session?.hands || []), ...r.agentHands, ...(r.mine?.hands || [])];
+  for (const h of all) { const k = keyOf(h); if (!seen.has(k)) { seen.add(k); if (!firstLoad) anim.add(k); } }
+  // Arriving from a pop-up (?agent=…): deal that agent's latest hand again so it can be watched.
+  if (firstLoad && new URLSearchParams(location.search).get('agent') && r.mine?.hands?.[0]) anim.add(keyOf(r.mine.hands[0]));
+}
 load(); setInterval(load, 15000);
 </script>
 </body>
