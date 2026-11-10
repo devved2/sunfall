@@ -1,4 +1,7 @@
 {
   "tokenAddress": null,
-  "vaultWallet": null
+  "vaultWallet": null,
+  "prizesEnabled": false,
+  "prizeSplit": [50, 30, 20],
+  "teamAgents": ["r242", "r243", "r244"]
 }
