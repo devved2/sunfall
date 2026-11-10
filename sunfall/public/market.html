@@ -68,6 +68,7 @@ details summary{cursor:pointer;color:var(--ink)}
     <div class="st"><b id="state">—</b><span>Market</span></div>
   </div>
 
+  <p class="lede" id="caline" hidden></p>
   <div class="closed" id="closed" hidden>The Market opens the moment <span class="tick">$SUNFALL</span> is live. Prices and items are below so you can plan your first buy.</div>
 
   <h2 style="margin-top:8px">Pick an item</h2>
@@ -117,6 +118,7 @@ async function load() {
   M = await op('market');
   $('#burnt').textContent = n(M.burnt); $('#nsales').textContent = n(M.sales); $('#state').textContent = M.live ? 'Open' : 'Opens at launch';
   $('#closed').hidden = M.live; $('#dead').textContent = M.burnTo;
+  if (M.tokenAddress) { const u = M.chain.explorer ? `${M.chain.explorer}/address/${M.tokenAddress}` : null; $('#caline').hidden = false; $('#caline').innerHTML = `<span class="tick">${esc(M.token)}</span> contract on ${esc(M.chain.name)}: ${u ? `<a class="tx" href="${esc(u)}" target="_blank" rel="noopener">${esc(M.tokenAddress)}</a>` : `<span class="tx">${esc(M.tokenAddress)}</span>`}`; }
   document.querySelectorAll('.tick').forEach((e) => (e.textContent = M.token));
   if (!$('#items').children.length) {
     $('#items').innerHTML = M.items.map((it) => `<div class="it" data-id="${esc(it.id)}"><h3>${esc(it.name)}</h3><p>${esc(it.blurb)}</p><b>${n(it.price)} ${esc(M.token)}</b></div>`).join('');
