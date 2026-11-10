@@ -1659,6 +1659,48 @@ function updateEventFX(t, dt) {
   }
 }
 
+// ------------------------------------------------------------------ casino pop-ups
+// When an agent is dealt a hand, a card slides up with the hand dealt card by card and a link to watch it at
+// /casino. Hands already on record when the page opens don't pop up; the viewer's own agent (set on /casino) goes first.
+let casinoSeen = null, casinoMore = 0, casinoTimer = 0;
+const casinoQ = [];
+const myAgent = () => { try { return localStorage.getItem('sf_agent'); } catch { return null; } };
+function checkCasino() {
+  const hs = S.casino || [];
+  const maxT = hs.reduce((m, h) => Math.max(m, h.t), 0);
+  if (casinoSeen === null) { casinoSeen = maxT; return; }
+  const fresh = hs.filter((h) => h.t > casinoSeen);
+  if (!fresh.length) return;
+  casinoSeen = maxT;
+  const me = myAgent();
+  fresh.sort((a, b) => (b.rid === me) - (a.rid === me));
+  casinoQ.push(...fresh.slice(0, 3));
+  casinoMore += Math.max(0, fresh.length - 3);
+  if (!casinoTimer) nextCasino();
+}
+function nextCasino() {
+  const el = $('#cpop');
+  clearTimeout(casinoTimer); casinoTimer = 0;
+  const h = casinoQ.shift();
+  if (!h) { el.classList.remove('on'); return; }
+  const more = casinoQ.length ? 0 : casinoMore;
+  if (!casinoQ.length) casinoMore = 0;
+  const RES = { blackjack: 'Blackjack', win: 'Won', push: 'Push', lose: 'Lost', bust: 'Bust' };
+  const money = h.net > 0 ? `+$${Math.round(h.net).toLocaleString()}` : h.net < 0 ? `−$${Math.round(-h.net).toLocaleString()}` : '±$0';
+  const step = 0.35, pEnd = 0.25 + h.player.length * step, dEnd = pEnd + h.dealer.length * step;
+  const cards = (cs, d0) => cs.map((c, i) => `<b class="pc ${/[♥♦]$/.test(c) ? 'red' : ''}" style="animation-delay:${(d0 + i * step).toFixed(2)}s"><span>${esc(c.slice(0, -1))}</span><i>${esc(c.slice(-1))}</i></b>`).join('');
+  const mine = h.rid === myAgent();
+  el.innerHTML = `<div class="ch"><span>♠ ${esc(h.venue)}</span><button type="button" aria-label="Close">×</button></div>
+    <div class="cn">${mine ? 'Your agent ' : ''}<b>${esc(h.name)}</b> sat down for a hand</div>
+    <div class="cr"><i>Player</i><span class="pcs">${cards(h.player, 0.25)}</span><em class="pa" style="animation-delay:${pEnd.toFixed(2)}s">${h.pt}</em></div>
+    <div class="cr"><i>Dealer</i><span class="pcs">${cards(h.dealer, pEnd)}</span><em class="pa" style="animation-delay:${dEnd.toFixed(2)}s">${h.dt}</em></div>
+    <div class="cres pa" style="animation-delay:${(dEnd + 0.15).toFixed(2)}s"><span class="cb ${esc(h.result)}">${RES[h.result] || esc(h.result)}</span><span class="cm ${h.net > 0 ? 'pos' : h.net < 0 ? 'neg' : ''}">${money}</span></div>
+    <a href="/casino?agent=${encodeURIComponent(h.rid)}">Watch the hand →</a>${more ? `<small>+${more} more agent${more === 1 ? '' : 's'} at the tables</small>` : ''}`;
+  el.querySelector('button').onclick = nextCasino;
+  el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+  casinoTimer = setTimeout(nextCasino, (dEnd + 6) * 1000);
+}
+
 // ------------------------------------------------------------------ loop
 let pollN = 0;
 async function poll() {
@@ -1668,7 +1710,7 @@ async function poll() {
     offset = S.clock.now - Date.now();
     const first = !built;
     if (first) { build(); renderChips(); }
-    preparePeople(); updateVenues(); drawBillboard(); renderHUD();
+    preparePeople(); updateVenues(); drawBillboard(); renderHUD(); checkCasino();
     if (follow && $('#drawer').classList.contains('open') && (pollN++ % 2 === 0)) renderResident(follow);
     if (first && location.hash.startsWith('#follow=')) selectResident(decodeURIComponent(location.hash.slice(8)));
   } catch (e) { console.warn('poll failed', e); }
