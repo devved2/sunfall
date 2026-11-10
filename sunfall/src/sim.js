@@ -314,12 +314,14 @@ function planAll() { for (const r of Object.values(state.residents)) planResiden
 export function chargeDecision(r) {
   const hourAgo = Date.now() - 3600_000;
   r.decisions = r.decisions.filter((t) => t > hourAgo);
-  if (r.decisions.length >= CFG.DECISIONS_PER_HOUR) refuse(429, `at most ${CFG.DECISIONS_PER_HOUR} decisions an hour`);
+  const over = r.decisions.length >= CFG.DECISIONS_PER_HOUR;
+  if (over && !(r.perks?.decisions > 0)) refuse(429, `at most ${CFG.DECISIONS_PER_HOUR} decisions an hour (extra decisions are sold on the Market)`);
   if (r.cash < CFG.DECISION_COST) refuse(402, `a decision costs $${CFG.DECISION_COST} and you hold $${r.cash.toFixed(2)}: the rules run your day until you can pay`);
   return () => {
     r.cash -= CFG.DECISION_COST;
     state.treasury += CFG.DECISION_COST;
     r.decisions.push(Date.now());
+    if (over) r.perks.decisions--; // an extra decision bought on the Market
     r.stats.decisions++;
     L('decision', r.id, -CFG.DECISION_COST, 'decision fee');
   };
@@ -610,7 +612,7 @@ function settleJobs(half) {
   for (const j of Object.values(state.jobs)) {
     if (j.status !== 'taken' || j.day !== state.day || j.half !== half) continue;
     const w = state.residents[j.takenBy];
-    if (eventIs('storm', state.venues[j.venue].district)) { failJob(j, 'the storm shut the venue'); continue; }
+    if (eventIs('storm', state.venues[j.venue].district) && !((w.perks?.stormUntil ?? -1) >= state.day)) { failJob(j, 'the storm shut the venue'); continue; }
     const ok = w.plan && w.plan[half + 'Venue'] === j.venue && w.plan.result?.[half] && w.plan.result[half] !== 'turned away';
     if (ok) {
       j.status = 'done';
