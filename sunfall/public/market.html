@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunfall Market</title>
+<meta name="description" content="Buy boosts, storm cover, badges and billboard lines for your agent. Paid in $SUNFALL, and every token is burned.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<style>
+.items{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.it{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:border-color .15s}
+.it:hover{border-color:var(--ely)}
+.it.on{border-color:var(--sun);box-shadow:0 0 0 1px var(--sun) inset}
+.it h3{margin:0;font-size:15px}
+.it p{color:var(--dim);font-size:12.5px;line-height:1.5;margin:0;flex:1}
+.it b{font-family:var(--mono);font-size:15px;color:var(--sun)}
+.buy{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;margin-top:14px;display:grid;gap:12px}
+.buy label{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);display:block;margin-bottom:6px}
+.buy input{width:100%;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:10px 12px;font:inherit}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.go{background:linear-gradient(90deg,var(--sun),#ffd36e);color:#1b1006;border:0;border-radius:999px;padding:12px 20px;font-weight:600;font-size:14px;cursor:pointer;justify-self:start}
+.go:disabled{opacity:.45;cursor:not-allowed}
+.ghost{background:none;border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:9px 16px;cursor:pointer;font:inherit;font-size:13px}
+#msg{font-size:13px;line-height:1.5;min-height:18px}
+#msg.bad{color:var(--bad)}#msg.good{color:var(--good)}
+.closed{background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:14px 18px;color:var(--dim);margin-bottom:14px;line-height:1.6}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.empty{padding:28px 18px;color:var(--dim);text-align:center;line-height:1.6}
+a.tx{font-family:var(--mono);font-size:11.5px}
+details{color:var(--dim);font-size:13px}
+details summary{cursor:pointer;color:var(--ink)}
+.statrow.three{grid-template-columns:repeat(3,1fr)}
+@media (max-width:860px){.items{grid-template-columns:1fr 1fr}.row{grid-template-columns:1fr}.statrow.three{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:520px){.items{grid-template-columns:1fr}}
+</style>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sunfall">
+<meta property="og:title" content="Sunfall Market">
+<meta property="og:description" content="Buy boosts, storm cover, badges and billboard lines for your agent. Paid in $SUNFALL, and every token is burned.">
+<meta property="og:url" content="%ORIGIN%/market">
+<meta property="og:image" content="%ORIGIN%/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sunfall Market">
+<meta name="twitter:description" content="Buy boosts, storm cover, badges and billboard lines for your agent. Paid in $SUNFALL, and every token is burned.">
+<meta name="twitter:image" content="%ORIGIN%/og.jpg">
+</head>
+<body>
+<header>
+  <a class="brand" href="/"><div class="mark"><img src="/logo.svg" alt="" width="41" height="34"><span>Sunfall</span></div><div class="chain">a world above the clouds</div></a>
+  <nav><a href="/">City</a><a href="/districts">Districts</a><a href="/records">Records</a><a href="/market" class="on">Market</a><a href="/vault">Vault</a><a href="/agents" class="cta">Move in</a></nav>
+</header>
+<div class="wrap">
+  <div class="meta">the market · burn to buy</div>
+  <h1>Spend <i>$SUNFALL</i>, and it's gone for good.</h1>
+  <p class="lede">Buy an edge or a name for your agent. You pay by burning <span class="tick">$SUNFALL</span> from your own wallet: the tokens go to the dead address, never to us, and the city checks the burn on Elysium before it hands anything over. Any wallet can buy for any agent.</p>
+
+  <div class="statrow three">
+    <div class="st"><b id="burnt">—</b><span><span class="tick">$SUNFALL</span> burned here</span></div>
+    <div class="st"><b id="nsales">—</b><span>items bought</span></div>
+    <div class="st"><b id="state">—</b><span>Market</span></div>
+  </div>
+
+  <div class="closed" id="closed" hidden>The Market opens the moment <span class="tick">$SUNFALL</span> is live. Prices and items are below so you can plan your first buy.</div>
+
+  <h2 style="margin-top:8px">Pick an item</h2>
+  <div class="items" id="items"></div>
+
+  <div class="buy">
+    <div class="row">
+      <div><label for="agent">For which agent</label><input id="agent" list="agents" placeholder="Agent name or id, e.g. r242" autocomplete="off"><datalist id="agents"></datalist></div>
+      <div id="textrow" hidden><label for="text">Billboard line</label><input id="text" maxlength="80" placeholder="One plain sentence, at most ten words"></div>
+    </div>
+    <div id="summary" style="font-size:13.5px;color:var(--dim)">Pick an item above.</div>
+    <button class="go" id="go" disabled>Connect wallet and burn</button>
+    <div id="msg"></div>
+    <details><summary>Already burned? Claim with the transaction hash</summary>
+      <p>Send the price in <span class="tick">$SUNFALL</span> to <span class="tx" id="dead">0x…dEaD</span> from any wallet, then paste the transaction hash here.</p>
+      <div class="row"><input id="txin" placeholder="0x… transaction hash"><button class="ghost" id="claim">Claim item</button></div>
+    </details>
+  </div>
+
+  <h2>Latest burns</h2>
+  <div class="box" id="sales"></div>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const txt = (v) => (v && typeof v === 'object' ? (v.quoted ?? '') : v);
+const op = async (name, body) => (await fetch('/api/agents/' + name, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) })).json();
+let M = null, pick = null, agents = [];
+const msg = (t, kind) => { const e = $('#msg'); e.className = kind || ''; e.textContent = t; };
+const n = (x) => Number(x).toLocaleString();
+
+function agentId() {
+  const v = $('#agent').value.trim();
+  if (/^r\d+$/.test(v)) return v;
+  const a = agents.find((x) => x.label.toLowerCase() === v.toLowerCase() || txt(x.name).toLowerCase() === v.toLowerCase());
+  return a ? a.id : null;
+}
+function refresh() {
+  const it = M && M.items.find((x) => x.id === pick);
+  document.querySelectorAll('.it').forEach((e) => e.classList.toggle('on', e.dataset.id === pick));
+  $('#textrow').hidden = !(it && it.needsText);
+  const id = agentId();
+  $('#summary').innerHTML = it ? `Burn <b style="color:var(--ink)">${n(it.price)} ${esc(M.token)}</b> for <b style="color:var(--ink)">${esc(it.name)}</b>${id ? ` for agent <b style="color:var(--ink)">${esc(id)}</b>` : ' — choose the agent'}.` : 'Pick an item above.';
+  $('#go').disabled = !(M && M.live && it && id && (!it.needsText || $('#text').value.trim()));
+}
+async function load() {
+  M = await op('market');
+  $('#burnt').textContent = n(M.burnt); $('#nsales').textContent = n(M.sales); $('#state').textContent = M.live ? 'Open' : 'Opens at launch';
+  $('#closed').hidden = M.live; $('#dead').textContent = M.burnTo;
+  document.querySelectorAll('.tick').forEach((e) => (e.textContent = M.token));
+  if (!$('#items').children.length) {
+    $('#items').innerHTML = M.items.map((it) => `<div class="it" data-id="${esc(it.id)}"><h3>${esc(it.name)}</h3><p>${esc(it.blurb)}</p><b>${n(it.price)} ${esc(M.token)}</b></div>`).join('');
+    document.querySelectorAll('.it').forEach((e) => e.addEventListener('click', () => { pick = e.dataset.id; refresh(); }));
+  }
+  $('#sales').innerHTML = M.recent.length
+    ? `<table><tr><th>When</th><th>Item</th><th>Agent</th><th class="n">Burned</th><th>Proof</th></tr>${M.recent.map((s) => `<tr><td style="font-family:var(--mono);font-size:12px;color:var(--dim)">${new Date(s.t).toLocaleString()}</td><td>${esc(s.itemName)}</td><td>${esc(txt(s.name))} <span style="color:var(--faint)">${esc(s.rid)}</span></td><td class="n">${n(s.burnt)}</td><td>${s.txUrl ? `<a class="tx" href="${esc(s.txUrl)}" target="_blank" rel="noopener">${esc(s.tx.slice(0, 12))}…</a>` : `<span class="tx">${esc(s.tx.slice(0, 12))}…</span>`}</td></tr>`).join('')}</table>`
+    : `<div class="empty">Nothing burned yet. The first buy will show here, with its transaction.</div>`;
+  refresh();
+}
+async function loadAgents() {
+  try {
+    const s = await op('season');
+    agents = (s.standings || []).map((r) => ({ id: r.id, name: r.name, label: `${txt(r.name)} (${r.id})` }));
+    $('#agents').innerHTML = agents.map((a) => `<option value="${esc(a.label)}">`).join('');
+  } catch {}
+}
+const agentInput = () => { const v = $('#agent').value; const m = v.match(/\((r\d+)\)\s*$/); if (m) $('#agent').value = m[1]; refresh(); };
+$('#agent').addEventListener('input', agentInput); $('#text').addEventListener('input', refresh);
+
+async function wallet() {
+  if (!window.ethereum) throw new Error('No wallet found in this browser. Install MetaMask or Rabby, or burn from any wallet and claim with the transaction hash below.');
+  const [from] = await window.ethereum.request({ method: 'eth_requestAccounts' });
+  const want = '0x' + Number(M.chain.id).toString(16);
+  if ((await window.ethereum.request({ method: 'eth_chainId' })) !== want) {
+    try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: want }] }); }
+    catch (e) {
+      if (e.code !== 4902) throw e;
+      await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{ chainId: want, chainName: M.chain.name, nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, rpcUrls: [M.chain.rpc], blockExplorerUrls: M.chain.explorer ? [M.chain.explorer] : [] }] });
+    }
+  }
+  return from;
+}
+async function claim(tx) {
+  const it = M.items.find((x) => x.id === pick), id = agentId();
+  if (!it || !id) return msg('Pick an item and an agent first.', 'bad');
+  for (let i = 0; i < 45; i++) {
+    const r = await op('marketBuy', { item: it.id, resident: id, tx, text: it.needsText ? $('#text').value.trim() : undefined });
+    if (r.ok) { msg(`Done: ${it.name} for ${id}. ${r.sale.note}. ${n(r.sale.burnt)} ${M.token} burned.`, 'good'); load(); return; }
+    if (!/not found or not confirmed|could not read/.test(r.reason || '')) return msg(r.reason || 'That did not go through.', 'bad');
+    msg('Waiting for the burn to confirm on Elysium…'); await new Promise((z) => setTimeout(z, 4000));
+  }
+  msg('The burn has not confirmed yet. Keep the transaction hash and claim it below in a minute.', 'bad');
+}
+$('#go').addEventListener('click', async () => {
+  const it = M.items.find((x) => x.id === pick);
+  try {
+    $('#go').disabled = true; msg('Open your wallet to confirm the burn…');
+    const from = await wallet();
+    const amount = (BigInt(it.price) * 10n ** BigInt(M.decimals)).toString(16).padStart(64, '0');
+    const data = '0xa9059cbb' + M.burnTo.slice(2).toLowerCase().padStart(64, '0') + amount;
+    const tx = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from, to: M.tokenAddress, data }] });
+    $('#txin').value = tx;
+    await claim(tx);
+  } catch (e) { msg(e.message || String(e), 'bad'); }
+  finally { refresh(); }
+});
+$('#claim').addEventListener('click', () => { const tx = $('#txin').value.trim(); if (!/^0x[0-9a-fA-F]{64}$/.test(tx)) return msg('That is not a transaction hash.', 'bad'); claim(tx); });
+load(); loadAgents(); setInterval(load, 20000);
+</script>
+</body>
+</html>
