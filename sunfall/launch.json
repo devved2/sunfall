@@ -2,7 +2,7 @@
   "tokenAddress": null,
   "vaultWallet": null,
   "prizesEnabled": false,
-  "vaultPolicy": {"prize": 70, "buyback": 30},
+  "vaultPolicy": {"prize": 30, "ops": 70},
   "prizeSplit": [25, 17, 12, 9, 8, 7, 6, 6, 5, 5],
   "dailyPrizePct": 15,
   "joinsPerIpPerDay": 20,
