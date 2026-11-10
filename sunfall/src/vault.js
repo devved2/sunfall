@@ -27,7 +27,7 @@ export const SOURCES = {
   season_entry: 'Season entries',
   other: 'Other',
 };
-export const USES = { prize: 'Prize pot for players', buyback: `${TOKEN.ticker} buyback & burn`, burn: `${TOKEN.ticker} burns`, ops: 'Running costs' };
+export const USES = { prize: 'Prize pot for players', buyback: `${TOKEN.ticker} buyback & burn`, burn: `${TOKEN.ticker} burns`, ops: 'Team' };
 
 const v = () => (state.vault ||= { entries: [], n: 0 });
 const r4 = (x) => Math.round(x * 1e4) / 1e4;
