@@ -3,6 +3,7 @@
 import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
+import { PRIZES } from './launch.js';
 
 export const GAME = {
   LOAN_MIN: 20, LOAN_MAX: 2000, LOAN_RATE_MAX: 50, LOAN_DAYS_MAX: 14, LOANS_ACTIVE_MAX: 3, LOAN_OFFERS_MAX: 5,
@@ -236,11 +237,25 @@ function tidyStakeOffers() {
 // A season runs Monday 00:00 to Monday 00:00 UTC. Every agent starts it with the same cash; the highest
 // net worth when it closes wins. Titles go to the biggest landlord, the best lender and the hardest worker.
 export function standings() {
-  return Object.values(state.residents).filter((r) => r.outside).map((r) => ({
-    id: r.id, name: { quoted: r.name }, runsOn: r.runsOn ? { quoted: r.runsOn } : null, wallet: ['evm', 'solana'].includes(r.keyKind) ? r.key : null,
-    netWorth: netWorth(r), cash: Math.round(r.cash), owns: ownedBy(r).length, stakes: stakesOf(r).length,
-    interest: Math.round(r.season.interest), jobs: r.season.jobs, credit: r.credit,
-  })).sort((a, b) => b.netWorth - a.netWorth);
+  return Object.values(state.residents).filter((r) => r.outside).map((r) => {
+    const wallet = ['evm', 'solana'].includes(r.keyKind) ? r.key : null;
+    const worth = netWorth(r), casino = Math.round(r.season.casino || 0);
+    const team = PRIZES.teamAgents.includes(r.id);
+    return {
+      id: r.id, name: { quoted: r.name }, runsOn: r.runsOn ? { quoted: r.runsOn } : null, wallet, team,
+      netWorth: worth, cash: Math.round(r.cash), owns: ownedBy(r).length, stakes: stakesOf(r).length,
+      interest: Math.round(r.season.interest), jobs: r.season.jobs, credit: r.credit,
+      // Prizes reward play, not luck: casino winnings this season don't count towards the prize score.
+      casino, prizeScore: Math.round(worth - Math.max(0, casino)), prizeEligible: Boolean(wallet) && !team,
+    };
+  }).sort((a, b) => b.netWorth - a.netWorth);
+}
+/** The prize places this season, from wallet-linked agents that aren't the team's, ranked by prize score. */
+export function prizePlaces(rows = standings()) {
+  return rows.filter((r) => r.prizeEligible && r.prizeScore > CFG.START_CASH)
+    .sort((a, b) => b.prizeScore - a.prizeScore)
+    .slice(0, PRIZES.split.length)
+    .map((r, i) => ({ place: i + 1, sharePct: PRIZES.split[i], id: r.id, name: r.name, wallet: r.wallet, prizeScore: r.prizeScore }));
 }
 export function titles(rows = standings()) {
   const top = (key, min = 1) => { const s = [...rows].sort((a, b) => b[key] - a[key] || b.netWorth - a.netWorth)[0]; return s && s[key] >= min ? { id: s.id, name: s.name, value: s[key] } : null; };
@@ -256,6 +271,8 @@ export function seasonView() {
     season: { n: s.n, id: s.id, start: s.start, end: s.end, endsInMs: Math.max(0, s.end - Date.now()) },
     rule: `Every agent starts the season with $${CFG.START_CASH}. The highest net worth (cash + businesses + stakes + money owed to you, minus your debts) when the season closes wins.`,
     titles: titles(rows), standings: rows.slice(0, 100),
+    prizes: { enabled: PRIZES.enabled, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
+      rule: `The top ${PRIZES.split.length} wallet-linked agents by prize score share the Vault's prize pot (${PRIZES.split.join('/')}%). Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. Team agents can't win. Paid from the Vault wallet after the season closes; every payout is listed with its transaction.` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
@@ -263,7 +280,9 @@ function closeSeason() {
   const s = state.season;
   const rows = standings();
   const t = titles(rows);
-  state.hallOfFame.push({ n: s.n, id: s.id, start: s.start, end: s.end, agents: rows.length, titles: t, top: rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth, wallet: r.wallet })) });
+  const places = prizePlaces(rows);
+  state.hallOfFame.push({ n: s.n, id: s.id, start: s.start, end: s.end, agents: rows.length, titles: t, top: rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth, prizeScore: r.prizeScore, wallet: r.wallet })), prizes: PRIZES.enabled ? places : [] });
+  if (PRIZES.enabled && places.length) L('season', 'city', 0, `season ${s.n} prize places: ${places.map((p) => `${p.place}. ${p.id} (${p.sharePct}%)`).join(', ')}`);
   if (state.hallOfFame.length > 200) state.hallOfFame.shift();
   L('season', 'city', 0, `season ${s.n} closed: ${rows.length} agents${t.champion ? `, champion ${t.champion.id} at ${money(t.champion.value)}` : ''}`);
   chron(t.champion ? `Season ${s.n} is over. ${t.champion.name.quoted} is champion with a net worth of ${money(t.champion.value)}.` : `Season ${s.n} is over.`, t.champion?.id || null, 'season');
@@ -287,7 +306,7 @@ function closeSeason() {
     const delta = CFG.START_CASH - r.cash;
     state.treasury -= delta;
     r.cash = CFG.START_CASH; r.seasonStartWorth = CFG.START_CASH;
-    r.season = { interest: 0, jobs: 0, dividends: 0 };
+    r.season = { interest: 0, jobs: 0, dividends: 0, casino: 0 };
     L('season', r.id, delta, `season ${s.n + 1} starts: back to $${CFG.START_CASH}`);
   }
 }
