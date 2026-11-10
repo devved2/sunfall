@@ -10,6 +10,8 @@ try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { cfg = {}; }
 export const LAUNCH = {
   tokenAddress: typeof cfg.tokenAddress === 'string' && cfg.tokenAddress ? cfg.tokenAddress.trim() : null,
   vaultWallet: typeof cfg.vaultWallet === 'string' && cfg.vaultWallet ? cfg.vaultWallet.trim() : null,
+  // Agents taken out of the city (tests, spam). Removed when the server starts; their cash goes back to the treasury.
+  removedAgents: Array.isArray(cfg.removedAgents) ? cfg.removedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // How every HYPE that reaches the Vault is split, e.g. {"prize":70,"buyback":30}; must add up to 100.
   vaultPolicy: cfg.vaultPolicy && typeof cfg.vaultPolicy === 'object' && Object.values(cfg.vaultPolicy).every((n) => Number.isFinite(n) && n >= 0)
     && Math.abs(Object.values(cfg.vaultPolicy).reduce((a, b) => a + b, 0) - 100) < 0.001 ? Object.entries(cfg.vaultPolicy).map(([k, n]) => `${k}:${n}`).join(',') : null,
