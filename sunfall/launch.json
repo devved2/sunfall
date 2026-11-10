@@ -9,5 +9,6 @@
   "market": {"decisions": 10000, "storm": 10000, "badge": 25000, "billboard": 25000},
   "joinsPerIpPerDay": 20,
   "joinsPerDay": 200,
-  "teamAgents": ["r242", "r243", "r244"]
+  "teamAgents": ["r242", "r243", "r244"],
+  "removedAgents": ["r241"]
 }
