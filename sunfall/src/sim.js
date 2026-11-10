@@ -5,6 +5,7 @@ import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LI
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
 import { LIMITS } from './launch.js';
 import { dealHand } from './casino.js';
+import { footballTick } from './football.js';
 
 export const CFG = {
   DAY_MS: Number(process.env.DAY_MS) || 30 * 60 * 1000, // one city day = 30 real minutes
@@ -130,15 +131,7 @@ export function initWorld() {
   const rnd = mulberry32(CFG.SEED);
   state.epoch = Date.now() - Math.floor(CFG.DAY_MS * (8 / 24)); // open the gates at 08:00 on day 0
   state.treasury = 60000;
-  for (const [id, type, name, district, x, y, sale] of PLACES) {
-    const isVenue = Boolean(VTYPES[type]);
-    state.venues[id] = {
-      id, type, name, district, x, y, isVenue,
-      price: isVenue ? VTYPES[type].price : 0,
-      till: 0, ownerId: null, forSale: sale != null, salePrice: sale, visitsToday: 0, takingsToday: 0,
-      lifetime: { visits: 0, takings: 0 }, partners: [],
-    };
-  }
+  ensurePlaces();
   const n = CFG.NATIVES;
   let made = 0;
   while (made < n) {
@@ -153,6 +146,20 @@ export function initWorld() {
   planAll();
   state.season = { n: 1, ...seasonFor(Date.now()) };
   migrate();
+}
+
+// Every place in world.js exists in the city (new places, like Sunfall Arena, appear in an existing city too).
+export function ensurePlaces() {
+  for (const [id, type, name, district, x, y, sale] of PLACES) {
+    if (state.venues[id]) continue;
+    const isVenue = Boolean(VTYPES[type]);
+    state.venues[id] = {
+      id, type, name, district, x, y, isVenue,
+      price: isVenue ? VTYPES[type].price : 0,
+      till: 0, ownerId: null, forSale: sale != null, salePrice: sale, visitsToday: 0, takingsToday: 0,
+      lifetime: { visits: 0, takings: 0 }, partners: [],
+    };
+  }
 }
 
 // ---------------------------------------------------------------- shifts & plans
@@ -246,7 +253,7 @@ function rulesPlan(r) {
   for (const half of HALVES) {
     if (shift === half) { choice[half] = 'work'; continue; }
     if (r.cash < 25 || secureRandom() < 0.15 + t.thrift * 0.25) { choice[half] = 'in'; continue; }
-    let options = half === 'aft' ? ['gym', 'diner', 'bar'] : ['bar', 'market', 'diner'];
+    let options = half === 'aft' ? ['gym', 'diner', 'bar', 'gym', 'diner', 'bar', ...(state.venues.v12 ? ['stadium'] : [])] : ['bar', 'market', 'diner'];
     if (half === 'night' && t.risk > 0.6 && r.cash > 160) options = ['casino', 'casino', 'bar'];
     choice[half] = pick(options);
     if (state.event?.kind === 'festival' && state.event.day === state.day && secureRandom() < 0.35) {
@@ -329,7 +336,7 @@ export function chargeDecision(r) {
 }
 
 // ---------------------------------------------------------------- landings
-function payFromVenue(v, amt) {
+export function payFromVenue(v, amt) {
   // A venue pays (wages, casino wins) from its till, then its owner's cash; a city venue's shortfall comes from the treasury.
   let left = amt;
   const fromTill = Math.min(Math.max(v.till, 0), left); v.till -= fromTill; left -= fromTill;
@@ -594,7 +601,7 @@ function nativesBuyBusinesses() {
     }
   }
   for (const v of Object.values(state.venues)) {
-    if (!v.isVenue || !v.forSale) continue;
+    if (!v.isVenue || !v.forSale || VTYPES[v.type].cityOnly) continue;
     if (secureRandom() > 0.15) continue;
     const buyers = Object.values(state.residents).filter((r) => !r.outside && r.traits.risk > 0.5 && r.cash > v.salePrice * 1.1);
     if (!buyers.length) continue;
@@ -692,6 +699,7 @@ export function tick(now = Date.now()) {
   }
   const c2 = clock(now);
   for (const s of SLOTS) if (c2.hour >= s.h && !landed(s.k)) runSlot(s.k);
+  footballTick(now);
 }
 function runSlot(k) {
   state.done.push(k);
