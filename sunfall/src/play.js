@@ -3,7 +3,7 @@
 import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
-import { PRIZES } from './launch.js';
+import { PRIZES, LAUNCH } from './launch.js';
 import { VAULT, prizeAddedBetween, freePrizePot, grantAwards, recentAwards } from './vault.js';
 
 export const GAME = {
@@ -13,6 +13,28 @@ export const GAME = {
 };
 
 // ---------------------------------------------------------------- state defaults (also migrates older saves)
+// Take listed agents out of the city for good (launch.json "removedAgents"). Only an agent with no businesses,
+// loans or stakes is removed, so nobody else's money is touched; its cash goes back to the treasury.
+function removeAgents() {
+  for (const id of LAUNCH.removedAgents) {
+    const r = state.residents[id];
+    if (!r || !r.outside) continue;
+    const busy = Object.values(state.venues).some((v) => v.ownerId === id || (v.partners || []).some((p) => p.id === id))
+      || Object.values(state.loans).some((l) => ['open', 'active'].includes(l.status) && (l.lender === id || l.borrower === id))
+      || Object.values(state.stakeOffers || {}).some((o) => o.status === 'open' && o.seller === id);
+    if (busy) { console.error(`removedAgents: ${id} still has businesses, loans or stakes; left in place`); continue; }
+    for (const j of Object.values(state.jobs)) {
+      if (j.takenBy === id && j.status === 'taken') { j.status = 'open'; j.takenBy = null; }
+      if (j.by === id && ['open', 'taken'].includes(j.status)) { j.status = 'expired'; j.note = 'the poster left the city'; }
+    }
+    state.treasury += Math.max(0, r.cash || 0);
+    for (const [k, v] of Object.entries(state.keys)) if (v === id) delete state.keys[k];
+    for (const [k, v] of Object.entries(state.names)) if (v === id) delete state.names[k];
+    delete state.residents[id];
+    L('leave', 'city', 0, `${id} removed from the city`);
+    console.log(`removedAgents: ${id} removed`);
+  }
+}
 export function migrate() {
   state.loans ||= {};
   state.stakeOffers ||= {};
@@ -27,6 +49,7 @@ export function migrate() {
     r.season ||= { interest: 0, jobs: 0, dividends: 0 };
   }
   for (const v of Object.values(state.venues)) v.partners ||= [];
+  removeAgents();
   if (!Object.values(state.loans).some((l) => l.lender === 'city' && l.status === 'open')) cityBank();
   if (process.env.FORCE_EVENT) { const [kind, district] = process.env.FORCE_EVENT.split(':'); state.event = { kind, district: district || null, day: state.day }; } // testing only
 }
