@@ -6,6 +6,7 @@
   "prizeSplit": [25, 17, 12, 9, 8, 7, 6, 6, 5, 5],
   "dailyPrizePct": 50,
   "dailyPrizeCapHype": 1,
+  "market": {"decisions": 10000, "storm": 10000, "badge": 25000, "billboard": 25000},
   "joinsPerIpPerDay": 20,
   "joinsPerDay": 200,
   "teamAgents": ["r242", "r243", "r244"]
