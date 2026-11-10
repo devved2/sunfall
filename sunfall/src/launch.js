@@ -11,3 +11,10 @@ export const LAUNCH = {
   tokenAddress: typeof cfg.tokenAddress === 'string' && cfg.tokenAddress ? cfg.tokenAddress.trim() : null,
   vaultWallet: typeof cfg.vaultWallet === 'string' && cfg.vaultWallet ? cfg.vaultWallet.trim() : null,
 };
+const split = Array.isArray(cfg.prizeSplit) && cfg.prizeSplit.length && cfg.prizeSplit.every((n) => Number.isFinite(n) && n > 0) && Math.abs(cfg.prizeSplit.reduce((a, b) => a + b, 0) - 100) < 0.001 ? cfg.prizeSplit : [50, 30, 20];
+export const PRIZES = {
+  enabled: process.env.PRIZES_ENABLED ? process.env.PRIZES_ENABLED === 'true' : cfg.prizesEnabled === true,
+  asset: process.env.PRIZE_ASSET || 'HYPE on Elysium',
+  split,
+  teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
+};
