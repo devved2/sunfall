@@ -4,6 +4,7 @@ import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse } 
 import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LINES } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
 import { LIMITS } from './launch.js';
+import { dealHand } from './casino.js';
 
 export const CFG = {
   DAY_MS: Number(process.env.DAY_MS) || 30 * 60 * 1000, // one city day = 30 real minutes
@@ -382,18 +383,28 @@ function landHalf(half) {
     p.result[half] = 'there';
     v.visitsToday++; v.lifetime.visits++;
     if (v.type === 'casino') {
-      // Stake is the half's share, played at the house minimum. Dice drawn now, never before.
-      const win = secureRandom() < (half === 'night' && eventIs('lucky') ? 0.52 : CFG.CASINO_WIN_P);
-      if (win) {
-        const paid = payFromVenue(v, amt);
+      // Stake is the half's share: one hand of blackjack, dealt now, never before (src/casino.js). Every hand is kept.
+      const hand = dealHand(half === 'night' && eventIs('lucky'));
+      state.casinoHands ||= [];
+      state.casinoHands.push({ t: Date.now(), day: state.day, half, venue: vid, rid: r.id, name: r.name, agent: Boolean(r.outside), bet: amt, player: hand.player, dealer: hand.dealer, pt: hand.pt, dt: hand.dt, result: hand.result, net: hand.mult > 0 ? 0 : hand.mult < 0 ? -amt : 0 });
+      if (state.casinoHands.length > 600) state.casinoHands.splice(0, state.casinoHands.length - 600);
+      const rec = state.casinoHands.at(-1);
+      const said = `${hand.pt}${hand.result === 'blackjack' ? ' (blackjack)' : ''} against ${hand.dt}`;
+      if (hand.result === 'push') {
+        p.result[half] = 'push';
+        if (r.outside) L('casino', r.id, 0, `push at ${v.name}: ${said}`);
+      } else if (hand.mult > 0) {
+        const paid = payFromVenue(v, Math.round(amt * hand.mult * 100) / 100);
+        rec.net = paid;
         r.cash += paid; r.stats.won += paid; if (r.season) r.season.casino = (r.season.casino || 0) + paid; r.mood = clamp(r.mood + 12, 0, 100);
         p.result[half] = `won $${paid}`;
-        if (r.outside) L('casino', r.id, paid, `won at ${v.name}`); else (agg[vid + ':win'] ||= { n: 0, amt: 0, v, kind: 'casino-win' }, agg[vid + ':win'].n++, agg[vid + ':win'].amt += paid);
-        if (paid >= 60) chron(`${r.name} won $${Math.round(paid)} at ${v.name}.`, r.id, 'casino');
+        if (r.outside) L('casino', r.id, paid, `won at ${v.name}: ${said}`); else (agg[vid + ':win'] ||= { n: 0, amt: 0, v, kind: 'casino-win' }, agg[vid + ':win'].n++, agg[vid + ':win'].amt += paid);
+        if (r.outside || paid >= 60) chron(`${r.name} ${hand.result === 'blackjack' ? 'hit blackjack' : `held ${hand.pt} against the dealer's ${hand.dt}`} at ${v.name} and won $${Math.round(paid)}.`, r.id, 'casino');
       } else {
         r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; r.stats.lost += amt; if (r.season) r.season.casino = (r.season.casino || 0) - amt; r.mood = clamp(r.mood - 8, 0, 100);
         p.result[half] = `lost $${amt}`;
-        if (r.outside) L('casino', r.id, -amt, `lost at ${v.name}`); else (agg[vid + ':lose'] ||= { n: 0, amt: 0, v, kind: 'casino-loss' }, agg[vid + ':lose'].n++, agg[vid + ':lose'].amt -= amt);
+        if (r.outside) chron(`${r.name} ${hand.result === 'bust' ? `bust on ${hand.pt}` : `held ${hand.pt} against the dealer's ${hand.dt}`} at ${v.name} and lost $${Math.round(amt)}.`, r.id, 'casino');
+        if (r.outside) L('casino', r.id, -amt, `lost at ${v.name}: ${hand.result === 'bust' ? `bust on ${hand.pt}` : said}`); else (agg[vid + ':lose'] ||= { n: 0, amt: 0, v, kind: 'casino-loss' }, agg[vid + ':lose'].n++, agg[vid + ':lose'].amt -= amt);
       }
     } else {
       r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; r.stats.spent += amt; r.mood = clamp(r.mood + 4, 0, 100);
