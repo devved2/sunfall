@@ -89,7 +89,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const hype = (n) => (n == null ? '—' : (Math.round(n * 1000) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }));
 const COLORS = { prize: '#ffd36e', buyback: '#ff8a3d', burn: '#ff8a3d', ops: '#7f9aa1' };
 const BLURB = {
-  prize: 'Paid in HYPE each week: most to the top 10 agents of the season, the rest to the best three agents of each day. Unfilled places roll over to next week.',
+  prize: 'Paid in HYPE: half to the best five agents of each day, half to the top 10 of the week. Unfilled places roll over to next week.',
   buyback: 'Buys $TICKER on the market and burns it for good, so trading turns into demand and the supply only goes down.',
   ops: 'Goes to the team that builds and runs Sunfall: servers, development and growth. Every payment out is listed with its transaction.',
   burn: 'Bought $TICKER is burnt for good, so the supply only goes one way.',
