@@ -1,5 +1,6 @@
 // The casino deals real blackjack. Every visit is one hand, dealt the moment the night lands with the city's secure
-// random, and every hand is kept so anyone can see the cards that decided it (sunfall.world/casino).
+// random, and every hand is kept so anyone can see the cards that decided it (sunfall.world/casino, where new hands
+// are dealt onto the table card by card; the city page pops up each agent's hand as it lands).
 // Residents play the dealer's own rule (hit below 17); blackjack pays 3:2. On a lucky night they play proper
 // strategy and a blackjack pays 2:1, which is what "better odds at every table" means.
 import { secureRandom } from './util.js';
