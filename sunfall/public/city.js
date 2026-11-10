@@ -1492,7 +1492,7 @@ async function renderResident(id) {
   const x = res.resident, pl = x.plan || {};
   const half = (k, v, r, why) => `${k === 'work' ? 'Working a shift' : k === 'in' ? 'Staying in' : esc(v || k)}${r ? ` <span class="tag">${esc(r)}</span>` : ''}${why ? `<div class="why">“${esc(txt(why))}”</div>` : ''}`;
   $('#dbody').innerHTML = `
-    <div class="kicker">${x.outside ? '<span class="agent">☼ agent</span>' : 'native resident'} · ${esc(x.id)}</div>
+    <div class="kicker">${(x.outside || x.isAgent) ? '<span class="agent">☼ agent</span>' : 'native resident'} · ${esc(x.id)}</div>
     <h3 class="${x.outside ? 'agent' : ''}">${esc(txt(x.name))}</h3>
     <div class="dim">${esc(x.trade)} at ${esc(x.workplace)} · lives in ${esc(x.district)}</div>
     <div class="now" id="nowline"></div>
