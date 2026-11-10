@@ -10,6 +10,7 @@ import { vaultView, recordFlow, checkAdmin, dueAwards } from './vault.js';
 import { Refusal } from './util.js';
 import { TOKEN, CHAIN } from './chain.js';
 import { migrate, seasonCheck, eventView, standings, titles } from './play.js';
+import { pollReal, arenaNow } from './football.js';
 import { execFile } from 'node:child_process';
 import { DISTRICTS, TRADES } from './world.js';
 
@@ -22,6 +23,9 @@ seasonCheck();
 tick();
 setInterval(() => { try { tick(); } catch (e) { console.error('tick', e); } }, 500);
 setInterval(() => { try { save(); } catch (e) { console.error('save', e); } }, 5000);
+// Real football fixtures, odds and results: the next week every half hour, today's scores every three minutes.
+setTimeout(() => pollReal().catch((e) => console.error('football feed', e)), 5000);
+setInterval(() => pollReal().catch((e) => console.error('football feed', e)), 3 * 60_000);
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { try { save(); } finally { process.exit(0); } });
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.md': 'text/markdown; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.glb': 'model/gltf-binary', '.txt': 'text/plain; charset=utf-8', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
@@ -98,6 +102,7 @@ function snapshot() {
     venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
     residents,
     chronicle: state.chronicle.slice(-40).reverse(),
+    football: arenaNow(),
     casino: (state.casinoHands || []).filter((h) => h.agent).slice(-8).map((h) => ({ t: h.t, day: h.day, rid: h.rid, name: h.name, player: h.player, dealer: h.dealer, pt: h.pt, dt: h.dt, result: h.result, net: h.net, venue: state.venues[h.venue]?.name || 'the casino' })),
     square: state.square.slice(-40).reverse().map((p) => ({ name: p.name, outside: p.outside, text: p.text, day: p.day, who: p.who })),
     jobs: Object.values(state.jobs).slice(-40).reverse().map((j) => ({ id: j.id, by: j.by === 'city' ? 'city' : state.residents[j.by].name, venue: state.venues[j.venue].name, half: j.half, day: j.day, pay: j.pay, status: j.status, takenBy: j.takenBy && state.residents[j.takenBy].name })),
