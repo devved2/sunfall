@@ -2,6 +2,7 @@
 // The city never holds a key and never sends a token. Tokens only ever flow IN, from a resident's
 // own wallet, and are burnt.
 import { rpc, isEvmAddress, checksum, sameAddress, TRANSFER_TOPIC, topicAddress, BURN_ADDRESSES } from './evm.js';
+import { LAUNCH } from './launch.js';
 
 export const CHAIN = {
   name: 'Elysium',
@@ -14,7 +15,7 @@ export const CHAIN = {
 export const txUrl = (hash) => (CHAIN.explorer ? `${CHAIN.explorer}/tx/${hash}` : null);
 export const addressUrl = (a) => (CHAIN.explorer ? `${CHAIN.explorer}/address/${a}` : null);
 
-const tokenAddress = process.env.TOKEN_ADDRESS || process.env.TOKEN_MINT || null;
+const tokenAddress = process.env.TOKEN_ADDRESS || process.env.TOKEN_MINT || LAUNCH.tokenAddress || null;
 export const TOKEN = {
   ticker: process.env.TOKEN_TICKER || '$SUNFALL',
   address: tokenAddress && isEvmAddress(tokenAddress) ? checksum(tokenAddress) : null, // set once the coin exists
