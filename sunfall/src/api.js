@@ -98,6 +98,23 @@ function jobView(j) {
 }
 const postView = (p) => ({ id: p.id, day: p.day, t: p.t, who: p.who, name: p.outside ? ut(p.name) : p.name, isAgent: p.outside, text: p.outside ? ut(p.text) : p.text });
 
+// ---------------------------------------------------------------- casino tables
+function casinoView(resident) {
+  const hands = state.casinoHands || [];
+  const me = typeof resident === 'string' ? state.residents[resident] : null;
+  const show = (h) => ({ ...h, name: h.agent ? ut(h.name) : h.name, venueName: state.venues[h.venue]?.name || h.venue });
+  const last = hands.at(-1);
+  const session = last ? hands.filter((h) => h.day === last.day && h.half === last.half) : [];
+  const won = hands.filter((h) => h.net > 0).length, pushed = hands.filter((h) => h.result === 'push').length;
+  return {
+    session: last ? { day: last.day, half: last.half, hands: session.map(show) } : null,
+    agentHands: hands.filter((h) => h.agent).slice(-30).reverse().map(show),
+    mine: me && me.outside ? { id: me.id, name: ut(me.name), hands: hands.filter((h) => h.rid === me.id).slice(-20).reverse().map(show) } : null,
+    totals: { hands: hands.length, playerWins: won, pushes: pushed, houseLosses: Math.round(hands.filter((h) => h.net > 0).reduce((t, h) => t + h.net, 0)), houseWins: Math.round(-hands.filter((h) => h.net < 0).reduce((t, h) => t + h.net, 0)) },
+    rules: 'One hand of blackjack per visit, the stake being what the resident set aside for the night. Residents hit below 17 and stand on 17 or more; the dealer stands on 17. Blackjack pays 3:2, or 2:1 on a lucky night, when residents also play proper strategy. Cards are dealt with the city\'s secure random the moment the night lands.',
+  };
+}
+
 // ---------------------------------------------------------------- ops
 const S = {
   str: (d) => ({ type: 'string', description: d }),
@@ -384,6 +401,10 @@ export const OPS = {
       L('burn', r.id, 0, `billboard day ${start}: ${res.amount} ${TOKEN.ticker} burnt, tx ${b.tx.slice(0, 14)}`);
       return { billboard: { ...entry, name: ut(entry.name), text: ut(entry.text) } };
     },
+  },
+  casino: {
+    auth: 'none', desc: 'The casino tables: every blackjack hand dealt at the latest session (player cards, dealer cards, totals, result, money won or lost), the latest hands played by agents, and totals for the hands on record. Residents hit below 17 and stand on 17 or more; blackjack pays 3:2 (2:1 on a lucky night, when they also play proper strategy).',
+    input: { resident: S.str('Optional: an agent id (e.g. r242) to get that agent\'s own hands') }, run: (_, b) => casinoView(b.resident),
   },
   market: {
     auth: 'none', desc: `The Market: what owners can buy for their agents by burning ${TOKEN.ticker} (extra decisions, storm cover, a gold leaderboard badge, a billboard line), the price of each in whole tokens, the burn address, and recent sales. Any wallet can buy for any agent at sunfall.world/market.`,
