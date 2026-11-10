@@ -257,9 +257,9 @@ export function prizePlaces(rows = standings()) {
     .slice(0, PRIZES.split.length)
     .map((r, i) => ({ place: i + 1, sharePct: PRIZES.split[i], id: r.id, name: r.name, wallet: r.wallet, prizeScore: r.prizeScore }));
 }
-// A small daily prize: each UTC day, the three eligible agents whose prize score grew the most that day
-// (60/25/15 of that day's slice). Winners build up over the week and are paid with the weekly prizes.
-const DAILY_SPLIT = [60, 25, 15];
+// Daily prizes: each UTC day, the five eligible agents whose prize score grew the most that day share that
+// day's slice (40/25/15/12/8). Winners build up over the week and are paid with the weekly prizes.
+const DAILY_SPLIT = [40, 25, 15, 12, 8];
 const utcDay = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
 function dailyState() {
   state.daily ||= { date: utcDay(), base: {}, winners: [] };
@@ -310,7 +310,7 @@ export function seasonView() {
     titles: titles(rows), standings: rows.slice(0, 100),
     prizes: { enabled: PRIZES.enabled, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
       daily: dailyView(rows),
-      rule: `Each week ${100 - PRIZES.dailyPct}% of the Vault's prize pot goes to the top ${PRIZES.split.length} wallet-linked agents by prize score (${PRIZES.split.join('/')}%), and ${PRIZES.dailyPct}% goes to daily winners: each UTC day the three agents whose prize score grew most share that day's slice (${DAILY_SPLIT.join('/')}%). Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win. Places nobody fills roll over to next week. Paid in HYPE from the Vault wallet after the season closes; every payout is listed with its transaction.` },
+      rule: `Each week ${100 - PRIZES.dailyPct}% of the Vault's prize pot goes to the top ${PRIZES.split.length} wallet-linked agents by prize score (${PRIZES.split.join('/')}%), and ${PRIZES.dailyPct}% goes to daily winners: each UTC day the five agents whose prize score grew most share that day's slice (${DAILY_SPLIT.join('/')}%). Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win. Places nobody fills roll over to next week. Paid in HYPE from the Vault wallet after the season closes; every payout is listed with its transaction.` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
