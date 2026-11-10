@@ -31,6 +31,7 @@ export const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 /**
  * Checks a confirmed Elysium transaction, sent by `owner` (the resident's wallet), moved at least
  * `minWhole` of the city token to a burn address (0x0 or 0x…dEaD). Fails closed on anything unexpected.
+ * With no `owner`, any sender counts (the Market lets anyone burn for any resident); `from` says who sent it.
  */
 export async function verifyBurn(hash, owner, minWhole) {
   if (!TX_HASH_RE.test(hash || '')) return { ok: false, reason: 'tx must be a 0x transaction hash' };
@@ -39,18 +40,19 @@ export async function verifyBurn(hash, owner, minWhole) {
   catch (e) { return { ok: false, reason: `could not read the transaction yet (${e.message}); try again in a moment` }; }
   if (!rc) return { ok: false, reason: 'transaction not found or not confirmed yet' };
   if (rc.status !== '0x1') return { ok: false, reason: 'transaction failed on chain' };
-  if (!sameAddress(rc.from, owner)) return { ok: false, reason: 'the burn was not sent from your resident\'s wallet' };
+  if (owner && !sameAddress(rc.from, owner)) return { ok: false, reason: 'the burn was not sent from your resident\'s wallet' };
+  const sender = owner || rc.from;
   const minRaw = BigInt(Math.round(minWhole)) * 10n ** BigInt(TOKEN.decimals);
   let burnt = 0n;
   for (const log of rc.logs || []) {
     if (!sameAddress(log.address, TOKEN.address)) continue;
     if (log.topics?.[0]?.toLowerCase() !== TRANSFER_TOPIC || log.topics.length !== 3) continue;
-    if (!sameAddress(topicAddress(log.topics[1]), owner)) continue;
+    if (!sameAddress(topicAddress(log.topics[1]), sender)) continue;
     if (!BURN_ADDRESSES.some((b) => sameAddress(topicAddress(log.topics[2]), b))) continue;
     burnt += BigInt(log.data);
   }
   if (burnt < minRaw) return { ok: false, reason: `a burn of at least ${minWhole} ${TOKEN.ticker} from your wallet was not found in that transaction` };
-  return { ok: true, amount: Number(burnt / 10n ** BigInt(TOKEN.decimals)) };
+  return { ok: true, amount: Number(burnt / 10n ** BigInt(TOKEN.decimals)), from: rc.from };
 }
 
 /** Native HYPE balance of an address, in HYPE. */
