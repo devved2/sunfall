@@ -1,10 +1,11 @@
 // The game layer: seasons and their win condition, loans, business stakes (partnerships) and city events.
 // Everything here moves money through the same ledger as the rest of the city.
-import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners } from './sim.js';
+import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
 import { PRIZES, LAUNCH } from './launch.js';
 import { VAULT, prizeAddedBetween, freePrizePot, grantAwards, recentAwards } from './vault.js';
+import { voidAgentBets } from './football.js';
 
 export const GAME = {
   LOAN_MIN: 20, LOAN_MAX: 2000, LOAN_RATE_MAX: 50, LOAN_DAYS_MAX: 14, LOANS_ACTIVE_MAX: 3, LOAN_OFFERS_MAX: 5,
@@ -48,6 +49,7 @@ export function migrate() {
     r.credit ||= { repaid: 0, defaulted: 0 };
     r.season ||= { interest: 0, jobs: 0, dividends: 0 };
   }
+  ensurePlaces();
   for (const v of Object.values(state.venues)) v.partners ||= [];
   removeAgents();
   if (!Object.values(state.loans).some((l) => l.lender === 'city' && l.status === 'open')) cityBank();
@@ -89,7 +91,7 @@ function startEvent() {
   const k = EVENT_KINDS[state.event.kind];
   chron(`${k.icon} ${k.title(state.event.district)}. ${k.blurb}`, null, 'event');
   if (state.event.kind === 'crash') {
-    const cityOwned = Object.values(state.venues).filter((v) => v.isVenue && !v.ownerId && !v.forSale);
+    const cityOwned = Object.values(state.venues).filter((v) => v.isVenue && !v.ownerId && !v.forSale && !VTYPES[v.type].cityOnly);
     for (let i = 0; i < 2 && cityOwned.length; i++) {
       const v = cityOwned.splice(Math.floor(secureRandom() * cityOwned.length), 1)[0];
       v.forSale = true; v.salePrice = Math.round((VTYPES[v.type].value * 0.5) / 10) * 10; v.fireSale = state.day;
@@ -263,14 +265,14 @@ function tidyStakeOffers() {
 export function standings() {
   return Object.values(state.residents).filter((r) => r.outside).map((r) => {
     const wallet = ['evm', 'solana'].includes(r.keyKind) ? r.key : null;
-    const worth = netWorth(r), casino = Math.round(r.season.casino || 0);
+    const worth = netWorth(r), casino = Math.round(r.season.casino || 0), betting = Math.round(r.season.betting || 0);
     const team = PRIZES.teamAgents.includes(r.id);
     return {
       id: r.id, name: { quoted: r.name }, runsOn: r.runsOn ? { quoted: r.runsOn } : null, wallet, team,
       netWorth: worth, cash: Math.round(r.cash), owns: ownedBy(r).length, stakes: stakesOf(r).length,
       interest: Math.round(r.season.interest), jobs: r.season.jobs, credit: r.credit,
-      // Prizes reward play, not luck: casino winnings this season don't count towards the prize score.
-      casino, prizeScore: Math.round(worth - Math.max(0, casino)), prizeEligible: Boolean(wallet) && !team,
+      // Prizes reward play, not luck: casino and football winnings this season don't count towards the prize score.
+      casino, betting, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting)), prizeEligible: Boolean(wallet) && !team,
       badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
     };
   }).sort((a, b) => b.netWorth - a.netWorth);
@@ -343,7 +345,7 @@ export function seasonView() {
     titles: titles(rows), standings: rows.slice(0, 100),
     prizes: { enabled: PRIZES.enabled, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
       daily: dailyView(rows),
-      rule: `${PRIZES.dailyPct}% of every HYPE that reaches the prize pot is paid out daily: when each UTC day closes, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%), paid the next morning${PRIZES.dailyCapHype ? `, up to ${PRIZES.dailyCapHype} HYPE a day` : ''}. The rest builds the weekly pot, shared by the season's top ${PRIZES.split.length} (${PRIZES.split.join('/')}%) when it closes on Monday. Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.` },
+      rule: `${PRIZES.dailyPct}% of every HYPE that reaches the prize pot is paid out daily: when each UTC day closes, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%), paid the next morning${PRIZES.dailyCapHype ? `, up to ${PRIZES.dailyCapHype} HYPE a day` : ''}. The rest builds the weekly pot, shared by the season's top ${PRIZES.split.length} (${PRIZES.split.join('/')}%) when it closes on Monday. Prize score = net worth minus casino and football winnings this season, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
@@ -370,6 +372,7 @@ function closeSeason() {
     else if (l.status === 'active' && (agentIds.has(l.borrower) || agentIds.has(l.lender))) { l.status = 'closed'; l.note = 'season closed'; }
   }
   for (const o of Object.values(state.stakeOffers)) if (o.status === 'open' && agentIds.has(o.seller)) o.status = 'lapsed';
+  voidAgentBets(agentIds);
   for (const v of Object.values(state.venues)) {
     v.partners = (v.partners || []).filter((p) => !agentIds.has(p.id));
     if (v.ownerId && agentIds.has(v.ownerId)) {
@@ -382,7 +385,7 @@ function closeSeason() {
     const delta = CFG.START_CASH - r.cash;
     state.treasury -= delta;
     r.cash = CFG.START_CASH; r.seasonStartWorth = CFG.START_CASH;
-    r.season = { interest: 0, jobs: 0, dividends: 0, casino: 0 };
+    r.season = { interest: 0, jobs: 0, dividends: 0, casino: 0, betting: 0 };
     L('season', r.id, delta, `season ${s.n + 1} starts: back to $${CFG.START_CASH}`);
   }
 }
