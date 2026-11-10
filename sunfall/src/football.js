@@ -190,7 +190,7 @@ export async function pollReal(now = Date.now()) {
   polling = true;
   try {
     const wide = now - lastWide > 30 * 60_000;
-    const days = wide ? [-1, 0, 1, 2, 3, 4, 5, 6, 7] : [-1, 0];
+    const days = wide ? Array.from({ length: 17 }, (_, i) => i - 2) : [-1, 0]; // two weeks ahead, so fixtures after an international break show early
     for (const league of Object.keys(REAL_LEAGUES)) for (const d of days) for (const e of await fetchDay(league, ymd(now + d * 86400_000))) absorb(league, e);
     if (wide) lastWide = now;
     const f = F();
