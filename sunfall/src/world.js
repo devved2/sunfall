@@ -16,6 +16,7 @@ export const VTYPES = {
   casino: { label: 'Casino', door: [10, 40], price: 15, staffTrade: 'dealer', half: 'night', value: 4000 },
   market: { label: 'Night market', door: [3, 12], price: 5, staffTrade: 'vendor', half: 'night', value: 1400 },
   diner: { label: 'Diner', door: [4, 14], price: 7, staffTrade: 'cook', half: 'aft', value: 900 },
+  stadium: { label: 'Stadium', door: [8, 30], price: 12, staffTrade: null, half: 'aft', value: 20000, cityOnly: true },
 };
 export const VENUE_TYPES = Object.keys(VTYPES);
 
@@ -50,6 +51,7 @@ export const PLACES = [
   ['v9', 'diner', 'Rusty Spoon', 'saltworks', 480, 560, null],
   ['v10', 'diner', 'Daybreak Diner', 'hillside', 450, 150, 600],
   ['v11', 'diner', 'Noodle Barge', 'harbour', 90, 610, 500],
+  ['v12', 'stadium', 'Sunfall Arena', 'saltworks', 880, 580, null],
   ['w1', 'docks', 'Cloudworks Quay', 'saltworks', 800, 610, null],
   ['w2', 'office', 'Exchange Tower', 'oldtown', 560, 290, null],
   ['w3', 'yard', 'Freight Yard', 'saltworks', 640, 540, null],
@@ -63,6 +65,7 @@ export const LINES = {
   gym: ['ran until my legs gave out', 'lifted heavier than last week', 'a slow session, still went', 'clearing my head on the treadmill'],
   casino: ['cards tonight, I can afford it', 'chasing last weeks losses', 'the house always wins, mostly', 'one hand of blackjack, honest'],
   market: ['dumplings from the lantern stalls', 'browsing stalls with nothing to buy', 'street food and people watching', 'bought spices I will never use'],
+  stadium: ['big match at the Arena today', 'a fiver on the home side', 'singing in the stands all afternoon', 'the derby, could not miss it'],
   diner: ['a late breakfast and strong coffee', 'eggs and gossip at the counter', 'the cook knows my order now', 'cheap soup, good company'],
   in: ['a quiet night in', 'saving money this week', 'too tired to go out', 'cooking at home tonight'],
   rent: ['rent day hurts again', 'paid rent, wallet feels light', 'landlord wants more every week'],
