@@ -4,7 +4,7 @@
   "prizesEnabled": false,
   "vaultPolicy": {"prize": 30, "ops": 70},
   "prizeSplit": [25, 17, 12, 9, 8, 7, 6, 6, 5, 5],
-  "dailyPrizePct": 15,
+  "dailyPrizePct": 50,
   "joinsPerIpPerDay": 20,
   "joinsPerDay": 200,
   "teamAgents": ["r242", "r243", "r244"]
