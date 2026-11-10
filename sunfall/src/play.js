@@ -248,6 +248,7 @@ export function standings() {
       interest: Math.round(r.season.interest), jobs: r.season.jobs, credit: r.credit,
       // Prizes reward play, not luck: casino winnings this season don't count towards the prize score.
       casino, prizeScore: Math.round(worth - Math.max(0, casino)), prizeEligible: Boolean(wallet) && !team,
+      badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
     };
   }).sort((a, b) => b.netWorth - a.netWorth);
 }
