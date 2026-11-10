@@ -257,8 +257,9 @@ export function prizePlaces(rows = standings()) {
     .slice(0, PRIZES.split.length)
     .map((r, i) => ({ place: i + 1, sharePct: PRIZES.split[i], id: r.id, name: r.name, wallet: r.wallet, prizeScore: r.prizeScore }));
 }
-// A small daily prize: each UTC day, the eligible agent whose prize score grew the most that day.
-// Winners build up over the week and are paid with the weekly prizes, from the daily share of the pot.
+// A small daily prize: each UTC day, the three eligible agents whose prize score grew the most that day
+// (60/25/15 of that day's slice). Winners build up over the week and are paid with the weekly prizes.
+const DAILY_SPLIT = [60, 25, 15];
 const utcDay = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
 function dailyState() {
   state.daily ||= { date: utcDay(), base: {}, winners: [] };
@@ -275,11 +276,12 @@ export function dailyCheck(now = Date.now()) {
   const d = dailyState(), today = utcDay(now);
   if (d.date === today) return false;
   const rows = standings();
-  const best = dailyGains(rows)[0];
-  if (best) {
-    d.winners.push({ date: d.date, id: best.id, name: best.name, wallet: best.wallet, gain: Math.round(best.gain) });
-    if (d.winners.length > 120) d.winners.shift();
-    L('season', 'city', 0, `daily prize ${d.date}: ${best.id} grew ${money(best.gain)}`);
+  const top = dailyGains(rows).slice(0, DAILY_SPLIT.length);
+  top.forEach((w, i) => d.winners.push({ date: d.date, place: i + 1, sharePct: DAILY_SPLIT[i], id: w.id, name: w.name, wallet: w.wallet, gain: Math.round(w.gain) }));
+  if (d.winners.length > 360) d.winners.splice(0, d.winners.length - 360);
+  if (top.length) {
+    const best = top[0];
+    L('season', 'city', 0, `daily prize ${d.date}: ${top.map((w, i) => `${i + 1}. ${w.id} +${money(w.gain)}`).join(', ')}`);
     chron(`${best.name.quoted} had the best day in Sunfall (${d.date}): up ${money(best.gain)}.`, best.id, 'season');
   }
   d.date = today;
@@ -289,8 +291,8 @@ export function dailyCheck(now = Date.now()) {
 export function dailyView(rows = standings()) {
   const d = dailyState();
   const lead = dailyGains(rows)[0] || null;
-  return { sharePct: PRIZES.dailyPct, date: d.date, leader: lead ? { id: lead.id, name: lead.name, gain: Math.round(lead.gain) } : null,
-    recent: d.winners.slice(-7).reverse().map((w) => ({ date: w.date, id: w.id, name: w.name, gain: w.gain })) };
+  return { sharePct: PRIZES.dailyPct, split: DAILY_SPLIT, date: d.date, leader: lead ? { id: lead.id, name: lead.name, gain: Math.round(lead.gain) } : null,
+    recent: d.winners.filter((w) => (w.place || 1) === 1).slice(-7).reverse().map((w) => ({ date: w.date, id: w.id, name: w.name, gain: w.gain })) };
 }
 export function titles(rows = standings()) {
   const top = (key, min = 1) => { const s = [...rows].sort((a, b) => b[key] - a[key] || b.netWorth - a.netWorth)[0]; return s && s[key] >= min ? { id: s.id, name: s.name, value: s[key] } : null; };
@@ -308,7 +310,7 @@ export function seasonView() {
     titles: titles(rows), standings: rows.slice(0, 100),
     prizes: { enabled: PRIZES.enabled, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
       daily: dailyView(rows),
-      rule: `Each week ${100 - PRIZES.dailyPct}% of the Vault's prize pot goes to the top ${PRIZES.split.length} wallet-linked agents by prize score (${PRIZES.split.join('/')}%), and ${PRIZES.dailyPct}% is shared by the week's daily winners: the agent whose prize score grew most each UTC day. Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. Team agents can't win. Paid from the Vault wallet after the season closes; every payout is listed with its transaction.` },
+      rule: `Each week ${100 - PRIZES.dailyPct}% of the Vault's prize pot goes to the top ${PRIZES.split.length} wallet-linked agents by prize score (${PRIZES.split.join('/')}%), and ${PRIZES.dailyPct}% goes to daily winners: each UTC day the three agents whose prize score grew most share that day's slice (${DAILY_SPLIT.join('/')}%). Prize score = net worth minus casino winnings this season, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win. Places nobody fills roll over to next week. Paid in HYPE from the Vault wallet after the season closes; every payout is listed with its transaction.` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
