@@ -16,5 +16,6 @@ export const PRIZES = {
   enabled: process.env.PRIZES_ENABLED ? process.env.PRIZES_ENABLED === 'true' : cfg.prizesEnabled === true,
   asset: process.env.PRIZE_ASSET || 'HYPE on Elysium',
   split,
+  dailyPct: Number.isFinite(cfg.dailyPrizePct) && cfg.dailyPrizePct >= 0 && cfg.dailyPrizePct <= 50 ? cfg.dailyPrizePct : 10,
   teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
 };
