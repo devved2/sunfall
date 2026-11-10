@@ -1,5 +1,5 @@
 {
-  "tokenAddress": null,
+  "tokenAddress": "0x49A591bEb2a77ddcF41758F4E99126bc0510EA40",
   "vaultWallet": null,
   "prizesEnabled": false,
   "vaultPolicy": {"prize": 30, "ops": 70},
