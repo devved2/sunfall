@@ -382,12 +382,12 @@ function landHalf(half) {
       const win = secureRandom() < (half === 'night' && eventIs('lucky') ? 0.52 : CFG.CASINO_WIN_P);
       if (win) {
         const paid = payFromVenue(v, amt);
-        r.cash += paid; r.stats.won += paid; r.mood = clamp(r.mood + 12, 0, 100);
+        r.cash += paid; r.stats.won += paid; if (r.season) r.season.casino = (r.season.casino || 0) + paid; r.mood = clamp(r.mood + 12, 0, 100);
         p.result[half] = `won $${paid}`;
         if (r.outside) L('casino', r.id, paid, `won at ${v.name}`); else (agg[vid + ':win'] ||= { n: 0, amt: 0, v, kind: 'casino-win' }, agg[vid + ':win'].n++, agg[vid + ':win'].amt += paid);
         if (paid >= 60) chron(`${r.name} won $${Math.round(paid)} at ${v.name}.`, r.id, 'casino');
       } else {
-        r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; r.stats.lost += amt; r.mood = clamp(r.mood - 8, 0, 100);
+        r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; r.stats.lost += amt; if (r.season) r.season.casino = (r.season.casino || 0) - amt; r.mood = clamp(r.mood - 8, 0, 100);
         p.result[half] = `lost $${amt}`;
         if (r.outside) L('casino', r.id, -amt, `lost at ${v.name}`); else (agg[vid + ':lose'] ||= { n: 0, amt: 0, v, kind: 'casino-loss' }, agg[vid + ':lose'].n++, agg[vid + ':lose'].amt -= amt);
       }
