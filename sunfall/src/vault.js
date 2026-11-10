@@ -6,10 +6,11 @@ import { state, L } from './sim.js';
 import { refuse } from './util.js';
 import { TOKEN, CHAIN, TX_HASH_RE, hypeBalance, txUrl, addressUrl } from './chain.js';
 import { isEvmAddress, checksum } from './evm.js';
+import { LAUNCH } from './launch.js';
 
 const parsePolicy = (s) => Object.fromEntries(String(s).split(',').map((kv) => kv.split(':')).map(([k, v]) => [k.trim(), Number(v)]));
 export const VAULT = {
-  wallet: isEvmAddress(process.env.VAULT_WALLET || '') ? checksum(process.env.VAULT_WALLET) : null,
+  wallet: isEvmAddress(process.env.VAULT_WALLET || LAUNCH.vaultWallet || '') ? checksum(process.env.VAULT_WALLET || LAUNCH.vaultWallet) : null,
   policy: parsePolicy(process.env.VAULT_POLICY || 'prize:50,buyback:30,burn:20'),
   prizeMin: Number(process.env.PRIZE_MIN_HYPE || 1),
   adminKey: process.env.ADMIN_KEY || null,
