@@ -1540,6 +1540,7 @@ function selectVenue(vid) {
       ${v.isVenue ? `<div>Door</div><div>$${v.price}</div><div>Today</div><div>${v.visitsToday} visits · ${money(v.takingsToday)} taken</div><div>Staff</div><div>${v.staff} · payroll ${money(v.payroll)} a shift</div><div>Lifetime</div><div>${v.lifetime.visits.toLocaleString()} visits · ${money(v.lifetime.takings)}</div>${v.distress ? `<div>Distress</div><div class="neg">${v.distress} missed payday${v.distress > 1 ? 's' : ''}</div>` : ''}` : `<div>Staff</div><div>${v.staff}</div>`}
       <div>Here now</div><div>${inside.length}</div>
     </div>
+    ${v.type === 'casino' ? '<a href="/casino" style="display:inline-block;margin:10px 0 4px;color:#ffd36e;font-weight:600">See every hand at the tables →</a>' : ''}
     <div class="who">${inside.slice(0, 40).map((p) => `<button data-who="${esc(p.r[0])}" class="${p.r[6] ? 'agent' : ''}">${esc(p.r[1])}</button>`).join('') || '<span class="dim">Nobody right now.</span>'}</div>`;
   $('#drawer').classList.add('open');
 }
