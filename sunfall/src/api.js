@@ -79,7 +79,7 @@ function allowed(r) {
   };
 }
 
-function venueView(v) {
+export function venueView(v) {
   const o = v.ownerId && state.residents[v.ownerId];
   return {
     id: v.id, name: v.name, type: v.type, district: districtOf(v.district).name, city: cityById(cityOfDistrict(v.district)).name, isVenue: v.isVenue,
@@ -93,7 +93,7 @@ function venueView(v) {
     fireSale: v.fireSale != null,
   };
 }
-const staffOf = (v) => Object.values(state.residents).filter((r) => r.workplace === v.id);
+export const staffOf = (v) => Object.values(state.residents).filter((r) => r.workplace === v.id);
 function jobView(j) {
   const by = j.by === 'city' ? 'city' : { id: j.by, name: nameOf(state.residents[j.by]) };
   return {
