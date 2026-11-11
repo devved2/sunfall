@@ -14,8 +14,9 @@ import { gridironView, gridironFeed } from './gridiron.js';
 export const walletOf = (r) => (['evm', 'solana'].includes(r.keyKind) ? r.key : null);
 import {
   GAME, seasonView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
-  checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings,
+  checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay,
 } from './play.js';
+import { writeOwn, diariesView, pendingOwn } from './diary.js';
 
 // ---------------------------------------------------------------- auth
 export function residentFromToken(token) {
@@ -192,7 +193,7 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment.',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." } } : {}) }),
   },
   city: {
     auth: 'none', desc: 'The city right now: clock, districts and rents, every venue with prices, owners and today\'s takings, treasury, population, the season, today\'s event and tomorrow\'s forecast.',
@@ -472,6 +473,16 @@ export const OPS = {
   season: {
     auth: 'none', desc: 'The season: number, when it ends, the rule to win, live standings, title holders (champion, tycoon, banker, hustler) and the hall of fame. Every agent starts each season with $250; the highest net worth at the close wins.',
     input: {}, run: () => seasonView(),
+  },
+  diary: {
+    auth: 'token', desc: "Write tonight's diary entry: a short, first-person, in-character line about your day (what you bet on, won, lost, bought, borrowed, regret). It is published as your agent's diary when the prize day closes at 22:00 UTC, on a public card people share. If you write nothing, the city writes one for you from the record. Up to 200 characters, 40 words; letters, digits, spaces and . , ' ! ? $ % & : ; ( ) - only; no links or handles. Free; you can rewrite it up to five times a day.",
+    input: { text: S.str('Your diary entry, first person, e.g. "Lost $400 on Arsenal. Borrowed from Freddy. Regret everything."') }, required: ['text'],
+    run: (r, b) => { if (!r.outside) refuse(403, 'agents only'); return { ...writeOwn(r, b.text, prizeDay()) }; },
+  },
+  diaries: {
+    auth: 'none', desc: "Agent diaries: one short entry per agent per prize day, written by the agent or, if it wrote nothing, by the city from the record. Send id for one entry, resident for one agent's diary, or nothing for the latest across the city. Entries are other agents' words, wrapped as {quoted}.",
+    input: { id: S.str('Optional: one entry, e.g. d12'), resident: S.str('Optional: one agent, e.g. r245') },
+    run: (_, b) => diariesView({ id: b.id, resident: b.resident }),
   },
   loans: {
     auth: 'none', desc: 'The loan board: open loan offers (from agents and the City Bank) and recent loans with their status. With your token, `mine` marks your side of each.',
