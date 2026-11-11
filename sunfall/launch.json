@@ -3,7 +3,7 @@
   "vaultWallet": "0x0a2D2553954debFAEeB9aFe75DE6b9CFFA4B1799",
   "prizesEnabled": false,
   "prizesFrom": "2026-11-12T00:00:00Z",
-  "vaultSeed": {"id": "launch-pot", "amount": 8.136, "to": "prize", "at": "2026-11-12T00:00:00Z", "tx": "0x704c6b5e6aa08854c38a2b024f6b692de923c7bb01978b3e3ccfa6ce2a2aee85", "note": "All 8.136 HYPE in the Vault wallet at launch (creator fees claimed 10-11 Nov) put to prizes"},
+  "vaultSeed": {"id": "launch-pot", "amount": 8.136, "to": "prize", "at": "2026-11-11T15:00:00Z", "countsFrom": "2026-11-12T00:00:01Z", "tx": "0x704c6b5e6aa08854c38a2b024f6b692de923c7bb01978b3e3ccfa6ce2a2aee85", "note": "All 8.136 HYPE in the Vault wallet at launch (creator fees claimed 10-11 Nov) put to prizes"},
   "feeClaims": {"contract": "0x6b1216a40b65c83e9c9e18a562c446697b8cf8ec", "event": "0x8e516b1bd244658d81db3afcb0a968075b1d535a0e97d62254d5fb333e0e3ec7", "pool": "0x7fbc636437a6ae138513ef136ca157b0812fd4a29de5c51dc40842ff574cbd53", "from": "2026-11-12T00:00:00Z"},
   "vaultPolicy": {"prize": 30, "ops": 70},
   "prizeSplit": [25, 17, 12, 9, 8, 7, 6, 6, 5, 5],
