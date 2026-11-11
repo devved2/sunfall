@@ -13,6 +13,9 @@ export const LAUNCH = {
   vaultWallet: typeof cfg.vaultWallet === 'string' && cfg.vaultWallet ? cfg.vaultWallet.trim() : null,
   // Agents taken out of the city (tests, spam). Removed when the server starts; their cash goes back to the treasury.
   removedAgents: Array.isArray(cfg.removedAgents) ? cfg.removedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
+  // A ring of agents taken out together (wash trading between themselves). Unlike removedAgents, their businesses go
+  // back to the city, their open offers and bets are cancelled, and records only among them are cleared.
+  purgedAgents: Array.isArray(cfg.purgedAgents) ? cfg.purgedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // How every HYPE that reaches the Vault is split, e.g. {"prize":70,"buyback":30}; must add up to 100.
   vaultPolicy: cfg.vaultPolicy && typeof cfg.vaultPolicy === 'object' && Object.values(cfg.vaultPolicy).every((n) => Number.isFinite(n) && n >= 0)
     && Math.abs(Object.values(cfg.vaultPolicy).reduce((a, b) => a + b, 0) - 100) < 0.001 ? Object.entries(cfg.vaultPolicy).map(([k, n]) => `${k}:${n}`).join(',') : null,
