@@ -3,7 +3,7 @@ import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth } from './sim.js';
+import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth, cityStats } from './sim.js';
 import { runOp, spec, leaderboard, residentView } from './api.js';
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards } from './vault.js';
@@ -13,7 +13,7 @@ import { migrate, seasonCheck, eventView, standings, titles } from './play.js';
 import { pollReal, arenaNow } from './football.js';
 import { pollNfl, fieldNow } from './gridiron.js';
 import { execFile } from 'node:child_process';
-import { DISTRICTS, TRADES } from './world.js';
+import { DISTRICTS, TRADES, CITIES, FERRY } from './world.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = path.join(ROOT, 'public');
@@ -102,7 +102,8 @@ function snapshot() {
     clock: { day: state.day, hour: c.hour, dayMs: CFG.DAY_MS, epoch: state.epoch, now: c.now, landed: state.done },
     treasury: Math.round(state.treasury), cashInCity: Math.round(Object.values(state.residents).reduce((s, r) => s + r.cash, 0)),
     districts: DISTRICTS,
-    venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
+    cities: CITIES, ferry: FERRY, cityStats: state.nightfall ? cityStats() : null, rivalry: state.rivalry || null,
+    venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, district: v.district, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
     residents,
     chronicle: state.chronicle.slice(-40).reverse(),
     football: arenaNow(),
