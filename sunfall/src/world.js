@@ -106,3 +106,4 @@ export const LINES = {
 };
 // (The city view is built from these places; see public/city.js for how each island is drawn.)
 // restart: weekly prize caps
+// restart: prize day closes 22:00 UTC
