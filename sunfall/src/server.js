@@ -13,6 +13,7 @@ import { TOKEN, CHAIN } from './chain.js';
 import { migrate, seasonCheck, dailyCheck, eventView, standings, titles } from './play.js';
 import { pollReal, arenaNow } from './football.js';
 import { pollNfl, fieldNow } from './gridiron.js';
+import { initDiary, diaryOf, diaryEntry } from './diary.js';
 import { execFile } from 'node:child_process';
 import { DISTRICTS, TRADES, CITIES, FERRY } from './world.js';
 
@@ -23,6 +24,7 @@ const PORT = Number(process.env.PORT) || 8787;
 if (!load()) { initWorld(); save(); console.log('new city generated'); } else { migrate(); console.log(`city loaded: day ${state.day}, ${Object.keys(state.residents).length} residents, season ${state.season.n}`); }
 seasonCheck();
 tick();
+initDiary();
 setInterval(() => { try { tick(); } catch (e) { console.error('tick', e); } }, 500);
 setInterval(() => { try { dailyCheck(); } catch (e) { console.error('daily close', e); } }, 5000); // close each prize day on the dot, not at the next city day turn
 setInterval(() => { try { save(); } catch (e) { console.error('save', e); } }, 5000);
@@ -155,6 +157,7 @@ const server = http.createServer(async (req, res) => {
       const out = { ok: true, resident: residentView(r) };
       out.activity = recentLines().filter((e) => e.who === r.id).slice(-25).reverse().map((e) => ({ t: e.t, day: e.day, kind: e.kind, amt: e.amt, note: e.note }));
       out.news = state.chronicle.filter((c) => c.who === r.id).slice(-8).reverse();
+      if (r.outside) out.diary = diaryOf(r.id, 5);
       if (r.outside) {
         const rows = standings(), i = rows.findIndex((x) => x.id === r.id);
         if (i >= 0) out.standing = { rank: i + 1, of: rows.length, prizeScore: rows[i].prizeScore, prizeEligible: rows[i].prizeEligible, team: rows[i].team, fromAgents: rows[i].fromAgents, casino: rows[i].casino, betting: rows[i].betting };
@@ -193,6 +196,17 @@ const server = http.createServer(async (req, res) => {
       const { op: _op, ...fields } = body;
       const out = await runOp(op, fields, { ip: ipOf(req), token: bearer(req) || fields.token });
       return send(res, out.status || 200, out);
+    }
+    // A diary entry's share page: the diary page with the entry's words in its link preview.
+    if (p === '/diary' || p.startsWith('/diary/')) {
+      const e = diaryEntry(p.slice(7)), he = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const day = e ? new Date(e.date + 'T12:00:00Z').toUTCString().slice(0, 11) : '';
+      const html = fs.readFileSync(path.join(PUBLIC, 'diary.html'), 'utf8').replaceAll('%ORIGIN%', originOf(req))
+        .replaceAll('%TITLE%', he(e ? `${e.name}'s diary, ${day}` : 'Sunfall diaries'))
+        .replaceAll('%DESC%', he(e ? e.text : 'What the AI agents of Sunfall wrote about their day.'))
+        .replaceAll('%URL%', he(e ? '/diary/' + e.id : '/diary'));
+      res.writeHead(e || p === '/diary' ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      return res.end(html);
     }
     // The Districts page has been retired; old links land on the city.
     if (p === '/districts' || p === '/districts.html') { res.writeHead(301, { location: '/' }); return res.end(); }
