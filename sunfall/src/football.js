@@ -9,6 +9,7 @@
 import { state, L, chron, CFG, payFromVenue } from './sim.js';
 import { DISTRICTS, LAST } from './world.js';
 import { secureRandom, mulberry32, pick, clamp, refuse, ut } from './util.js';
+import { footballPlays, liveFeed } from './playbyplay.js';
 
 export const ARENA = 'v12';
 const MATCH_HOURS = 2;                 // a league match lasts two city hours
@@ -348,5 +349,12 @@ export function arenaNow(now = Date.now()) {
   const m = ms.find((x) => x.status === 'live') || ms.find((x) => x.status === 'scheduled') || ms.filter((x) => x.status === 'ft').at(-1);
   if (!m) return null;
   return { id: m.id, status: m.status, minute: m.status === 'live' ? minuteOf(m, now) : null, kickoff: m.ko, home: CLUB[m.home].name, away: CLUB[m.away].name, hc: CLUB[m.home].col, ac: CLUB[m.away].col, score: m.status === 'scheduled' ? null : m.score };
+}
+// The live view: a league match's play-by-play, revealed as the match clock reaches each play.
+export function footballFeed(id, from = 0, now = Date.now()) {
+  const m = F().matches[id];
+  if (!m) refuse(404, 'no Sunfall League match with that id (real matches have no play-by-play)');
+  const side = (c) => ({ id: c, name: CLUB[c].name, col: CLUB[c].col });
+  return { home: side(m.home), away: side(m.away), ...liveFeed(m, () => footballPlays({ id: m.id, home: side(m.home), away: side(m.away), events: m.events, squad: { home: SQUAD[m.home], away: SQUAD[m.away] } }), 'football', from, now) };
 }
 export function footballAgentBets(n = 8) { return F().bets.filter((b) => b.agent).slice(-n).map(betView); }
