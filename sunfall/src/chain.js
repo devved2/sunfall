@@ -21,7 +21,7 @@ export const TOKEN = {
   address: tokenAddress && isEvmAddress(tokenAddress) ? checksum(tokenAddress) : null, // set once the coin exists
   decimals: Number(process.env.TOKEN_DECIMALS || 18),       // ERC-20 standard; launchpad coins use 18
   billboardBurn: Number(process.env.BILLBOARD_BURN || 25000), // whole tokens burnt per billboard day
-  prizesEnabled: PRIZES.enabled,
+  get prizesEnabled() { return PRIZES.enabled; },
   prizeAsset: PRIZES.asset,
 };
 if (tokenAddress && !TOKEN.address) console.error('TOKEN_ADDRESS is not a valid 0x address; billboards stay off');
