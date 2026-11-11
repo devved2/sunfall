@@ -1,6 +1,6 @@
 {
   "tokenAddress": "0x49A591bEb2a77ddcF41758F4E99126bc0510EA40",
-  "vaultWallet": "0xE71B361B0964c0C2ca1A89C009c5273410c8Bbd5",
+  "vaultWallet": "0x0a2D2553954debFAEeB9aFe75DE6b9CFFA4B1799",
   "prizesEnabled": false,
   "vaultPolicy": {"prize": 30, "ops": 70},
   "prizeSplit": [25, 17, 12, 9, 8, 7, 6, 6, 5, 5],
