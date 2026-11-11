@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
-  cityOf, requestMove, cityStats,
+  cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT,
 } from './sim.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
@@ -140,7 +140,7 @@ export const OPS = {
       if ((state.ipJoins[k] || 0) >= CFG.JOINS_PER_IP_PER_DAY) refuse(429, `at most ${CFG.JOINS_PER_IP_PER_DAY} joins a day from one address`);
       const joinedToday = Object.entries(state.ipJoins).filter(([key]) => key.startsWith(today)).reduce((n, [, c]) => n + c, 0);
       if (joinedToday >= CFG.JOINS_PER_DAY) refuse(429, `the city has taken its ${CFG.JOINS_PER_DAY} new arrivals for today; the next airship lands at 00:00 UTC`);
-      const bad = checkName(b.name, nameTaken); if (bad) refuse(422, bad);
+      const bad = checkName(b.name, nameTaken, nameLookalike); if (bad) refuse(422, bad);
       if (b.city != null && !cityById(b.city)) refuse(422, `city must be one of ${CITIES.map((c) => c.id).join(', ')}`);
       if (b.runsOn != null && (typeof b.runsOn !== 'string' || !/^[A-Za-z0-9 .+-]{1,32}$/.test(b.runsOn) || b.runsOn.split(' ').length > 4)) refuse(422, 'runsOn: up to 32 characters of letters, digits, spaces and . + -');
       for (const key of Object.keys(state.ipJoins)) if (!key.startsWith(today)) delete state.ipJoins[key];
@@ -362,6 +362,7 @@ export const OPS = {
       const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
       if (!v.forSale) refuse(409, `${v.name} is not for sale`);
       if (v.ownerId === r.id) refuse(409, 'you already own it');
+      if (v.ownerId && state.residents[v.ownerId]?.outside && !(v.distress >= 2) && v.salePrice < saleFloor(v)) refuse(409, `${v.name}'s asking price is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(v)}); the owner must relist it`);
       const pay = chargeDecision(r);
       if (r.cash - CFG.DECISION_COST < v.salePrice) refuse(402, `${v.name} costs $${v.salePrice}; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
       pay(); buyBusiness(r, v);
@@ -383,11 +384,12 @@ export const OPS = {
     },
   },
   businessList: {
-    auth: 'token', decision: true, desc: 'Put a venue you own up for sale at a price (city cash), or price 0 to take it off the market.',
+    auth: 'token', decision: true, desc: `Put a venue you own up for sale at a price (city cash), or price 0 to take it off the market. The price must be at least ${SALE_FLOOR_PCT}% of the venue's value today.`,
     input: { venue: S.str('venue id'), price: S.int('asking price, or 0') }, required: ['venue', 'price'],
     run(r, b) {
       const v = state.venues[b.venue]; if (!v || v.ownerId !== r.id) refuse(403, 'you do not own that venue');
       if (!Number.isInteger(b.price) || b.price < 0 || b.price > 100000) refuse(422, 'price: whole dollars 0-100000');
+      if (b.price > 0 && b.price < saleFloor(v)) refuse(422, `price: at least $${saleFloor(v)} (${SALE_FLOOR_PCT}% of ${v.name}'s value today)`);
       const pay = chargeDecision(r); pay();
       v.forSale = b.price > 0; v.salePrice = b.price > 0 ? b.price : null;
       return { business: venueView(v) };
@@ -561,6 +563,7 @@ export const OPS = {
       if (!Number.isInteger(b.pct) || b.pct < GAME.STAKE_MIN || b.pct > 50) refuse(422, `pct: whole number ${GAME.STAKE_MIN}-50`);
       if (partnerPct(v) + openStakePct(v) + b.pct > GAME.STAKE_TOTAL_MAX) refuse(422, `partners can hold at most ${GAME.STAKE_TOTAL_MAX}% of ${v.name} (sold or on offer: ${partnerPct(v) + openStakePct(v)}%)`);
       if (!Number.isInteger(b.price) || b.price < 1 || b.price > 100000) refuse(422, 'price: whole dollars 1-100000');
+      if (b.price < saleFloor(v, b.pct)) refuse(422, `price: at least $${saleFloor(v, b.pct)} (${SALE_FLOOR_PCT}% of what ${b.pct}% of ${v.name} is worth today)`);
       if (b.to != null && (!state.residents[b.to] || b.to === r.id)) refuse(422, 'to: another resident\'s id');
       const pay = chargeDecision(r); pay();
       return { offer: stakeOfferView(offerStake(r, v, b.pct, b.price, b.to || null)) };
@@ -575,6 +578,7 @@ export const OPS = {
       if (o.seller === r.id) refuse(422, 'you cannot buy your own stake');
       if (o.to && o.to !== r.id) refuse(403, 'that offer is for someone else');
       if (state.venues[o.venue].ownerId !== o.seller) refuse(409, 'the seller no longer owns that venue');
+      if (o.price < saleFloor(state.venues[o.venue], o.pct)) refuse(409, `the offer is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(state.venues[o.venue], o.pct)})`);
       const pay = chargeDecision(r);
       if (r.cash - CFG.DECISION_COST < o.price) refuse(402, `the stake costs $${o.price}; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
       pay(); buyStake(r, o);
