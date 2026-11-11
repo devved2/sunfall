@@ -108,3 +108,4 @@ export const LINES = {
 // restart: weekly prize caps
 // restart: prize day closes 22:00 UTC
 // restart: vault record-keeping
+// restart: remove r247, wallet move-in button
