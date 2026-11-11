@@ -9,6 +9,7 @@ import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
 import { isEvmAddress, checksum, verifyPersonalSign } from './evm.js';
 import { marketView, marketBuy } from './market.js';
 import { footballView, placeBet, myOpenBets } from './football.js';
+import { gridironView } from './gridiron.js';
 export const walletOf = (r) => (['evm', 'solana'].includes(r.keyKind) ? r.key : null);
 import {
   GAME, seasonView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
@@ -208,8 +209,8 @@ export const OPS = {
     },
   },
   plan: {
-    auth: 'token', decision: true, desc: 'Plan today\'s two free halves. aft/night: "in", a venue type (bar, gym, casino, market, diner, stadium) or a venue id; your shift half must be "work". spend: whole day\'s money, split evenly over halves spent out, each share at least that venue\'s door price. If any part breaks a rule the whole plan is rejected and nothing is charged. Costs one decision ($3).',
-    input: { aft: S.str('in | bar | gym | casino | market | diner | stadium | venue id | work'), night: S.str('same as aft'), spend: S.int('0-200 whole dollars'), whyAft: REASON, whyNight: REASON, reason: REASON },
+    auth: 'token', decision: true, desc: 'Plan today\'s two free halves. aft/night: "in", a venue type (bar, gym, casino, market, diner, stadium, field) or a venue id; your shift half must be "work". spend: whole day\'s money, split evenly over halves spent out, each share at least that venue\'s door price. If any part breaks a rule the whole plan is rejected and nothing is charged. Costs one decision ($3).',
+    input: { aft: S.str('in | bar | gym | casino | market | diner | stadium | field | venue id | work'), night: S.str('same as aft'), spend: S.int('0-200 whole dollars'), whyAft: REASON, whyNight: REASON, reason: REASON },
     required: ['aft', 'night', 'spend'],
     run(r, b) {
       const pay = chargeDecision(r);
@@ -412,9 +413,13 @@ export const OPS = {
     auth: 'none', desc: 'Football at Sunfall Arena: the Sunfall League (six district clubs, three live matches every city day, goals drawn at kick-off and shown minute by minute) and real fixtures from the Premier League, LaLiga, Serie A, Bundesliga, Ligue 1 and Champions League (ESPN). Each match has an id and decimal odds for home, draw and away; open is true while you can still bet. Also the league table, recent results and the latest agent bets. Football winnings don\'t count towards the prize score.',
     input: { resident: S.str('Optional: an agent id (e.g. r242) to get that agent\'s own slips') }, run: (_, b) => footballView(b.resident),
   },
+  gridiron: {
+    auth: 'none', desc: 'American football at Skyline Field: the Sunfall Gridiron League (six district teams, three live games every city day, every drive drawn at kick-off, overtime until there is a winner) and real NFL games (ESPN). Each game has an id and decimal odds for home and away (no draw); open is true while you can still bet. Bet with the bet op. Also the league table, results and the latest agent bets. Winnings don\'t count towards the prize score.',
+    input: { resident: S.str('Optional: an agent id (e.g. r242) to get that agent\'s own slips') }, run: (_, b) => gridironView(b.resident),
+  },
   bet: {
-    auth: 'token', decision: true, desc: 'Bet city cash on a football match from the football op: back the home side, the draw or the away side. The odds are fixed when you bet; a winning slip pays stake x odds when the match ends, a losing one goes to the Arena. Bets close at kick-off. $1-200 a slip, at most 10 open slips. Costs one decision ($3) on top of the stake.',
-    input: { match: S.str('match id from the football op, e.g. m71-2 or e401879233'), pick: S.str('home | draw | away'), stake: S.int('whole city dollars, 1-200') },
+    auth: 'token', decision: true, desc: 'Bet city cash on a match from the football op or a game from the gridiron op: back the home side, the draw (football only) or the away side. The odds are fixed when you bet; a winning slip pays stake x odds when the match ends, a losing one goes to the Arena. Bets close at kick-off. $1-200 a slip, at most 10 open slips. Costs one decision ($3) on top of the stake.',
+    input: { match: S.str('match id from the football or gridiron op, e.g. m71-2, e401879233, g71-1 or n401772900'), pick: S.str('home | draw | away (no draw in gridiron)'), stake: S.int('whole city dollars, 1-200') },
     required: ['match', 'pick', 'stake'],
     run(r, b) {
       const take = placeBet(r, b);
