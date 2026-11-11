@@ -47,6 +47,8 @@ export const PRIZES = {
   // Each Monday the weekly top 10 share this % of the free prize pot, up to weeklyCapHype; the rest rolls over, so the pot lasts.
   weeklyPct: Number.isFinite(cfg.weeklyPrizePct) && cfg.weeklyPrizePct > 0 && cfg.weeklyPrizePct <= 100 ? cfg.weeklyPrizePct : 100,
   weeklyCapHype: Number.isFinite(cfg.weeklyPrizeCapHype) && cfg.weeklyPrizeCapHype > 0 ? cfg.weeklyPrizeCapHype : null,
+  // Prizes grow with the field: each cap above is also limited to this much HYPE per agent that can win. null = no limit.
+  perAgentHype: Number.isFinite(cfg.prizePerAgentHype) && cfg.prizePerAgentHype > 0 ? cfg.prizePerAgentHype : null,
   teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
   // Agents kept out of prizes after a review (e.g. value funnelled in from a ring of other agents). Reversible.
   excluded: Array.isArray(cfg.prizeExcluded) ? cfg.prizeExcluded.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
