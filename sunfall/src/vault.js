@@ -34,7 +34,7 @@ const r4 = (x) => Math.round(x * 1e4) / 1e4;
 const amt = (e) => e.amount ?? e.sol ?? 0;
 
 /** Record a flow. kind 'in' needs a source; kind 'out' needs a use (a bucket). Amounts in HYPE. */
-export function recordFlow({ kind, source, use, amount, sol, tx, note, award, to }) {
+export function recordFlow({ kind, source, use, amount, sol, tx, note, award, to, overdraw }) {
   amount ??= sol; // older clients sent `sol`
   if (kind !== 'in' && kind !== 'out') refuse(422, 'kind must be in or out');
   if (!(typeof amount === 'number' && amount > 0 && amount < 1e7)) refuse(422, 'amount must be a positive number of HYPE');
@@ -44,7 +44,7 @@ export function recordFlow({ kind, source, use, amount, sol, tx, note, award, to
   if (!TX_HASH_RE.test(tx || '')) refuse(422, 'tx must be the 0x Elysium transaction hash that proves it');
   if (v().entries.some((e) => e.tx.toLowerCase() === tx.toLowerCase() && e.kind === kind)) refuse(409, 'that transaction is already recorded');
   if (note != null && (typeof note !== 'string' || note.length > 140)) refuse(422, 'note: up to 140 characters');
-  if (kind === 'out') {
+  if (kind === 'out' && !overdraw) {
     const s = summary();
     const avail = s.buckets[use].pending;
     if (amount > avail + 1e-9) refuse(422, `the ${use} bucket only has ${avail} HYPE owed to it`);
@@ -107,6 +107,7 @@ export async function vaultView() {
     policy: VAULT.policy, uses: USES, ...summary(),
     entries: v().entries.slice(-150).reverse().map((e) => ({ ...e, amount: amt(e), txUrl: txUrl(e.tx) })),
     awards: recentAwards(),
+    ...(() => { const bal = balCache.v; const pot = summary().buckets.prize?.pending || 0; return bal == null ? {} : { prizeCovered: bal + 1e-6 >= pot, prizeShortBy: Math.max(0, Math.round((pot - bal) * 1e4) / 1e4) }; })(),
   };
 }
 
@@ -154,8 +155,55 @@ function applySeed() {
   try { const e = recordFlow({ kind: 'in', source: 'seed', amount: sd.amount, tx: sd.tx, note: sd.note, to: sd.to }); e.seedId = sd.id; if (sd.countsFromMs > e.t) e.countsFrom = sd.countsFromMs; }
   catch (err) { console.error('vault seed', err.message); }
 }
+// ---------------------------------------------------------------- money out, recorded automatically
+// Every transaction the Vault wallet sends is found by its nonce (a binary search on the nonce over blocks), then:
+// a payment to a winner's wallet for the HYPE they're owed marks that prize paid; anything else that moves HYPE
+// is recorded as team spending, labelled with where it went (launch.json "outScan": {fromNonce, labels}).
+let scanningOut = false;
+const hx = (n) => '0x' + n.toString(16);
+export async function scanOutflows() {
+  const os = LAUNCH.outScan;
+  if (!os || !VAULT.wallet || scanningOut) return 0;
+  scanningOut = true;
+  let added = 0;
+  try {
+    const st = (v().outScan ||= { nonce: os.fromNonce, block: null });
+    const W = VAULT.wallet.toLowerCase();
+    const nonceAt = async (b) => parseInt(await rpc(CHAIN.rpc, 'eth_getTransactionCount', [VAULT.wallet, hx(b)]), 16);
+    const head = parseInt(await rpc(CHAIN.rpc, 'eth_blockNumber', []), 16);
+    const nNow = await nonceAt(head);
+    if (nNow <= st.nonce) return 0;
+    let lo0 = st.block ?? Math.max(0, head - 3_000_000);
+    if (await nonceAt(lo0) > st.nonce) lo0 = 0;
+    for (let k = st.nonce; k < nNow; k++) {
+      let lo = lo0, hi = head; // nonceAt(lo) <= k < nonceAt(hi): the tx with nonce k is in block hi
+      while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (await nonceAt(mid) > k) hi = mid; else lo = mid; }
+      const b = await rpc(CHAIN.rpc, 'eth_getBlockByNumber', [hx(hi), true]);
+      const tx = (b?.transactions || []).find((t) => t.from?.toLowerCase() === W && parseInt(t.nonce, 16) === k);
+      if (tx) {
+        const rc = await rpc(CHAIN.rpc, 'eth_getTransactionReceipt', [tx.hash]);
+        if (rc?.status === '0x1') { try { added += recordOut(tx); } catch (e) { console.error('vault out', tx.hash, e.message); } }
+      }
+      st.nonce = k + 1; st.block = hi; lo0 = hi;
+    }
+  } finally { scanningOut = false; }
+  return added;
+}
+function recordOut(tx) {
+  const value = Number(BigInt(tx.value) / 10n ** 12n) / 1e6;
+  if (!(value > 0)) return 0; // contract calls such as fee claims move no HYPE out
+  if (v().entries.some((e) => e.kind === 'out' && e.tx.toLowerCase() === tx.hash.toLowerCase())) return 0;
+  const to = (tx.to || '').toLowerCase();
+  const aw = awards().find((a) => !a.tx && a.wallet.toLowerCase() === to && Math.abs(a.hype - value) <= Math.max(1e-5, a.hype * 0.01));
+  if (aw) { recordFlow({ kind: 'out', use: 'prize', amount: aw.hype, tx: tx.hash, award: aw.id }); return 1; }
+  const label = (LAUNCH.outScan.labels || {})[to] || `sent to ${to.slice(0, 6)}…${to.slice(-4)}`;
+  recordFlow({ kind: 'out', use: 'ops', amount: value, tx: tx.hash, note: `${label} (recorded automatically)`, overdraw: true });
+  return 1;
+}
+
 export async function scanFeeClaims() {
   applySeed();
+  scanOutflows().catch((e) => console.error('vault out scan', e.message));
   const fc = LAUNCH.feeClaims;
   if (!fc || !VAULT.wallet || scanning) return 0;
   scanning = true;
