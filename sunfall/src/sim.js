@@ -6,6 +6,7 @@ import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, mi
 import { LIMITS } from './launch.js';
 import { dealHand } from './casino.js';
 import { footballTick } from './football.js';
+import { gridironTick } from './gridiron.js';
 
 export const CFG = {
   DAY_MS: Number(process.env.DAY_MS) || 30 * 60 * 1000, // one city day = 30 real minutes
@@ -253,7 +254,7 @@ function rulesPlan(r) {
   for (const half of HALVES) {
     if (shift === half) { choice[half] = 'work'; continue; }
     if (r.cash < 25 || secureRandom() < 0.15 + t.thrift * 0.25) { choice[half] = 'in'; continue; }
-    let options = half === 'aft' ? ['gym', 'diner', 'bar', 'gym', 'diner', 'bar', ...(state.venues.v12 ? ['stadium'] : [])] : ['bar', 'market', 'diner'];
+    let options = half === 'aft' ? ['gym', 'diner', 'bar', 'gym', 'diner', 'bar', ...(state.venues.v12 ? ['stadium'] : [])] : ['bar', 'market', 'diner', 'bar', 'market', 'diner', ...(state.venues.v13 ? ['field'] : [])];
     if (half === 'night' && t.risk > 0.6 && r.cash > 160) options = ['casino', 'casino', 'bar'];
     choice[half] = pick(options);
     if (state.event?.kind === 'festival' && state.event.day === state.day && secureRandom() < 0.35) {
@@ -700,6 +701,7 @@ export function tick(now = Date.now()) {
   const c2 = clock(now);
   for (const s of SLOTS) if (c2.hour >= s.h && !landed(s.k)) runSlot(s.k);
   footballTick(now);
+  gridironTick(now);
 }
 function runSlot(k) {
   state.done.push(k);
