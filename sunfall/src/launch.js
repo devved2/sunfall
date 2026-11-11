@@ -27,6 +27,9 @@ export const LAUNCH = {
       atMs: Number.isFinite(Date.parse(cfg.vaultSeed.at)) ? Date.parse(cfg.vaultSeed.at) : 0,
       // when it counts as reaching the prize pot for the daily prize (e.g. the first prize day), if later than when it's recorded
       countsFromMs: Number.isFinite(Date.parse(cfg.vaultSeed.countsFrom)) ? Date.parse(cfg.vaultSeed.countsFrom) : 0 } : null,
+  // HYPE sent from the Vault wallet, recorded automatically from this nonce on; labels name known recipients.
+  outScan: cfg.outScan && Number.isInteger(cfg.outScan.fromNonce) && cfg.outScan.fromNonce >= 0
+    ? { fromNonce: cfg.outScan.fromNonce, labels: Object.fromEntries(Object.entries(cfg.outScan.labels || {}).filter(([a, l]) => /^0x[0-9a-fA-F]{40}$/.test(a) && typeof l === 'string').map(([a, l]) => [a.toLowerCase(), l.slice(0, 80)])) } : null,
   purgedAgents: Array.isArray(cfg.purgedAgents) ? cfg.purgedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // How every HYPE that reaches the Vault is split, e.g. {"prize":70,"buyback":30}; must add up to 100.
   vaultPolicy: cfg.vaultPolicy && typeof cfg.vaultPolicy === 'object' && Object.values(cfg.vaultPolicy).every((n) => Number.isFinite(n) && n >= 0)
