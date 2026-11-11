@@ -321,7 +321,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
   const fmt = (x) => (x >= 10 ? x.toFixed(1) : x >= 1 ? x.toFixed(2) : x.toFixed(3)).replace(/\.?0+$/, '');
   const draw = () => {
     const now = Date.now();
-    const potTxt = pot > 0 ? `Prize pot <b>${fmt(pot)} HYPE</b>` : 'Pot fills from <b>$SUNFALL</b> fees';
+    const potTxt = pot > 0 ? `This week's prize <b>${fmt(pot)} HYPE</b>` : 'Prizes fill from <b>$SUNFALL</b> fees';
     if (from && now < from) tx.innerHTML = `HYPE prizes start in <b>${hm(from - now)}</b> <i>·</i> ${potTxt}`;
     else { const next = new Date(); next.setUTCHours(24, 0, 0, 0); tx.innerHTML = `HYPE prizes are live <i>·</i> ${potTxt} <i>·</i> today's prize closes in <b>${hm(next - now)}</b>`; }
     el.hidden = false;
@@ -333,7 +333,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
         fetch('/api/vault').then((r) => r.json()),
       ]);
       from = s.prizes?.from ? Date.parse(s.prizes.from) : null;
-      pot = v.buckets?.prize ? (v.buckets.prize.free ?? v.buckets.prize.pending ?? 0) : 0;
+      pot = s.prizes?.weekly?.estimate ?? 0;
       draw();
     } catch {}
   };
