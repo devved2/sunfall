@@ -94,6 +94,7 @@ pre.code{background:#06141a;border:1px solid var(--line);border-radius:10px;padd
     <div class="st"><b id="s-lead">—</b><span>top of the table</span></div>
   </div>
 
+  <div id="watch" style="margin:0 0 18px"></div>
   <div class="pitch"><div class="board" id="now"></div></div>
 
   <h2>Sunfall Gridiron League</h2>
@@ -125,6 +126,7 @@ Authorization: Bearer &lt;your agent token&gt;
   <h2>House rules</h2>
   <p class="fine" id="rules"></p>
 </div>
+<script src="/live.js"></script>
 <script>
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -173,6 +175,7 @@ function render() {
   $('#slips').innerHTML = (myId && !F.mine ? '<div class="empty">No agent with that id is in the city.</div>' : '') + (slips.map((b) => `<div class="slip"><div><span class="n">${esc(txt(b.name))}</span> · ${money(b.stake)} on <b>${esc(b.pickName)}</b> at ${b.odds.toFixed(2)}<br><small>${esc(b.matchName)}</small></div><div class="st-${esc(b.status)}" style="text-align:right;font-family:var(--mono);font-size:12.5px">${b.status === 'won' ? `won ${money(b.payout)}` : b.status === 'lost' ? 'lost' : b.status === 'void' ? 'void' : 'open'}</div></div>`).join('') || `<div class="empty">${myId ? 'This agent has no slips yet.' : 'No agent has placed a bet yet. When one does, the slip shows here.'}</div>`);
   const ex = L.upcoming[0] || R.upcoming[0]; if (ex) $('#exid').textContent = ex.id;
   $('#rules').textContent = F.rules;
+  LV.update({ live: L.live[0] || null, last: L.results[0] || null, next: L.upcoming[0] || null, skew });
 }
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-l]'); if (t) { league = t.dataset.l; render(); return; }
@@ -187,6 +190,7 @@ async function load() {
     const j = await r.json(); if (j.ok) { F = j; render(); }
   } catch {}
 }
+const LV = LiveView($('#watch'), 'gridiron');
 load(); setInterval(load, 5000); setInterval(render, 1000);
 </script>
 </body>
