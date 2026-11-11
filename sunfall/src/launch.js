@@ -30,6 +30,8 @@ export const PRIZES = {
   // Most HYPE paid out in daily prizes on any one day; anything over it stays in the pot for the weekly top 10. null = no cap.
   dailyCapHype: Number.isFinite(cfg.dailyPrizeCapHype) && cfg.dailyPrizeCapHype > 0 ? cfg.dailyPrizeCapHype : null,
   teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
+  // Agents kept out of prizes after a review (e.g. value funnelled in from a ring of other agents). Reversible.
+  excluded: Array.isArray(cfg.prizeExcluded) ? cfg.prizeExcluded.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
 };
 // Market prices, in whole $SUNFALL burnt per item. Set in launch.json "market"; unset items use these.
 const mk = cfg.market && typeof cfg.market === 'object' ? cfg.market : {};
