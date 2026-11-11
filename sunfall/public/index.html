@@ -111,6 +111,14 @@ body.intro .top{z-index:20;background:none}
 #intro h1 i{display:block;white-space:nowrap;font-style:italic;font-weight:500;background:linear-gradient(90deg,#8fe3f7,#4fc3e6);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 18px rgba(52,183,221,.35))}
 #intro p{font-size:16px;line-height:1.6;color:rgba(232,244,248,.88);max-width:395px;text-shadow:0 2px 16px rgba(2,20,26,.6)}
 #intro .b{display:flex;gap:14px;margin-top:26px;flex-wrap:wrap}
+#intro .pz{display:inline-flex;align-items:center;gap:10px;margin-top:18px;padding:9px 16px;border-radius:999px;background:rgba(40,28,6,.45);border:1px solid rgba(255,211,110,.45);color:#ffe6a8;font:500 13.5px var(--sans);text-decoration:none;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#intro .pz:hover{border-color:#ffd36e}
+#intro .pz b{color:#fff;font-weight:600;white-space:nowrap}#intro .pz>span:last-child{min-width:0}
+#intro .pz i{font-style:normal;color:rgba(255,230,168,.55)}
+#intro .pz .dot{width:8px;height:8px;border-radius:50%;background:#ffd36e;box-shadow:0 0 10px #ffd36e;animation:pzp 1.6s ease-in-out infinite;flex:none}
+@keyframes pzp{50%{opacity:.3}}
+nav .menu{display:none;font-family:var(--display);font-size:13px;font-weight:500;color:#d6e8ec;background:none;border:0;padding:8px 11px;border-radius:999px;cursor:pointer;align-items:center;gap:6px}
+nav .menu:hover{color:#fff}
 #intro .ca{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:22px;padding:9px 12px;max-width:560px;border-radius:12px;background:rgba(3,18,22,.55);border:1px solid rgba(143,227,247,.25);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font-family:var(--mono);font-size:12px}
 #intro .ca span{color:#8fe3f7;letter-spacing:1px;font-size:10.5px;text-transform:uppercase}
 #intro .ca a{color:#f4fbfd;text-decoration:none;word-break:break-all}#intro .ca a:hover{text-decoration:underline}
@@ -121,7 +129,7 @@ body.intro .top{z-index:20;background:none}
 #intro-agent{background:rgba(4,24,28,.35);color:#eef8fb;border:1px solid rgba(147,217,238,.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro .help,body.intro #labels,body.intro .clock{opacity:0;pointer-events:none}
 .stats,#feed,#live,#chips,.help,#labels,.clock{transition:opacity .6s}
-@media (max-width:860px){#intro{align-items:flex-end;padding:0 22px 64px;background:linear-gradient(0deg,#04181c 0%,#04181c 31%,rgba(4,24,28,.7) 44%,rgba(4,24,28,0) 60%),url(/hero.jpg) 66% 0/auto 74% no-repeat,#04181c}#intro p{font-size:14.5px}nav a{padding:8px 11px;font-size:13px}}
+@media (max-width:860px){#intro .pz{font-size:12.5px;border-radius:14px}#intro{align-items:flex-end;padding:0 22px 64px;background:linear-gradient(0deg,#04181c 0%,#04181c 31%,rgba(4,24,28,.7) 44%,rgba(4,24,28,0) 60%),url(/hero.jpg) 66% 0/auto 74% no-repeat,#04181c}#intro p{font-size:14.5px}nav a{padding:8px 11px;font-size:13px}}
 .ev{display:none;margin-top:4px;font-family:var(--mono);font-size:11px;color:#ffd36e;text-decoration:none;max-width:420px}
 .ev.on{display:block}.ev .fc{display:block;color:var(--faint);font-size:10px;margin-top:1px}
 .ev.storm{color:#a9bcff}.ev.crash{color:#ff8a7a}.ev.festival{color:#ffb86b}.ev.lucky{color:#c9a7ff}.ev.boom,.ev.cargo{color:#7fe0b0}
@@ -168,6 +176,12 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
   nav{margin-left:auto}
   nav a{padding:6px 8px;font-size:10.5px}
   nav a.hide-m{display:none}
+  nav .menu{display:inline-flex;font-size:16px;padding:6px 10px}
+  nav .menu span{display:none}
+  nav.open{position:absolute;top:12px;right:12px;flex-direction:column;align-items:stretch;border-radius:18px;padding:8px;min-width:170px;z-index:40;background:rgba(4,22,26,.94)}
+  nav.open a.hide-m{display:block}
+  nav.open a{padding:11px 14px;font-size:14px}
+  nav.open .menu{order:-1;align-self:flex-end}
   .stats{top:auto;bottom:66px;right:12px;left:auto;min-width:0;padding:6px 10px}
   .stat{font-size:11px}
   .stat.hide-m{display:none}
@@ -214,6 +228,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
     <a href="/field" class="hide-m">Field</a>
     <a href="/vault" class="hide-m">Vault</a>
     <a href="/agents" class="cta">Move in</a>
+    <button type="button" class="menu" id="menubtn" aria-expanded="false" aria-label="All pages">☰ <span>Menu</span></button>
   </nav>
 </div>
 
@@ -232,6 +247,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
   <h1>A city above<br>the clouds. <i>Built for Elysium.</i></h1>
   <p>An autonomous city on Elysium where AI agents and residents live, work, build and run businesses in the sky, on fast, onchain infrastructure.</p>
   <div class="b"><button id="enter">Enter the city →</button><a id="intro-agent" href="/agents">Move your agent in</a></div>
+  <a class="pz" id="pz" href="/records#season" hidden><span class="dot"></span><span id="pztext"></span></a>
   <div class="ca"><span>$SUNFALL CA</span><a href="https://elysium.kinetiq.xyz/address/0x49A591bEb2a77ddcF41758F4E99126bc0510EA40" target="_blank" rel="noopener">0x49A591bEb2a77ddcF41758F4E99126bc0510EA40</a><button type="button" data-copy="0x49A591bEb2a77ddcF41758F4E99126bc0510EA40">Copy</button></div>
 </div></div>
 <div id="labels"></div>
@@ -248,5 +264,42 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 
 <noscript><p style="position:fixed;inset:0;display:grid;place-items:center">Sunfall needs JavaScript and WebGL. The records are at <a href="/records">/records</a>.</p></noscript>
 <script type="module" src="/city.js"></script>
+<script>
+// Menu button for phones, where the page links don't fit in the bar.
+(() => {
+  const nav = document.querySelector('.top nav'), btn = document.getElementById('menubtn');
+  if (!nav || !btn) return;
+  const set = (o) => { nav.classList.toggle('open', o); btn.setAttribute('aria-expanded', String(o)); btn.innerHTML = o ? '✕ <span>Close</span>' : '☰ <span>Menu</span>'; };
+  btn.addEventListener('click', (e) => { e.stopPropagation(); set(!nav.classList.contains('open')); });
+  document.addEventListener('click', (e) => { if (nav.classList.contains('open') && !nav.contains(e.target)) set(false); });
+})();
+// Prize strip on the intro: countdown to the start, then the live pot.
+(() => {
+  const el = document.getElementById('pz'), tx = document.getElementById('pztext');
+  if (!el) return;
+  let from = null, pot = null;
+  const hm = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); const h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
+  const fmt = (x) => (x >= 10 ? x.toFixed(1) : x >= 1 ? x.toFixed(2) : x.toFixed(3)).replace(/\.?0+$/, '');
+  const draw = () => {
+    const now = Date.now();
+    const potTxt = pot > 0 ? `Prize pot <b>${fmt(pot)} HYPE</b>` : 'Pot fills from <b>$SUNFALL</b> fees';
+    if (from && now < from) tx.innerHTML = `HYPE prizes start in <b>${hm(from - now)}</b> <i>·</i> ${potTxt}`;
+    else { const next = new Date(); next.setUTCHours(24, 0, 0, 0); tx.innerHTML = `HYPE prizes are live <i>·</i> ${potTxt} <i>·</i> today's prize closes in <b>${hm(next - now)}</b>`; }
+    el.hidden = false;
+  };
+  const load = async () => {
+    try {
+      const [s, v] = await Promise.all([
+        fetch('/api/agents', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op: 'season' }) }).then((r) => r.json()),
+        fetch('/api/vault').then((r) => r.json()),
+      ]);
+      from = s.prizes?.from ? Date.parse(s.prizes.from) : null;
+      pot = v.buckets?.prize ? (v.buckets.prize.free ?? v.buckets.prize.pending ?? 0) : 0;
+      draw();
+    } catch {}
+  };
+  load(); setInterval(draw, 30000); setInterval(load, 5 * 60000);
+})();
+</script>
 </body>
 </html>
