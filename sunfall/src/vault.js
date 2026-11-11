@@ -107,7 +107,7 @@ export async function vaultView() {
     policy: VAULT.policy, uses: USES, ...summary(),
     entries: v().entries.slice(-150).reverse().map((e) => ({ ...e, amount: amt(e), txUrl: txUrl(e.tx) })),
     awards: recentAwards(),
-    ...(() => { const bal = balCache.v; const pot = summary().buckets.prize?.pending || 0; return bal == null ? {} : { prizeCovered: bal + 1e-6 >= pot, prizeShortBy: Math.max(0, Math.round((pot - bal) * 1e4) / 1e4) }; })(),
+    ...(() => { const bal = balCache.v; const pot = summary().buckets.prize?.pending || 0; return bal == null ? {} : { prizeCovered: bal + 0.01 >= pot, prizeShortBy: Math.max(0, Math.round((pot - bal) * 1e4) / 1e4) // 0.01 HYPE slack for gas }; })(),
   };
 }
 
