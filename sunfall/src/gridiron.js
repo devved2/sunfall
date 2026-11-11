@@ -8,7 +8,8 @@
 // Bets are city cash, placed with the same bet op as football; Skyline Field is the bookmaker for these games.
 import { state, chron, CFG } from './sim.js';
 import { DISTRICTS, LAST } from './world.js';
-import { secureRandom, mulberry32, pick, clamp } from './util.js';
+import { secureRandom, mulberry32, pick, clamp, refuse } from './util.js';
+import { gridironPlays, liveFeed } from './playbyplay.js';
 import { registerMatches, settle, nativesBet, allBets, betView } from './football.js';
 
 export const FIELD = 'v13';
@@ -242,6 +243,12 @@ export function gridironView(resident) {
     totals: { bets: bets.length, staked: Math.round(bets.reduce((t, b) => t + b.stake, 0)), paid: Math.round(bets.reduce((t, b) => t + (b.status === 'won' ? b.payout : 0), 0)) },
     rules: `Back the home side or the away side with city cash through the bet op, $1-200 a slip (the same slips and limits as football). There's no draw: a Sunfall Gridiron League game tied after four quarters goes to overtime, and a real NFL game that ends tied returns the stake. League games kick off at ${KICKOFFS.map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; every drive is drawn at kick-off. Real NFL games settle on the final score from ESPN. Winnings don't count towards the prize score.`,
   };
+}
+// The live view: a league game's play-by-play, revealed as the game clock reaches each play.
+export function gridironFeed(id, from = 0, now = Date.now()) {
+  const m = G().games[id];
+  if (!m) refuse(404, 'no Sunfall Gridiron League game with that id (real NFL games have no play-by-play)');
+  return { home: m.home, away: m.away, ...liveFeed(m, () => gridironPlays({ id: m.id, home: m.home, away: m.away, events: m.events, roster: { home: ROSTER[m.home.id], away: ROSTER[m.away.id] } }), 'gridiron', from, now) };
 }
 export function fieldNow(now = Date.now()) {
   const g = G();
