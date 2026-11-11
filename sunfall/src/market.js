@@ -3,7 +3,8 @@
 // Any wallet can buy for any agent (a gift works too). Every sale is public, with its transaction.
 import { state, L, chron } from './sim.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE, txUrl } from './chain.js';
-import { MARKET_PRICES } from './launch.js';
+import { MARKET_PRICES, MARKET_HYPE, PRICE_POOL } from './launch.js';
+import { rpc } from './evm.js';
 import { checkSentence, ut, refuse } from './util.js';
 
 export const ITEMS = {
@@ -13,6 +14,39 @@ export const ITEMS = {
   billboard: { name: 'Billboard line', blurb: 'One line of your words on the city billboard for a city day, in the next free slot.', needsText: true },
 };
 const m = () => (state.market ||= { sales: [], burnt: 0 });
+
+// ---------------------------------------------------------------- live price
+// The latest swap in the $SUNFALL/HYPE pool carries the pool price (sqrtPriceX96). HYPE is currency0 and
+// $SUNFALL currency1, both 18 decimals, so price = sqrtP^2 / 2^192 tokens per HYPE.
+const SWAP_TOPIC = '0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f';
+let pricing = false;
+export async function refreshTokenPrice() {
+  if (!PRICE_POOL || pricing) return null;
+  pricing = true;
+  try {
+    const head = parseInt(await rpc(CHAIN.rpc, 'eth_blockNumber', []), 16);
+    for (const back of [20_000, 200_000, 2_000_000]) {
+      const logs = await rpc(CHAIN.rpc, 'eth_getLogs', [{ fromBlock: '0x' + Math.max(0, head - back).toString(16), toBlock: '0x' + head.toString(16), address: PRICE_POOL.manager, topics: [SWAP_TOPIC, PRICE_POOL.pool] }], 20_000);
+      const l = logs.filter((x) => !x.removed).pop();
+      if (!l) continue;
+      const sq = BigInt('0x' + l.data.slice(2 + 64 * 2, 2 + 64 * 3));
+      const perHype = Number((sq * sq * 1_000_000n) >> 192n) / 1e6;
+      if (!(perHype > 0)) return null;
+      m().price = { tokensPerHype: perHype, block: parseInt(l.blockNumber, 16), t: Date.now() };
+      return m().price;
+    }
+    return null;
+  } finally { pricing = false; }
+}
+const nice = (x) => { const p = 10 ** Math.max(0, Math.floor(Math.log10(x)) - 1); return Math.ceil(x / p) * p; }; // two significant figures, rounded up
+/** Today's price of an item in whole $SUNFALL: pegged to HYPE when the pool price is known (and under a day old). */
+export function priceOf(id) {
+  const px = m().price;
+  if (MARKET_HYPE[id] && px && Date.now() - px.t < 86_400_000) return nice(MARKET_HYPE[id] * px.tokensPerHype);
+  return MARKET_PRICES[id];
+}
+// The price can move between the quote and the burn landing, so a burn within 10% of today's price counts.
+const BURN_SLACK = 0.9;
 const usedTx = (tx) => m().sales.some((s) => s.tx.toLowerCase() === tx.toLowerCase()) || (state.billboards || []).some((b) => b.tx.toLowerCase() === tx.toLowerCase());
 
 export function marketView() {
@@ -21,7 +55,8 @@ export function marketView() {
     live: Boolean(TOKEN.address), token: TOKEN.ticker, tokenAddress: TOKEN.address, decimals: TOKEN.decimals,
     chain: { name: CHAIN.name, id: CHAIN.id, rpc: CHAIN.rpc, explorer: CHAIN.explorer },
     burnTo: '0x000000000000000000000000000000000000dEaD',
-    items: Object.entries(ITEMS).map(([id, it]) => ({ id, name: it.name, blurb: it.blurb, price: MARKET_PRICES[id], needsText: Boolean(it.needsText) })),
+    items: Object.entries(ITEMS).map(([id, it]) => ({ id, name: it.name, blurb: it.blurb, price: priceOf(id), priceHype: MARKET_HYPE[id] && m().price ? MARKET_HYPE[id] : null, needsText: Boolean(it.needsText) })),
+    pegged: Boolean(m().price && Object.keys(MARKET_HYPE).length), tokensPerHype: m().price ? Math.round(m().price.tokensPerHype) : null, priceAt: m().price?.t || null,
     burnt: s.burnt, sales: s.sales.length,
     recent: s.sales.slice(-20).reverse().map((x) => ({ ...x, name: ut(x.name), txUrl: txUrl(x.tx) })),
   };
@@ -37,8 +72,8 @@ export async function marketBuy({ item, resident, tx, text }) {
   if (!TX_HASH_RE.test(tx || '')) refuse(400, 'tx must be the 0x hash of your burn transaction');
   if (it.needsText) { if (typeof text !== 'string' || !text.trim()) refuse(422, 'a billboard line needs its text'); const bad = checkSentence(text, 'text'); if (bad) refuse(422, bad); }
   if (usedTx(tx)) refuse(409, 'that burn has already been used');
-  const price = MARKET_PRICES[item];
-  const res = await verifyBurn(tx, null, price);
+  const price = priceOf(item);
+  const res = await verifyBurn(tx, null, Math.floor(price * BURN_SLACK));
   if (!res.ok) refuse(422, res.reason);
   if (usedTx(tx)) refuse(409, 'that burn has already been used'); // checked again after the wait on chain
   r.perks ||= {};
