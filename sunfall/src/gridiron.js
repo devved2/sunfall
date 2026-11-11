@@ -7,15 +7,19 @@
 //    a real game that ends tied, or is called off, returns the stake.
 // Bets are city cash, placed with the same bet op as football; Skyline Field is the bookmaker for these games.
 import { state, chron, CFG } from './sim.js';
-import { DISTRICTS, LAST } from './world.js';
+import { DISTRICTS, LAST, cityOfDistrict } from './world.js';
 import { secureRandom, mulberry32, pick, clamp, refuse } from './util.js';
 import { gridironPlays, liveFeed } from './playbyplay.js';
-import { registerMatches, settle, nativesBet, allBets, betView } from './football.js';
+import { registerMatches, settle, nativesBet, allBets, betView, derby } from './football.js';
 
 export const FIELD = 'v13';
 const GAME_HOURS = 2;
-const KICKOFFS = [12, 16, 20];
-const ROUNDS = 10;
+// As in football: a season is every team twice; seasons from before Nightfall's teams keep their six.
+const KICKOFF_SETS = { 3: [12, 16, 20], 4: [11, 14, 17, 20] };
+const LEGACY = ['TER', 'SPI', 'CRY', 'LAN', 'SKY', 'CLO'];
+const teamsOf = (lg) => lg.teams || LEGACY;
+const roundsOf = (lg) => 2 * (teamsOf(lg).length - 1);
+const kickoffsOf = (lg) => KICKOFF_SETS[teamsOf(lg).length / 2];
 const MARGIN = 1.06;
 
 export const TEAMS = [
@@ -25,6 +29,9 @@ export const TEAMS = [
   { id: 'LAN', name: 'Lantern Knights', district: 'oldtown', off: 0.98, def: 0.9, col: '#e2a63c' },
   { id: 'SKY', name: 'Skyport Gulls', district: 'harbour', off: 1.02, def: 1.02, col: '#4fb8e8' },
   { id: 'CLO', name: 'Cloudworks Forge', district: 'saltworks', off: 0.92, def: 0.97, col: '#9aa3ad' },
+  // Nightfall
+  { id: 'VEL', name: 'Velvet Vipers', district: 'velvet', off: 1.1, def: 1.04, col: '#c03cff' },
+  { id: 'ASH', name: 'Ashdock Anchors', district: 'ashdock', off: 0.95, def: 0.96, col: '#ff6a3d' },
 ];
 const TEAM = Object.fromEntries(TEAMS.map((t) => [t.id, t]));
 const ROSTER = Object.fromEntries(TEAMS.map((t, i) => {
@@ -37,10 +44,10 @@ const ROSTER = Object.fromEntries(TEAMS.map((t, i) => {
 const G = () => {
   state.gridiron ||= { league: null, games: {}, real: {} };
   const g = state.gridiron;
-  g.league ||= { n: 1, startDay: state.day, table: freshTable() };
+  g.league ||= { n: 1, startDay: state.day, teams: TEAMS.map((t) => t.id), table: freshTable(TEAMS.map((t) => t.id)) };
   return g;
 };
-function freshTable() { return Object.fromEntries(TEAMS.map((t) => [t.id, { p: 0, w: 0, l: 0, pf: 0, pa: 0 }])); }
+function freshTable(ids) { return Object.fromEntries(ids.map((id) => [id, { p: 0, w: 0, l: 0, pf: 0, pa: 0 }])); }
 const r2 = (x) => Math.round(x * 100) / 100;
 
 // ---------------------------------------------------------------- the game model
@@ -84,19 +91,20 @@ function winProb(home, away) {
 const toOdds = (p) => Math.max(1.05, Math.round((1 / (p * MARGIN)) * 100) / 100);
 
 // ---------------------------------------------------------------- fixtures
-function roundPairs(round) {
-  const ids = TEAMS.map((t) => t.id);
-  const k = round % 5, flip = round >= 5;
-  const rot = [ids[0], ...ids.slice(1).map((_, i) => ids[1 + ((i + k) % 5)])];
-  const pairs = [[rot[0], rot[5]], [rot[1], rot[4]], [rot[2], rot[3]]];
+function roundPairs(round, ids) {
+  const n = ids.length, m = n - 1;
+  const k = round % m, flip = round >= m;
+  const rot = [ids[0], ...ids.slice(1).map((_, i) => ids[1 + ((i + k) % m)])];
+  const pairs = Array.from({ length: n / 2 }, (_, i) => [rot[i], rot[n - 1 - i]]);
   return pairs.map(([a, b], i) => ((i + k + (flip ? 1 : 0)) % 2 ? [b, a] : [a, b]));
 }
 const koMs = (day, hour) => state.epoch + day * CFG.DAY_MS + (hour / 24) * CFG.DAY_MS;
 function ensureFixtures(day) {
   const g = G(), lg = g.league;
-  if (day - lg.startDay >= ROUNDS) return;
-  const round = day - lg.startDay;
-  roundPairs(round).forEach(([home, away], i) => {
+  if (day - lg.startDay >= roundsOf(lg)) return;
+  if (Object.values(g.games).some((m) => m.day === day)) return; // that day's games exist
+  const round = day - lg.startDay, KICKOFFS = kickoffsOf(lg);
+  roundPairs(round, teamsOf(lg)).forEach(([home, away], i) => {
     const id = `g${day}-${i + 1}`;
     if (g.games[id]) return;
     const p = winProb(home, away);
@@ -120,20 +128,25 @@ function kickOff(m) {
 }
 function fullTime(m) {
   m.status = 'ft'; m.score = m.final;
-  const t = G().league.table, [h, a] = m.score, H = t[m.home.id], A = t[m.away.id];
-  H.p++; A.p++; H.pf += h; H.pa += a; A.pf += a; A.pa += h;
-  if (h > a) { H.w++; A.l++; } else { A.w++; H.l++; }
+  const lg = G().league, t = lg.table, [h, a] = m.score, H = t[m.home.id], A = t[m.away.id];
   m.result = h > a ? 'home' : 'away';
+  if (m.season === lg.n && H && A) {
+    H.p++; A.p++; H.pf += h; H.pa += a; A.pf += a; A.pa += h;
+    if (h > a) { H.w++; A.l++; } else { A.w++; H.l++; }
+  }
+  derby(TEAM[m.home.id], TEAM[m.away.id], m.result, `${m.home.name} ${h}-${a} ${m.away.name} at Skyline Field`);
   settle(m.id, m.result);
   chron(`Final at Skyline Field: ${m.home.name} ${h}-${a} ${m.away.name}${m.events.some((e) => e.ot) ? ' in overtime' : ''}.`, null, 'football');
 }
 export function gridironTick(now = Date.now()) {
   if (!state.venues[FIELD]) return;
   const g = G();
-  if (state.day - g.league.startDay >= ROUNDS) {
+  if (state.day - g.league.startDay >= roundsOf(g.league)) {
     const top = leagueTable()[0];
     if (top) chron(`${top.name} win Sunfall Gridiron League season ${g.league.n}, ${top.w}-${top.l}.`, null, 'football');
-    g.league = { n: g.league.n + 1, startDay: state.day, table: freshTable(), lastChampion: top ? top.id : null };
+    const teams = TEAMS.filter((x) => state.nightfall || cityOfDistrict(x.district) === 'sunfall').map((x) => x.id);
+    g.league = { n: g.league.n + 1, startDay: state.day, teams, table: freshTable(teams), lastChampion: top ? top.id : null };
+    if (!teams.every((id) => LEGACY.includes(id))) chron(`Sunfall Gridiron League season ${g.league.n} kicks off with ${teams.length} teams, Nightfall's among them: four games a day at Skyline Field.`, null, 'football');
   }
   ensureFixtures(state.day); ensureFixtures(state.day + 1);
   for (const m of Object.values(g.games)) {
@@ -195,7 +208,7 @@ registerMatches((id) => (state.gridiron ? state.gridiron.games[id] || state.grid
 // ---------------------------------------------------------------- views
 export function leagueTable() {
   const t = G().league.table;
-  return TEAMS.map((x) => ({ id: x.id, name: x.name, district: DISTRICTS.find((d) => d.id === x.district)?.name, col: x.col, ...t[x.id], diff: t[x.id].pf - t[x.id].pa }))
+  return teamsOf(G().league).map((id) => TEAM[id]).map((x) => ({ id: x.id, name: x.name, district: DISTRICTS.find((d) => d.id === x.district)?.name, col: x.col, ...t[x.id], diff: t[x.id].pf - t[x.id].pa }))
     .sort((a, b) => b.w - a.w || a.l - b.l || b.diff - a.diff || a.name.localeCompare(b.name));
 }
 const quarterOf = (min) => (min > 60 ? 'OT' : `Q${Math.min(4, Math.ceil(min / 15))}`);
@@ -226,7 +239,7 @@ export function gridironView(resident) {
   return {
     field: { id: FIELD, name: state.venues[FIELD]?.name },
     league: {
-      season: g.league.n, round: Math.min(ROUNDS, state.day - g.league.startDay + 1), rounds: ROUNDS, lastChampion: g.league.lastChampion ? TEAM[g.league.lastChampion].name : null,
+      season: g.league.n, round: Math.min(roundsOf(g.league), state.day - g.league.startDay + 1), rounds: roundsOf(g.league), lastChampion: g.league.lastChampion ? TEAM[g.league.lastChampion].name : null,
       table: leagueTable(),
       live: games.filter((m) => m.status === 'live').map((m) => gameView(m, now)),
       upcoming: games.filter((m) => m.status === 'scheduled').map((m) => gameView(m, now)),
@@ -241,7 +254,7 @@ export function gridironView(resident) {
     agentBets: bets.filter((b) => b.agent).slice(-40).reverse().map(betView),
     mine: me && me.outside ? { id: me.id, bets: bets.filter((b) => b.rid === me.id).slice(-30).reverse().map(betView) } : null,
     totals: { bets: bets.length, staked: Math.round(bets.reduce((t, b) => t + b.stake, 0)), paid: Math.round(bets.reduce((t, b) => t + (b.status === 'won' ? b.payout : 0), 0)) },
-    rules: `Back the home side or the away side with city cash through the bet op, $1-200 a slip (the same slips and limits as football). There's no draw: a Sunfall Gridiron League game tied after four quarters goes to overtime, and a real NFL game that ends tied returns the stake. League games kick off at ${KICKOFFS.map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; every drive is drawn at kick-off. Real NFL games settle on the final score from ESPN. Winnings don't count towards the prize score.`,
+    rules: `Back the home side or the away side with city cash through the bet op, $1-200 a slip (the same slips and limits as football). There's no draw: a Sunfall Gridiron League game tied after four quarters goes to overtime, and a real NFL game that ends tied returns the stake. League games kick off at ${kickoffsOf(G().league).map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; every drive is drawn at kick-off. Real NFL games settle on the final score from ESPN. Winnings don't count towards the prize score.`,
   };
 }
 // The live view: a league game's play-by-play, revealed as the game clock reaches each play.
