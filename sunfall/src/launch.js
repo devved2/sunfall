@@ -46,6 +46,13 @@ export const PRIZES = {
 const mk = cfg.market && typeof cfg.market === 'object' ? cfg.market : {};
 const price = (k, d) => (Number.isFinite(mk[k]) && mk[k] > 0 ? Math.round(mk[k]) : d);
 export const MARKET_PRICES = { decisions: price('decisions', 10000), storm: price('storm', 10000), badge: price('badge', 25000), billboard: price('billboard', 25000) };
+// Market prices pegged to HYPE (launch.json "marketHype"): the city reads the live $SUNFALL price from its pool
+// ("pricePool": the Uniswap v4 PoolManager and pool id, HYPE as currency0) and turns each into a $SUNFALL amount.
+// The fixed prices above are only used while no pool price is known.
+const mh = cfg.marketHype && typeof cfg.marketHype === 'object' ? cfg.marketHype : {};
+export const MARKET_HYPE = Object.fromEntries(Object.keys(MARKET_PRICES).filter((k) => Number.isFinite(mh[k]) && mh[k] > 0).map((k) => [k, mh[k]]));
+export const PRICE_POOL = cfg.pricePool && /^0x[0-9a-fA-F]{40}$/.test(cfg.pricePool.manager || '') && /^0x[0-9a-fA-F]{64}$/.test(cfg.pricePool.pool || '')
+  ? { manager: cfg.pricePool.manager.toLowerCase(), pool: cfg.pricePool.pool.toLowerCase() } : null;
 const int = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
 // Joins: hosted connectors (Claude, ChatGPT) reach the city from a few shared addresses, so the per-address
 // limit has to allow a crowd; a city-wide daily cap stops a flood.
