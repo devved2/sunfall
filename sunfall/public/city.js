@@ -20,7 +20,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const W = (x, y, h = 0) => new THREE.Vector3(x - 500, h, y - 350); // map space (1000 x 700) -> world
 const GRID = 40, OFF = 20, XMAX = 980, YMAX = 660;
-const snapX = (v) => clamp(OFF + GRID * Math.round((v - OFF) / GRID), OFF, XMAX);
+// Nightfall: a second island east of Sunfall in the same map space, its streets on the same 40-unit grid.
+const NF = { x0: 1540, x1: 2180, y0: 60, y1: 660, cx: 1860, cy: 360 };
+const inNF = (x) => x > 1260;
+const snapX = (v) => (inNF(v) ? clamp(OFF + GRID * Math.round((v - OFF) / GRID), NF.x0, NF.x1) : clamp(OFF + GRID * Math.round((v - OFF) / GRID), OFF, XMAX));
 const snapY = (v) => clamp(OFF + GRID * Math.round((v - OFF) / GRID), OFF, YMAX);
 
 // ------------------------------------------------------------------ renderer, scene, camera
@@ -209,6 +212,11 @@ const STYLE = {
   oldtown: { k: 2, h: [14, 30], cols: ['#e2b48f', '#d49e7c', '#ecc59f', '#c99276', '#e8d2b0'] },
   harbour: { k: 1, h: [9, 16], cols: ['#a7c1d3', '#bccfda', '#dccab4', '#a9c3cf'], split: 0.35 },
   saltworks: { k: 1, h: [7, 14], cols: ['#c9c1b4', '#b8bcc4', '#d6cbb7', '#bdb6c7'], chimney: 0.45 },
+  // Nightfall: dark towers wrapped in neon, glass spires on the heights, crowded tenements, a smoky dock
+  velvet: { k: 1, h: [30, 95], cols: ['#3a2a52', '#4a2f5e', '#2e2440', '#5a3570', '#352a48', '#432b4f'], split: 0.3, neon: 0.85 },
+  halo: { k: 1, h: [70, 175], cols: ['#cfd6ee', '#b4c0e4', '#e4e9f7', '#9cadd8', '#c2b8e8'], neon: 0.3, glass: true },
+  undertow: { k: 2, h: [10, 28], cols: ['#5a4a5e', '#6a5560', '#4e4658', '#73606a', '#5e5052'], neon: 0.4 },
+  ashdock: { k: 1, h: [7, 15], cols: ['#5c5048', '#4a4440', '#6a5a4c', '#544a46'], chimney: 0.55, neon: 0.12 },
 };
 // Hand-placed landmarks (map coordinates of 40x40 cells)
 const CENTRAL_PARK = new Set(['520,80', '560,80', '520,120', '560,120', '520,160', '560,160']);
@@ -220,9 +228,12 @@ const ISLANDS = [
   { parts: [[15, 14, 747, 466], [15, 466, 340, 686]], depth: 320 },
   { parts: [[765, 14, 985, 466]], depth: 250 },
   { parts: [[340, 494, 985, 686]], depth: 220 },
+  { parts: [[1535, 54, 2185, 666]], depth: 300, tex: [1520, 40], nf: true }, // Nightfall (tex: where its streets sit on the road texture)
 ];
-const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 }];
-const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86' };
+const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
+  { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true }];
+const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
+const SPINDLE = '1880,360'; // Nightfall's centrepiece tower stands on this block
 const venueMeshes = [];
 const venueObjs = {};
 let billboardTex = null, billboardCanvas = null;
@@ -236,7 +247,8 @@ function build() {
   const roadTex = roadTexture();
   for (const isl of ISLANDS) for (const [x0, y0, x1, y1] of isl.parts) {
     const t = roadTex.clone(); t.needsUpdate = true;
-    t.repeat.set((x1 - x0) / 970, (y1 - y0) / 672); t.offset.set((x0 - 15) / 970, 1 - (y1 - 14) / 672);
+    const [tx, ty] = isl.tex || [0, 0];
+    t.repeat.set((x1 - x0) / 970, (y1 - y0) / 672); t.offset.set((x0 - tx - 15) / 970, 1 - (y1 - ty - 14) / 672);
     const land = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4, y1 - y0), [side, side, new THREE.MeshStandardMaterial({ map: t, roughness: 0.92 }), side, side, side]);
     land.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -2)); land.receiveShadow = true; scene.add(land);
     const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
@@ -246,11 +258,13 @@ function build() {
 
   const bld = [], neon = [], chim = [], trees = [], slabs = [], parks = [], roofs = [], acs = [], tanks = [], antennas = [], awnings = [], palms = [], houses = [], benches = [], parkCells = [], crystals = [], domes = [];
   const venueNear = (cx, cy) => S.venues.some((v) => { const [rx, ry] = v.type === 'stadium' || v.type === 'field' ? [70, 50] : [34, 34]; return Math.abs(v.x - cx) < rx && Math.abs(v.y - cy) < ry; });
-  for (let i = 0; i < 24; i++) {
-    for (let j = 0; j < 17; j++) {
-      const cx = OFF + GRID * i + 20, cy = OFF + GRID * j + 20;
-      if (cy > 676) continue;
+  const cells = [];
+  for (let i = 0; i < 24; i++) for (let j = 0; j < 17; j++) { const cx = OFF + GRID * i + 20, cy = OFF + GRID * j + 20; if (cy <= 676) cells.push([cx, cy]); }
+  for (let cx = NF.x0 + 20; cx < NF.x1; cx += GRID) for (let cy = NF.y0 + 20; cy < NF.y1; cy += GRID) cells.push([cx, cy]);
+  for (const [cx, cy] of cells) {
+    {
       const key = `${cx},${cy}`;
+      if (key === SPINDLE) continue;
       if (isCanal(cx, cy)) continue;
       if (CENTRAL_PARK.has(key)) { parkCells.push([cx, cy]); continue; }
       if (PLAZA.has(key)) { plazaAt = [cx, cy]; continue; }
@@ -286,13 +300,15 @@ function build() {
           if (rnd() < 0.5) acs.push([lx + topW * 0.22, ly - topD * 0.22, rt, 3.6]);
           const nAc = rnd() < 0.65 ? 1 + Math.floor(rnd() * 3) : 0;
           for (let a2 = 0; a2 < nAc; a2++) acs.push([lx + (rnd() - 0.5) * topW * 0.6, ly + (rnd() - 0.5) * topD * 0.6, rt, 1.6 + rnd() * 1.6]);
-          if ((d.id === 'flats' || d.id === 'oldtown') && rnd() < 0.32) tanks.push([lx + (rnd() - 0.5) * topW * 0.4, ly + (rnd() - 0.5) * topD * 0.4, rt]);
+          if ((d.id === 'flats' || d.id === 'oldtown' || d.id === 'undertow') && rnd() < 0.32) tanks.push([lx + (rnd() - 0.5) * topW * 0.4, ly + (rnd() - 0.5) * topD * 0.4, rt]);
           if (topH > 95 && rnd() < 0.8) antennas.push([lx, ly, rt, 10 + rnd() * 12]);
-          if ((d.id === 'flats' || d.id === 'oldtown') && rnd() < 0.45) awnings.push([lx, ly + dd / 2 + 1.1, w * 0.72, ['#c8423a', '#2f6f5e', '#d9a13a', '#3a5a9c', '#e8ddc8', '#7a3b6e'][Math.floor(rnd() * 6)]]);
+          if ((d.id === 'flats' || d.id === 'oldtown' || d.id === 'undertow') && rnd() < 0.45) awnings.push([lx, ly + dd / 2 + 1.1, w * 0.72, ['#c8423a', '#2f6f5e', '#d9a13a', '#3a5a9c', '#e8ddc8', '#7a3b6e'][Math.floor(rnd() * 6)]]);
         }
         if (st.neon && rnd() < st.neon) {
           const y = 12 + rnd() * (h - 20);
-          neon.push([lx, ly, w + 0.6, dd + 0.6, y, ['#ff3d8b', '#3df2ff', '#a35bff', '#ff8a3d'][Math.floor(rnd() * 4)]]);
+          const ncol = d.id === 'halo' ? ['#7fe8ff', '#b9a4ff'] : d.id === 'velvet' ? ['#ff3d8b', '#c03cff', '#ff2fd0', '#3df2ff', '#a35bff'] : ['#ff3d8b', '#3df2ff', '#a35bff', '#ff8a3d'];
+          neon.push([lx, ly, w + 0.6, dd + 0.6, y, ncol[Math.floor(rnd() * ncol.length)]]);
+          if (d.id === 'velvet' && h > 40 && rnd() < 0.6) neon.push([lx, ly, w + 0.6, dd + 0.6, 6 + rnd() * (h - 12), ncol[Math.floor(rnd() * ncol.length)]]);
           if (h > 110) neon.push([lx, ly, w + 0.6, dd + 0.6, h - 2, '#ff3d8b']);
         }
         if (st.chimney && rnd() < st.chimney) { chim.push([lx + w / 4, ly - dd / 4, 26 + rnd() * 22]); steamAt.push(W(lx + w / 4, ly - dd / 4, 0.8 + 26 + 11)); }
@@ -443,6 +459,7 @@ function build() {
   // streetlights at intersections, glow at night
   const lamps = [];
   for (let x = OFF; x <= XMAX; x += GRID) for (let y = OFF; y <= YMAX; y += GRID) if (!inRift(x + 6.5, y + 6.5)) lamps.push([x + 6.5, y + 6.5]);
+  for (let x = NF.x0; x <= NF.x1; x += GRID) for (let y = NF.y0; y <= NF.y1; y += GRID) lamps.push([x + 6.5, y + 6.5]);
   const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.3, 9, 5).translate(0, 4.5, 0), new THREE.MeshStandardMaterial({ color: 0x2b2b30 }), lamps.length);
   lamps.forEach(([x, y], i) => { m4.compose(W(x, y, 0), q, new THREE.Vector3(1, 1, 1)); pole.setMatrixAt(i, m4); });
   scene.add(pole);
@@ -452,11 +469,12 @@ function build() {
 
   // sky docks jutting off the island edges
   const pierMat = new THREE.MeshStandardMaterial({ color: 0x4a3c30, roughness: 0.9 });
-  for (const [x, y, w, d] of [[-2, 420, 44, 7], [-2, 500, 52, 7], [-2, 590, 40, 7], [800, 702, 7, 60], [870, 700, 7, 52], [140, 702, 7, 50]]) {
+  for (const [x, y, w, d] of [[-2, 420, 44, 7], [-2, 500, 52, 7], [-2, 590, 40, 7], [800, 702, 7, 60], [870, 700, 7, 52], [140, 702, 7, 50], [1006, 400, 44, 9], [1514, 400, 44, 9]]) {
     const p = new THREE.Mesh(BOX, pierMat); p.scale.set(w, 1.4, d); p.position.copy(W(x, y, -1)); p.receiveShadow = true; scene.add(p);
   }
 
   for (const v of S.venues) buildVenue(v, rnd);
+  buildNightfall(rnd);
   buildLandmarkLabels();
   buildBillboard();
   buildCars(rnd);
@@ -551,8 +569,9 @@ function buildElysiumGlow() {
   for (const isl of ISLANDS) for (const [x0, y0, x1, y1] of isl.parts) {
     const o = 1.6;
     for (const h of [0.6, -5.5]) { seg(rim, x0 - o, y0 - o, x1 + o, y0 - o, h); seg(rim, x1 + o, y0 - o, x1 + o, y1 + o, h); seg(rim, x1 + o, y1 + o, x0 - o, y1 + o, h); seg(rim, x0 - o, y1 + o, x0 - o, y0 - o, h); }
-    for (let x = OFF; x <= XMAX; x += GRID) if (x > x0 && x < x1) seg(streets, x, y0 + 2, x, y1 - 2, 0.35);
-    for (let y = OFF; y <= YMAX; y += GRID) if (y > y0 && y < y1) seg(streets, x0 + 2, y, x1 - 2, y, 0.35);
+    const [gx0, gx1, gy0, gy1] = isl.nf ? [NF.x0, NF.x1, NF.y0, NF.y1] : [OFF, XMAX, OFF, YMAX];
+    for (let x = gx0; x <= gx1; x += GRID) if (x > x0 && x < x1) seg(streets, x, y0 + 2, x, y1 - 2, 0.35);
+    for (let y = gy0; y <= gy1; y += GRID) if (y > y0 && y < y1) seg(streets, x0 + 2, y, x1 - 2, y, 0.35);
   }
   for (const [arr, color, op] of [[rim, 0x5fdcff, 1], [streets, 0x34b7dd, 0.55]]) {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
@@ -695,6 +714,40 @@ function airshipMesh(scale, rnd) {
   return g;
 }
 
+// Nightfall's centrepiece, the sky ferry between the two cities, and the island's waterfalls and clouds.
+const ferries = [];
+function buildNightfall(rnd) {
+  const [sx, sy] = SPINDLE.split(',').map(Number);
+  const dark = windowed(new THREE.MeshStandardMaterial({ color: 0x2a2140, roughness: 0.35, metalness: 0.55 }));
+  const base = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x3a3346, roughness: 0.8 })); base.scale.set(32, 1.2, 32); base.position.copy(W(sx, sy, 0)); base.receiveShadow = true; scene.add(base);
+  const parts = [[13, 10, 58, 0.8], [8.5, 6, 78, 58.8], [4.5, 1.2, 96, 136.8]];
+  for (const [r0, r1, h, y0] of parts) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, 8).translate(0, h / 2, 0), dark); m.position.copy(W(sx, sy, y0)); m.castShadow = true; scene.add(m);
+  }
+  const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.9, 0.5, 2.4), toneMapped: false });
+  for (const [r, y] of [[11.2, 58.8], [7.4, 98], [6.4, 136.8], [3.6, 180]]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.55, 6, 32).rotateX(Math.PI / 2), ringMat); ring.position.copy(W(sx, sy, y)); scene.add(ring);
+  }
+  const beacon = new THREE.Points(new THREE.BufferGeometry().setFromPoints([W(sx, sy, 234)]), new THREE.PointsMaterial({ map: GLOW, size: 46, color: 0xd76bff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(beacon); blinkers.push(beacon.material);
+  // the sky ferry: two airships shuttling between the piers on Sunfall's east edge and Nightfall's west edge
+  for (let i = 0; i < 2; i++) { const g = airshipMesh(0.62, rnd); scene.add(g); ferries.push({ g, off: i * 0.5, lane: i ? 412 : 388 }); }
+  waterfall(1535, 560, -3, 14, 260, Math.PI / 2); waterfall(2185, 200, -3, 16, 280, Math.PI / 2); waterfall(1800, 666, -3, 22, 300, 0);
+  for (let i = 0; i < (LITE ? 6 : 12); i++) puff(1560 + rnd() * 620, 80 + rnd() * 560, -320 - rnd() * 50, 300 + rnd() * 240, i % 2);
+}
+function updateFerries(t) {
+  const P = 48; // seconds for a round trip: wait, cross, wait, cross back
+  for (const f of ferries) {
+    const k = ((t / P + f.off) % 1 + 1) % 1;
+    let u, back = false;
+    if (k < 0.1) u = 0; else if (k < 0.45) u = smooth(0.1, 0.45, k); else if (k < 0.55) u = 1; else { u = 1 - smooth(0.55, 0.9, k); back = true; }
+    if (k >= 0.9) { u = 0; back = true; }
+    const x = 1036 + (1484 - 1036) * u;
+    f.g.position.copy(W(x, f.lane, 26 + Math.sin(u * Math.PI) * 18 + Math.sin(t * 0.8 + f.off * 9) * 0.6));
+    f.g.rotation.y = back ? Math.PI : 0;
+  }
+}
+
 function buildSkyWorld(rnd) {
   puffMats.push(new THREE.SpriteMaterial({ map: puffTexture(), transparent: true, depthWrite: false, color: 0xffffff, opacity: 0.9 }));
   puffMats.push(new THREE.SpriteMaterial({ map: puffTexture(29), transparent: true, depthWrite: false, color: 0xffffff, opacity: 0.85 }));
@@ -828,6 +881,7 @@ function buildSteam() {
 }
 const _pv = new THREE.Vector3(), _pv2 = new THREE.Vector3(), _pv3 = new THREE.Vector3();
 function updateSkyWorld(t, dt) {
+  updateFerries(t);
   timeU.value = t;
   for (const p of puffs) {
     p.sp.position.x = p.base.x + Math.sin(t * 0.02 + p.ph) * 30;
@@ -906,7 +960,7 @@ function buildLandmarks(rnd, parkCells, trees, palms, benches) {
 }
 function buildLandmarkLabels() {
   for (const l of LANDMARKS) {
-    const el = document.createElement('div'); el.className = 'lm'; el.textContent = l.name;
+    const el = document.createElement('div'); el.className = 'lm' + (l.big ? ' big' : ''); el.textContent = l.name;
     $('#labels').appendChild(el); landmarkEls.push({ el, at: W(l.x, l.y, l.h ?? 4) });
   }
 }
@@ -1342,10 +1396,10 @@ function buildCars(rnd) {
   scene.add(tailLights);
   const c3 = new THREE.Color();
   for (let i = 0; i < N; i++) {
-    const horiz = rnd() < 0.55;
-    const line = horiz ? OFF + GRID * Math.floor(rnd() * 17) : OFF + GRID * Math.floor(rnd() * 25);
+    const horiz = rnd() < 0.55, nf = i % 3 === 2; // a third of the traffic is in Nightfall
+    const line = nf ? (horiz ? NF.y0 + GRID * Math.floor(rnd() * 16) : NF.x0 + GRID * Math.floor(rnd() * 17)) : horiz ? OFF + GRID * Math.floor(rnd() * 17) : OFF + GRID * Math.floor(rnd() * 25);
     const dir = rnd() < 0.5 ? 1 : -1;
-    cars.push({ horiz, line, dir, s: rnd() * 1000, v: 22 + rnd() * 22 });
+    cars.push({ horiz, line, dir, s: rnd() * 1000, v: 22 + rnd() * 22, nf });
     carMesh.setColorAt(i, c3.set(cols[Math.floor(rnd() * cols.length)]));
   }
   scene.add(carMesh);
@@ -1358,11 +1412,12 @@ function updateCars(dt) {
   if (!carMesh) return;
   const pos = carLights.geometry.attributes.position, tpos = tailLights.geometry.attributes.position;
   cars.forEach((c, i) => {
-    const span = c.horiz ? XMAX - OFF : YMAX - OFF;
+    const [ox, oy, mx, my] = c.nf ? [NF.x0, NF.y0, NF.x1, NF.y1] : [OFF, OFF, XMAX, YMAX];
+    const span = c.horiz ? mx - ox : my - oy;
     c.s = (c.s + c.v * dt) % span;
     const t = c.dir > 0 ? c.s : span - c.s;
     const lane = 3 * c.dir;
-    const x = c.horiz ? OFF + t : c.line + lane, y = c.horiz ? c.line - lane : OFF + t;
+    const x = c.horiz ? ox + t : c.line + lane, y = c.horiz ? c.line - lane : oy + t;
     const hid = (x > 826 && x < 934 && y > 544 && y < 616) || (x > 186 && x < 294 && y > 404 && y < 476); // no driving through Sunfall Arena or Skyline Field
     dummy.position.copy(W(x, y, hid ? -40 : 0)); dummy.rotation.set(0, c.horiz ? (c.dir > 0 ? 0 : Math.PI) : (c.dir > 0 ? -Math.PI / 2 : Math.PI / 2), 0); dummy.scale.set(1, 1, 1);
     dummy.updateMatrix(); carMesh.setMatrixAt(i, dummy.matrix); cabinMesh.setMatrixAt(i, dummy.matrix);
@@ -1388,6 +1443,7 @@ function spotFor(vid, id, V) {
   const h = hash(id + vid);
   return [v.x - 13 + ((h & 255) / 255) * 26, v.y + 16 + (((h >> 8) & 255) / 255) * 9];
 }
+const sameCity = (P, Q) => inNF(P[0]) === inNF(Q[0]); // a night out across the sky is a ferry ride, not a walk
 function routeOf(P, Q, o) {
   const a = [snapX(P[0]) + o, snapY(P[1]) + o], b = [snapX(Q[0]) + o, snapY(Q[1]) + o];
   const pts = [P, a, [b[0], a[1]], b, Q];
@@ -1419,7 +1475,7 @@ function preparePeople() {
     return {
       r, key, H, A, N, stagger: ((h >> 16) & 255) / 255 * 0.6, phase: (h & 1023) / 1023 * 6.28,
       color: new THREE.Color().setHSL(((h >> 4) & 255) / 255, 0.5, 0.42 + ((h >> 12) & 15) / 60), skin: SKIN[(h >>> 20) % SKIN.length],
-      rHA: A && routeOf(H, A, o), rAH: A && routeOf(A, H, o), rHN: N && routeOf(H, N, o), rNH: N && routeOf(N, H, o),
+      rHA: A && sameCity(H, A) && routeOf(H, A, o), rAH: A && sameCity(H, A) && routeOf(A, H, o), rHN: N && sameCity(H, N) && routeOf(H, N, o), rNH: N && sameCity(H, N) && routeOf(N, H, o),
       aftVid: aft, nightVid: night, pos: [H[0], H[1]], vis: false, walk: false, state: 'home',
     };
   });
@@ -1550,6 +1606,12 @@ function renderHUD() {
     $('#lead').textContent = top ? `${txt(top.name)} ${money(top.netWorth)}` : 'nobody yet';
     $('#lead').title = top ? 'Season leader by net worth' : 'No agents this season yet';
   }
+  if (S.rivalry) {
+    const R = S.rivalry.days, D = S.rivalry.derbies;
+    $('#rivalstat').hidden = false;
+    $('#rival').innerHTML = `<span class="sf">☀ ${R.sunfall + D.sunfall}</span> – <span class="nf">${R.nightfall + D.nightfall} ☾</span>`;
+    $('#rivalstat').title = `Sunfall ${R.sunfall}, Nightfall ${R.nightfall} on daily spending per resident; derbies Sunfall ${D.sunfall}, Nightfall ${D.nightfall}${D.drawn ? `, ${D.drawn} drawn` : ''}`;
+  }
   const ev = S.event, fc = S.forecast, el = $('#evline');
   el.className = 'ev' + (ev || fc ? ' on' : '') + (ev ? ' ' + ev.kind : '');
   el.innerHTML = (ev ? `${esc(ev.icon)} ${esc(ev.title)}` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}</span>` : '');
@@ -1562,14 +1624,26 @@ document.addEventListener('click', (e) => { const f = e.target.closest('[data-wh
 $('#livehead').onclick = () => $('#live').classList.toggle('closed');
 
 // chips
+// The chips show one city's districts at a time; the city chip flies across to the other one.
+let chipCity = 'sunfall';
+const NF_CAM = { target: W(NF.cx, NF.cy, 10), pos: W(NF.cx, NF.cy, 10).add(new THREE.Vector3(-70, 160, 690)) };
+function goCity(city) {
+  unfollow();
+  if (city === 'nightfall') { if (iso) frameOn(W(NF.cx, NF.cy), ISO_OFF, 1.35); else flyTo(NF_CAM.target, NF_CAM.pos); }
+  else if (iso) frameOn(new THREE.Vector3(), ISO_OFF, 1); else flyTo(HOME_CAM.target, HOME_CAM.pos);
+}
 function renderChips() {
   const el = $('#chips');
-  el.innerHTML = `<button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">Overview</button>` + S.districts.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('') + `<button data-go="agent" class="ag">☼ Follow an agent</button>`;
+  const two = (S.cities || []).length > 1 && S.districts.some((d) => d.city === 'nightfall');
+  const ds = S.districts.filter((d) => (d.city || 'sunfall') === chipCity);
+  el.innerHTML = `<button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">${chipCity === 'nightfall' ? 'Nightfall' : 'Overview'}</button>` + ds.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('')
+    + (two ? `<button data-go="city" class="cty">${chipCity === 'nightfall' ? '☀ Back to Sunfall' : '☾ Fly to Nightfall'}</button>` : '') + `<button data-go="agent" class="ag">☼ Follow an agent</button>`;
   el.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const g = b.dataset.go;
     if (g === 'view') { setView(!iso); return; }
-    if (g === 'all') { unfollow(); if (iso) frameOn(new THREE.Vector3(), ISO_OFF, 1); else flyTo(HOME_CAM.target, HOME_CAM.pos); return; }
+    if (g === 'city') { chipCity = chipCity === 'nightfall' ? 'sunfall' : 'nightfall'; renderChips(); goCity(chipCity); return; }
+    if (g === 'all') { goCity(chipCity); return; }
     if (g === 'agent') {
       const ags = people.filter((p) => p.r[6]);
       if (!ags.length) { toast('No agents have moved in yet. Be the first.'); return; }
