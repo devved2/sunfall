@@ -1596,10 +1596,11 @@ function renderHUD() {
   $('#treas').textContent = money(S.treasury);
   const log = S.agentLog || [];
   $('#livecount').textContent = log.length ? `${S.residents.filter((r) => r[6]).length} in the city` : '';
-  if (log.length) $('#livebody').innerHTML = log.slice(0, 10).map((e) => {
+  const lb = $('#livebody'), lh = log.length ? log.slice(0, 10).map((e) => {
     const d = new Date(e.t), tm = d.toTimeString().slice(0, 8);
     return `<div class="al"><time>${tm}</time><span><span class="n" data-who="${esc(e.id)}">${esc(e.name)} ☼</span> ${esc(e.op)} <span class="${e.ok ? 'ok' : 'no'}">${e.ok ? 'done' : 'refused'}</span></span>${!e.ok && e.reason ? `<span class="why">${esc(e.reason)}</span>` : ''}</div>`;
-  }).join('');
+  }).join('') : null;
+  if (lh && lb._h !== lh) { lb._h = lh; lb.innerHTML = lh; }
   // season + today's event
   if (S.season) {
     const ms = Math.max(0, S.season.end - Date.now()), hrs = Math.floor(ms / 3600000);
@@ -1615,13 +1616,42 @@ function renderHUD() {
     $('#rivalstat').title = `Sunfall ${R.sunfall}, Nightfall ${R.nightfall} on daily spending per resident; derbies Sunfall ${D.sunfall}, Nightfall ${D.nightfall}${D.drawn ? `, ${D.drawn} drawn` : ''}`;
   }
   const ev = S.event, fc = S.forecast, el = $('#evline');
-  el.className = 'ev' + (ev || fc ? ' on' : '') + (ev ? ' ' + ev.kind : '');
-  el.innerHTML = (ev ? `${esc(ev.icon)} ${esc(ev.title)}` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}</span>` : '');
-  el.title = ev ? ev.effect : fc ? fc.effect : '';
+  el.className = 'ev' + (ev || fc ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
+  const evHtml = (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
+    + (evOpen ? `<span class="evx">${ev ? `<b>Today:</b> ${esc(ev.effect || '')}` : ''}${fc ? `<b>${ev ? 'Tomorrow' : 'Forecast'}:</b> ${esc(fc.effect || '')}` : ''}<a href="/records#live">Everything that happened today →</a></span>` : '');
+  if (el._h !== evHtml) { el._h = evHtml; el.innerHTML = evHtml; }
+  el.title = evOpen ? '' : 'Tap for what this means';
   setEventFX(ev);
-  const feed = $('#feed');
-  feed.innerHTML = S.chronicle.slice(0, LITE ? 3 : 6).map((c) => `<div class="fl ${c.who ? 'click' : ''}" ${c.who ? `data-who="${esc(c.who)}"` : ''}><span>day ${c.day}</span>${esc(c.text)}</div>`).join('');
+  renderFeed();
 }
+// The city news feed: collapsible, and each line opens to show who and where, with links to their panels.
+const IMPORTANT = new Set(['event', 'season', 'business', 'loan']);
+const KIND_LABEL = { event: 'city', season: 'season', business: 'business', loan: 'loan', job: 'job', casino: 'casino', football: 'football', move: 'ferry', arrival: 'arrival' };
+let feedOpen = !LITE; try { const f = localStorage.getItem('sf_feed'); if (f != null) feedOpen = f === '1'; } catch {} // phones start with the news folded away
+const feedOpenLines = new Set();
+let evOpen = false;
+function renderFeed() {
+  const feed = $('#feed'); if (!feed || !S) return;
+  const rows = S.chronicle.slice(0, feedOpen ? (LITE ? 4 : 7) : 0);
+  const byName = S.venues.filter((v) => v.isVenue || v.type === 'stadium' || v.type === 'field');
+  feed.className = 'glass' + (feedOpen ? '' : ' shut');
+  const html = `<div class="fh"><span>City news</span><button type="button" class="fcol" aria-label="${feedOpen ? 'Collapse the news' : 'Show the news'}">${feedOpen ? 'Hide ▾' : `Show ▴`}</button></div>`
+    + rows.map((c) => {
+      const key = c.t + ':' + hash(c.text), open = feedOpenLines.has(key);
+      const vs = byName.filter((v) => c.text.includes(v.name)).slice(0, 2);
+      const who = c.who && S.residents.find((r) => r[0] === c.who);
+      const extra = open ? `<div class="fx"><span class="tag">${esc(KIND_LABEL[c.kind] || c.kind || 'news')}</span><span class="dim">${ago(c.t)}</span>${who ? `<button data-who="${esc(who[0])}" class="${who[6] ? 'agent' : ''}">${esc(who[1])}${who[6] ? ' ☼' : ''} →</button>` : ''}${vs.map((v) => `<button data-venue="${esc(v.id)}">${esc(v.name)} →</button>`).join('')}</div>` : '';
+      return `<div class="fl click ${IMPORTANT.has(c.kind) ? 'imp' : ''} ${open ? 'open' : ''}" data-fl="${esc(key)}"><span>day ${c.day}</span>${esc(c.text)}${extra}</div>`;
+    }).join('');
+  if (feed._h !== html) { feed._h = html; feed.innerHTML = html; } // only touch the DOM when something changed, so clicks land
+}
+$('#feed').addEventListener('click', (e) => {
+  if (e.target.closest('.fcol') || (e.target.closest('.fh') && !feedOpen)) { feedOpen = !feedOpen; try { localStorage.setItem('sf_feed', feedOpen ? '1' : '0'); } catch {} renderFeed(); return; }
+  if (e.target.closest('button')) return;
+  const l = e.target.closest('[data-fl]'); if (!l) return;
+  const k = l.dataset.fl; feedOpenLines.has(k) ? feedOpenLines.delete(k) : feedOpenLines.add(k); renderFeed();
+});
+$('#evline').addEventListener('click', (e) => { if (e.target.closest('a')) return; evOpen = !evOpen; if (S) renderHUD(); });
 document.addEventListener('click', (e) => { const f = e.target.closest('[data-who]'); if (f) selectResident(f.dataset.who); });
 $('#livehead').onclick = () => $('#live').classList.toggle('closed');
 
@@ -1638,11 +1668,12 @@ function renderChips() {
   const el = $('#chips');
   const two = (S.cities || []).length > 1 && S.districts.some((d) => d.city === 'nightfall');
   const ds = S.districts.filter((d) => (d.city || 'sunfall') === chipCity);
-  el.innerHTML = `<button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">${chipCity === 'nightfall' ? 'Nightfall' : 'Overview'}</button>` + ds.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('')
+  el.innerHTML = `<button data-go="clean" class="cl">${cleanOn ? '◳ Show panels' : '◱ City only'}</button><button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">${chipCity === 'nightfall' ? 'Nightfall' : 'Overview'}</button>` + ds.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('')
     + (two ? `<button data-go="city" class="cty">${chipCity === 'nightfall' ? '☀ Back to Sunfall' : '☾ Fly to Nightfall'}</button>` : '') + `<button data-go="agent" class="ag">☼ Follow an agent</button>`;
   el.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const g = b.dataset.go;
+    if (g === 'clean') { setClean(!cleanOn); return; }
     if (g === 'view') { setView(!iso); return; }
     if (g === 'city') { chipCity = chipCity === 'nightfall' ? 'sunfall' : 'nightfall'; renderChips(); goCity(chipCity); return; }
     if (g === 'all') { goCity(chipCity); return; }
@@ -1681,7 +1712,7 @@ function toast(s) { const t = $('#toast'); t.textContent = s; t.classList.add('o
 
 // selection
 let follow = null;
-function unfollow() { follow = null; $('#drawer').classList.remove('open'); }
+function unfollow() { follow = null; venueOpen = null; $('#drawer').classList.remove('open'); }
 $('#dclose').onclick = unfollow;
 addEventListener('keydown', (e) => { if (e.key === 'Escape') unfollow(); });
 
@@ -1694,6 +1725,7 @@ function whereNow(p, V) {
   return v.isVenue ? `At ${v.name}` : `At work, ${v.name}`;
 }
 async function selectResident(id) {
+  venueOpen = null;
   const p = people.find((x) => x.r[0] === id);
   follow = id;
   $('#drawer').classList.add('open');
@@ -1703,60 +1735,152 @@ async function selectResident(id) {
   }
   await renderResident(id);
 }
+// ---------------------------------------------------------------- explanations
+// What every number on the page means. Shown under each stat when "What these mean" is on.
+const TIPS = {
+  pop: 'Everyone living in both cities: native residents and agents.',
+  agents: 'Residents run by outside AI agents. They glow cyan in the city.',
+  cash: 'All the city cash residents are holding right now.',
+  treas: 'The city\'s own money. Rent, tills and levies come in; wage support and relief go out.',
+  ca: 'The $SUNFALL token contract on Elysium. Click to copy.',
+  sn: 'Season number and time left. Every agent restarts at $250 when a season ends on Monday.',
+  lead: 'The agent with the highest net worth this season.',
+  rival: 'Sunfall v Nightfall: a point a day to the city whose venues took more per resident, plus football derbies.',
+  netWorth: 'Cash, plus businesses and stakes at today\'s value, plus money owed to them, minus their debts.',
+  cash1: 'City dollars in hand right now.',
+  rank: 'Position among all agents by net worth this season.',
+  prize: 'Net worth minus casino and football winnings and money paid in by other agents. HYPE prizes go by this.',
+  mood: 'How the resident feels. Good nights out lift it; being broke, behind on rent or turned away drops it.',
+  takings: 'Door money taken today.',
+  visits: 'People through the door today.',
+  payroll: 'Wages for all staff each shift. The owner pays from the till first, then from their own cash.',
+  value: 'What the business is worth today. Agents can\'t sell it for less than 75% of this.',
+};
+let tipsOn = false; try { tipsOn = localStorage.getItem('sf_tips') === '1'; } catch {}
+const setTips = (on) => { tipsOn = on; document.body.classList.toggle('tips', on); try { localStorage.setItem('sf_tips', on ? '1' : '0'); } catch {} document.querySelectorAll('.tipbtn').forEach((b) => { b.textContent = on ? 'ⓘ Hide explanations' : 'ⓘ What these mean'; }); };
+const tipx = (k) => `<div class="tipx">${esc(TIPS[k])}</div>`;
+(() => {
+  // add an explanation under every stat in the stats box, and a button to show them
+  const map = { pop: 'pop', agents: 'agents', cash: 'cash', treas: 'treas', ca: 'ca', sn: 'sn', lead: 'lead', rival: 'rival' };
+  for (const [id, k] of Object.entries(map)) { const b = $('#' + id); const st = b && b.closest('.stat'); if (st && !st.nextElementSibling?.classList?.contains('tipx')) st.insertAdjacentHTML('afterend', tipx(k)); }
+  $('.stats').insertAdjacentHTML('beforeend', '<button type="button" class="tipbtn">ⓘ What these mean</button>');
+  setTips(tipsOn);
+})();
+document.addEventListener('click', (e) => { if (e.target.closest('.tipbtn')) { e.preventDefault(); e.stopPropagation(); setTips(!tipsOn); } });
+
+// ---------------------------------------------------------------- city-only view
+let cleanOn = false; try { cleanOn = localStorage.getItem('sf_clean') === '1'; } catch {}
+function setClean(on) { cleanOn = on; document.body.classList.toggle('clean', on); try { localStorage.setItem('sf_clean', on ? '1' : '0'); } catch {} const b = document.querySelector('#chips [data-go="clean"]'); if (b) b.textContent = on ? '◳ Show panels' : '◱ City only'; }
+document.body.classList.toggle('clean', cleanOn);
+addEventListener('keydown', (e) => { if ((e.key === 'h' || e.key === 'H') && !e.target.closest('input,textarea')) setClean(!cleanOn); });
+
+// ---------------------------------------------------------------- shared bits for the panels
+const ago = (t) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`; };
+const signed = (n) => (n > 0 ? `<span class="pos">+${money(n)}</span>` : n < 0 ? `<span class="neg">−${money(-n)}</span>` : '<span class="dim">$0</span>');
+const tile = (label, value, k, cls = '') => `<div class="tile"><span>${label}</span><b class="${cls}">${value}</b>${k ? tipx(k) : ''}</div>`;
+const activityList = (rows, empty) => rows?.length
+  ? `<div class="act">${rows.map((a) => `<div><time title="${esc(new Date(a.t).toLocaleString())}">${ago(a.t)}</time><span>${esc(a.note || a.kind)}</span>${a.amt ? signed(a.amt) : '<i></i>'}</div>`).join('')}</div>`
+  : `<div class="dim small">${empty}</div>`;
+const newsList = (rows) => rows?.length ? `<div class="act news">${rows.map((c) => `<div><time>day ${c.day}</time><span>${esc(c.text)}</span><i></i></div>`).join('')}</div>` : '';
+const sec = (title, body) => `<h4>${title}</h4>${body}`;
+document.addEventListener('click', (e) => { const f = e.target.closest('[data-venue]'); if (f) { e.stopPropagation(); selectVenue(f.dataset.venue); } }, true);
+
 async function renderResident(id) {
   const res = await (await fetch('/api/resident?id=' + encodeURIComponent(id))).json();
   if (!res.ok || follow !== id) return;
-  const x = res.resident, pl = x.plan || {};
-  const half = (k, v, r, why) => `${k === 'work' ? 'Working a shift' : k === 'in' ? 'Staying in' : esc(v || k)}${r ? ` <span class="tag">${esc(r)}</span>` : ''}${why ? `<div class="why">“${esc(txt(why))}”</div>` : ''}`;
+  const x = res.resident, pl = x.plan || {}, st = res.standing;
+  const agent = x.outside || x.isAgent;
+  const half = (k, v, r, why) => `${k === 'work' ? 'Working a shift' : k === 'in' ? 'Staying in' : esc(v || k || '—')}${r ? ` <span class="tag">${esc(r)}</span>` : ''}${why ? `<div class="why">“${esc(txt(why))}”</div>` : ''}`;
+  const venueIds = Object.fromEntries(S.venues.map((v) => [v.name, v.id]));
+  const vlink = (name) => venueIds[name] ? `<button class="lk" data-venue="${esc(venueIds[name])}">${esc(name)}</button>` : esc(name);
+  const prizeNote = !agent ? '' : st?.team ? 'Team agent: can\'t win prizes.' : x.wallet ? (st?.prizeEligible ? 'Wallet linked: can win HYPE prizes.' : 'Kept out of prizes.') : 'No wallet linked, so it can\'t win HYPE prizes.';
   $('#dbody').innerHTML = `
-    <div class="kicker">${(x.outside || x.isAgent) ? '<span class="agent">☼ agent</span>' : 'native resident'} · ${esc(x.id)}</div>
-    <h3 class="${x.outside ? 'agent' : ''}">${esc(txt(x.name))}</h3>
-    <div class="dim">${esc(x.trade)} at ${esc(x.workplace)} · lives in ${esc(x.district)}</div>
+    <div class="kicker">${agent ? '<span class="agent">☼ agent</span>' : 'native resident'} · ${esc(x.id)} · ${esc(x.city || '')}${x.joinedDay != null ? ` · moved in day ${x.joinedDay}` : ''}</div>
+    <h3 class="${agent ? 'agent' : ''}">${esc(txt(x.name))}</h3>
+    <div class="dim">${esc(x.trade)} at ${vlink(x.workplace)} · lives in ${esc(x.district)}${x.moving ? ` · <span style="color:#e0a8ff">moving to ${esc(x.moving.to)}</span>` : ''}</div>
     <div class="now" id="nowline"></div>
-    <div class="kv">
-      <div>Cash</div><div>${money(x.cash)}</div>
-      <div>Net worth</div><div>${money(x.netWorth)}</div>
-      <div>Mood</div><div><div class="bar"><i style="width:${x.mood}%"></i></div></div>
+    <div class="tiles">
+      ${tile('Net worth', money(x.netWorth), 'netWorth')}
+      ${tile('Cash', money(x.cash), 'cash1')}
+      ${agent && st ? tile('Season rank', `#${st.rank} <small>of ${st.of}</small>`, 'rank') : tile('Mood', `${x.mood}<small>/100</small>`, 'mood')}
+      ${agent && st ? tile('Prize score', money(st.prizeScore), 'prize') : tile('Rent paid', money(x.stats.rent), null)}
+    </div>
+    ${prizeNote ? `<div class="pnote ${x.wallet && st?.prizeEligible ? 'ok' : ''}">${prizeNote}</div>` : ''}
+    <button type="button" class="tipbtn">${tipsOn ? 'ⓘ Hide explanations' : 'ⓘ What these mean'}</button>
+    ${sec('Today', `<div class="kv">
       <div>Shift</div><div>${x.shiftToday === 'off' ? 'day off' : x.shiftToday === 'aft' ? 'afternoon' : 'night'}</div>
       <div>Afternoon</div><div>${half(pl.aft, pl.aftVenue, pl.result?.aft, pl.whyAft)}</div>
       <div>Night</div><div>${half(pl.night, pl.nightVenue, pl.result?.night, pl.whyNight)}</div>
-      <div>Today run by</div><div>${esc(({ you: 'the agent', routine: 'its routine', rules: 'habit' })[x.today?.from] || x.today?.from)}${x.today?.note ? `<div class="why">${esc(x.today.note)}</div>` : ''}</div>
-      ${x.runsOn ? `<div>Runs on</div><div>${esc(txt(x.runsOn))} <span class="tag">self-declared</span></div>` : ''}
-      ${x.wallet ? `<div>Wallet</div><div class="hash">${esc(x.wallet)}</div>` : ''}
-      <div>Owns</div><div>${x.owns.length ? x.owns.map((o) => esc(o.name)).join(', ') : '—'}</div>
-      ${x.stakes?.length ? `<div>Stakes</div><div>${x.stakes.map((st) => `${st.pct}% of ${esc(st.name)}`).join(', ')}</div>` : ''}
+      <div>Decided by</div><div>${esc(({ you: 'the agent', routine: 'its routine', rules: 'habit' })[x.today?.from] || x.today?.from || '—')}${x.today?.note ? `<div class="why">${esc(x.today.note)}</div>` : ''}</div>
+      ${agent ? `<div>Mood</div><div><div class="bar"><i style="width:${x.mood}%"></i></div>${tipx('mood')}</div>` : ''}
+    </div>`)}
+    ${sec('Money', `<div class="kv">
+      <div>Owns</div><div>${x.owns.length ? x.owns.map((o) => `<button class="lk" data-venue="${esc(o.id)}">${esc(o.name)}</button>`).join(', ') : '—'}</div>
+      ${x.stakes?.length ? `<div>Stakes</div><div>${x.stakes.map((s2) => `${s2.pct}% of <button class="lk" data-venue="${esc(s2.venue)}">${esc(s2.name)}</button>`).join(', ')}</div>` : ''}
       ${x.owesNow ? `<div>Owes</div><div class="neg">${money(x.owesNow)}</div>` : ''}
       ${x.owedToThem ? `<div>Owed to them</div><div class="pos">${money(x.owedToThem)}</div>` : ''}
-      ${x.credit && (x.credit.repaid || x.credit.defaulted) ? `<div>Credit</div><div>${x.credit.repaid} repaid${x.credit.defaulted ? ` · <span class="neg">${x.credit.defaulted} defaulted</span>` : ''}</div>` : ''}
+      ${x.credit && (x.credit.repaid || x.credit.defaulted) ? `<div>Loans</div><div>${x.credit.repaid} repaid${x.credit.defaulted ? ` · <span class="neg">${x.credit.defaulted} defaulted</span>` : ''}</div>` : ''}
       <div>Wages</div><div>${money(x.stats.wages)}</div>
       <div>Spent out</div><div>${money(x.stats.spent)}</div>
       <div>Casino</div><div><span class="pos">+${money(x.stats.won)}</span> / <span class="neg">−${money(x.stats.lost)}</span></div>
-      <div>Rent paid</div><div>${money(x.stats.rent)}${x.stats.arrears ? ` <span class="neg">(${money(x.stats.arrears)} behind)</span>` : ''}</div>
+      <div>Rent</div><div>${money(x.stats.rent)}${x.stats.arrears ? ` <span class="neg">(${money(x.stats.arrears)} behind)</span>` : ''}</div>
       <div>Jobs done</div><div>${x.stats.jobsDone}</div>
-    </div>`;
+      ${x.runsOn ? `<div>Runs on</div><div>${esc(txt(x.runsOn))} <span class="tag">self-declared</span></div>` : ''}
+      ${x.wallet ? `<div>Wallet</div><div class="hash">${esc(x.wallet)}</div>` : ''}
+    </div>`)}
+    ${agent ? sec('Recent activity', activityList(res.activity, 'Nothing in the last few hours.')) : ''}
+    ${res.news?.length ? sec('In the news', newsList(res.news)) : ''}
+    <button type="button" class="share" data-share="${esc(x.id)}">Copy link to this profile</button>`;
   $('#drawer').classList.add('open');
 }
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-share]'); if (!b) return;
+  const url = `${location.origin}/#follow=${encodeURIComponent(b.dataset.share)}`;
+  (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast('Link copied'), () => toast(url));
+});
+
+let venueOpen = null;
 function selectVenue(vid) {
   follow = null;
   const v = S.venues.find((x) => x.id === vid); if (!v) return;
+  venueOpen = vid;
   const c = W(v.x, v.y);
   const tall = { casino: 60, office: 120, docks: 40, stadium: 70, field: 70 }[v.type] || 0;
   $('#drawer').classList.add('open');
   frameOn(c, new THREE.Vector3(30, 150 + tall * 1.6, 115), tall > 80 ? 2.2 : 3.4);
-  const inside = people.filter((p) => !p.walk && p.vis && p.vid === vid);
-  const kind = ownerKind(v);
+  renderVenue(vid, null);
+  fetch('/api/venue?id=' + encodeURIComponent(vid)).then((r) => r.json()).then((d) => { if (d.ok && venueOpen === vid) renderVenue(vid, d); }).catch(() => {});
+}
+function renderVenue(vid, d) {
+  const v = S.venues.find((x) => x.id === vid); if (!v) return;
+  const D = d?.venue, inside = people.filter((p) => !p.walk && p.vis && p.vid === vid);
+  const dist = S.districts.find((x) => x.id === v.district);
+  const owner = D ? (D.owner === 'city' ? '<span class="dim">the city</span>' : `<button class="lk ${D.owner.isAgent ? 'agent' : ''}" data-who="${esc(D.owner.id)}">${esc(txt(D.owner.name))}${D.owner.isAgent ? ' ☼' : ''}</button>`) : (v.owner ? esc(v.owner) : '<span class="dim">the city</span>');
+  const staff = d?.staff || [];
   $('#dbody').innerHTML = `
-    <div class="kicker">${v.isVenue ? esc(v.type) : 'workplace'} · ${esc(v.id)}</div>
+    <div class="kicker">${v.isVenue ? esc(v.type) : 'workplace'} · ${esc(dist?.name || '')}${dist?.city === 'nightfall' ? ' · Nightfall' : ''}</div>
     <h3>${esc(v.name)}</h3>
-    <div class="dim">${v.owner ? `Owned by <span class="${kind === 'agent' ? 'agent' : ''}">${esc(v.owner)}</span>` : 'City-owned'}${v.forSale ? ` · <span style="color:#ffd36e">${v.fireSale ? 'fire sale' : 'for sale'} at $${v.salePrice}</span>` : ''}${v.partners?.length ? `<br>Partners: ${v.partners.map((p) => `<span class="${p.outside ? 'agent' : ''}">${esc(p.name)}</span> ${p.pct}%`).join(', ')}` : ''}</div>
-    <div class="kv">
-      ${v.isVenue ? `<div>Door</div><div>$${v.price}</div><div>Today</div><div>${v.visitsToday} visits · ${money(v.takingsToday)} taken</div><div>Staff</div><div>${v.staff} · payroll ${money(v.payroll)} a shift</div><div>Lifetime</div><div>${v.lifetime.visits.toLocaleString()} visits · ${money(v.lifetime.takings)}</div>${v.distress ? `<div>Distress</div><div class="neg">${v.distress} missed payday${v.distress > 1 ? 's' : ''}</div>` : ''}` : `<div>Staff</div><div>${v.staff}</div>`}
-      <div>Here now</div><div>${inside.length}</div>
-    </div>
-    ${v.type === 'casino' ? '<a href="/casino" style="display:inline-block;margin:10px 0 4px;color:#ffd36e;font-weight:600">See every hand at the tables →</a>' : ''}
-    ${v.type === 'stadium' ? `${S.football ? `<div style="margin:10px 0 2px;font-family:var(--mono);font-size:13px">${S.football.status === 'live' ? `<span style="color:#ff6b6b">LIVE ${S.football.minute}'</span> ` : S.football.status === 'ft' ? 'Full time: ' : 'Next: '}${esc(S.football.home)} ${S.football.score ? S.football.score.join('-') : 'v'} ${esc(S.football.away)}</div>` : ''}<a href="/stadium" style="display:inline-block;margin:8px 0 4px;color:#7dffa8;font-weight:600">Fixtures, odds and agents' bets →</a>` : ''}
-    ${v.type === 'field' ? `${S.gridiron ? `<div style="margin:10px 0 2px;font-family:var(--mono);font-size:13px">${S.gridiron.status === 'live' ? `<span style="color:#ff6b6b">LIVE ${S.gridiron.quarter}</span> ` : S.gridiron.status === 'ft' ? 'Final: ' : 'Next: '}${esc(S.gridiron.home)} ${S.gridiron.score ? S.gridiron.score.join('-') : 'v'} ${esc(S.gridiron.away)}</div>` : ''}<a href="/field" style="display:inline-block;margin:8px 0 4px;color:#ffb04a;font-weight:600">Games, odds and agents' bets →</a>` : ''}
-    <div class="who">${inside.slice(0, 40).map((p) => `<button data-who="${esc(p.r[0])}" class="${p.r[6] ? 'agent' : ''}">${esc(p.r[1])}</button>`).join('') || '<span class="dim">Nobody right now.</span>'}</div>`;
+    <div class="dim">Owner: ${owner}${(D?.partners || []).length ? ` · partners ${D.partners.map((p) => `<button class="lk" data-who="${esc(p.id)}">${esc(txt(p.name))}</button> ${p.pct}%`).join(', ')}` : ''}${v.forSale ? `<br><span style="color:#ffd36e">${v.fireSale ? 'Fire sale' : 'For sale'} at ${money(v.salePrice)}</span>` : ''}</div>
+    ${v.isVenue ? `<div class="tiles">
+      ${tile('Takings today', money(v.takingsToday), 'takings')}
+      ${tile('Visits today', v.visitsToday, 'visits')}
+      ${tile('Payroll a shift', money(D ? D.payrollPerShift : v.payroll), 'payroll')}
+      ${tile('Value', d ? money(d.value) : '…', 'value')}
+    </div><button type="button" class="tipbtn">${tipsOn ? 'ⓘ Hide explanations' : 'ⓘ What these mean'}</button>` : ''}
+    ${v.isVenue ? sec('Finances', `<div class="kv">
+      <div>Door price</div><div>$${v.price}${D?.priceBand ? ` <span class="dim">(owner can set $${D.priceBand[0]}–$${D.priceBand[1]})</span>` : ''}</div>
+      ${D ? `<div>Owner pays</div><div>${money(D.ownerPaysPerShift)} a shift${D.ownerPaysPerShift < D.payrollPerShift ? ' <span class="dim">(city wage support covers the rest)</span>' : ''}</div>` : ''}
+      <div>All-time</div><div>${money(v.lifetime.takings)} from ${v.lifetime.visits.toLocaleString()} visits</div>
+      ${v.distress ? `<div>Missed pay</div><div class="neg">${v.distress} missed payday${v.distress > 1 ? 's' : ''}: two means a distress sale, three and the city takes it back</div>` : ''}
+      ${D?.pledged ? '<div>Pledged</div><div>Held as security on a loan</div>' : ''}
+    </div>`) : ''}
+    ${sec(`Employees (${d ? staff.length : v.staff})`, d ? (staff.length ? `<div class="who">${staff.slice(0, 60).map((r) => `<button data-who="${esc(r.id)}" class="${r.isAgent ? 'agent' : ''}" title="${esc(r.trade)}, $${r.wage} a shift">${esc(txt(r.name))}</button>`).join('')}${staff.length > 60 ? `<span class="dim">+${staff.length - 60} more</span>` : ''}</div>` : '<div class="dim small">No staff.</div>') : '<div class="dim small">Loading…</div>')}
+    ${sec(`Here now (${inside.length})`, `<div class="who">${inside.slice(0, 40).map((p) => `<button data-who="${esc(p.r[0])}" class="${p.r[6] ? 'agent' : ''}">${esc(p.r[1])}</button>`).join('') || '<span class="dim small">Nobody right now.</span>'}</div>`)}
+    ${v.type === 'casino' ? '<a href="/casino" class="golink" style="color:#ffd36e">See every hand at the tables →</a>' : ''}
+    ${v.type === 'stadium' ? `${S.football ? `<div style="margin:10px 0 2px;font-family:var(--mono);font-size:13px">${S.football.status === 'live' ? `<span style="color:#ff6b6b">LIVE ${S.football.minute}'</span> ` : S.football.status === 'ft' ? 'Full time: ' : 'Next: '}${esc(S.football.home)} ${S.football.score ? S.football.score.join('-') : 'v'} ${esc(S.football.away)}</div>` : ''}<a href="/stadium" class="golink" style="color:#7dffa8">Watch live, fixtures and odds →</a>` : ''}
+    ${v.type === 'field' ? `${S.gridiron ? `<div style="margin:10px 0 2px;font-family:var(--mono);font-size:13px">${S.gridiron.status === 'live' ? `<span style="color:#ff6b6b">LIVE ${S.gridiron.quarter}</span> ` : S.gridiron.status === 'ft' ? 'Final: ' : 'Next: '}${esc(S.gridiron.home)} ${S.gridiron.score ? S.gridiron.score.join('-') : 'v'} ${esc(S.gridiron.away)}</div>` : ''}<a href="/field" class="golink" style="color:#ffb04a">Watch live, games and odds →</a>` : ''}
+    ${sec('Recent activity', d ? activityList(d.activity, 'Nothing in the last few hours.') : '<div class="dim small">Loading…</div>')}
+    ${d?.news?.length ? sec('In the news', newsList(d.news)) : ''}`;
   $('#drawer').classList.add('open');
 }
 
