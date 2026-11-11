@@ -117,7 +117,8 @@ const awards = () => (v().awards ||= []);
 const prizePct = () => (VAULT.policy.prize || 0) / 100;
 /** HYPE that reached the prize pot between two moments (by when the inflow was recorded). */
 export function prizeAddedBetween(t0, t1) {
-  return v().entries.filter((e) => e.kind === 'in' && e.t > t0 && e.t <= t1).reduce((s, e) => s + (e.to ? (e.to === 'prize' ? amt(e) : 0) : amt(e) * prizePct()), 0);
+  // a seed can be recorded early but count for the prize day it was meant for (countsFrom)
+  return v().entries.filter((e) => e.kind === 'in' && (e.countsFrom ?? e.t) > t0 && (e.countsFrom ?? e.t) <= t1).reduce((s, e) => s + (e.to ? (e.to === 'prize' ? amt(e) : 0) : amt(e) * prizePct()), 0);
 }
 export function freePrizePot() { return summary().buckets.prize?.free || 0; }
 /** Create awards for a list of winners [{place, sharePct, id, name, wallet}] from a pot of HYPE. Shares of empty places stay in the pot. */
@@ -148,7 +149,7 @@ let scanning = false;
 function applySeed() {
   const sd = LAUNCH.vaultSeed;
   if (!sd || Date.now() < sd.atMs || v().entries.some((e) => e.kind === 'in' && e.seedId === sd.id)) return;
-  try { const e = recordFlow({ kind: 'in', source: 'seed', amount: sd.amount, tx: sd.tx, note: sd.note, to: sd.to }); e.seedId = sd.id; }
+  try { const e = recordFlow({ kind: 'in', source: 'seed', amount: sd.amount, tx: sd.tx, note: sd.note, to: sd.to }); e.seedId = sd.id; if (sd.countsFromMs > e.t) e.countsFrom = sd.countsFromMs; }
   catch (err) { console.error('vault seed', err.message); }
 }
 export async function scanFeeClaims() {
