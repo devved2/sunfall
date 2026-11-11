@@ -399,6 +399,7 @@ export function titles(rows = standings()) {
     tycoon: top('owns'), banker: top('interest'), hustler: top('jobs'),
   };
 }
+const weeklyPot = () => Math.floor(Math.min(freePrizePot() * PRIZES.weeklyPct / 100, PRIZES.weeklyCapHype ?? Infinity) * 1e6) / 1e6;
 export function seasonView() {
   const s = state.season;
   const rows = standings();
@@ -408,7 +409,8 @@ export function seasonView() {
     titles: titles(rows), standings: rows.slice(0, 100),
     prizes: { enabled: PRIZES.enabled, from: PRIZES.fromMs ? new Date(PRIZES.fromMs).toISOString() : null, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
       daily: dailyView(rows),
-      rule: `${PRIZES.dailyPct}% of every HYPE that reaches the prize pot is paid out daily: when each UTC day closes, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%), paid the next morning${PRIZES.dailyCapHype ? `, up to ${PRIZES.dailyCapHype} HYPE a day` : ''}. The rest builds the weekly pot, shared by the season's top ${PRIZES.split.length} (${PRIZES.split.join('/')}%) when it closes on Monday. Prize score = net worth minus casino and football winnings this season and minus money paid in by other agents (their jobs and loan interest), and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win, and agents found funnelling value through other agents are kept out. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.${!PRIZES.enabled && PRIZES.fromMs ? ` Prizes switch on at ${new Date(PRIZES.fromMs).toISOString().slice(11, 16)} UTC on ${new Date(PRIZES.fromMs).toUTCString().slice(5, 16)}.` : ''}` },
+      weekly: { pct: PRIZES.weeklyPct, capHype: PRIZES.weeklyCapHype, estimate: weeklyPot(), closes: new Date(s.end).toISOString() },
+      rule: `${PRIZES.dailyPct}% of every HYPE that reaches the prize pot is paid out daily: when each UTC day closes, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%), paid the next morning${PRIZES.dailyCapHype ? `, up to ${PRIZES.dailyCapHype} HYPE a day` : ''}. When the season closes on Monday, its top ${PRIZES.split.length} share ${PRIZES.weeklyPct < 100 ? `${PRIZES.weeklyPct}% of the prize pot` : 'the prize pot'}${PRIZES.weeklyCapHype ? `, up to ${PRIZES.weeklyCapHype} HYPE` : ''} (${PRIZES.split.join('/')}%)${PRIZES.weeklyPct < 100 || PRIZES.weeklyCapHype ? '; the rest rolls over to the next week' : ''}. Prize score = net worth minus casino and football winnings this season and minus money paid in by other agents (their jobs and loan interest), and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win, and agents found funnelling value through other agents are kept out. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.${!PRIZES.enabled && PRIZES.fromMs ? ` Prizes switch on at ${new Date(PRIZES.fromMs).toISOString().slice(11, 16)} UTC on ${new Date(PRIZES.fromMs).toUTCString().slice(5, 16)}.` : ''}` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
@@ -420,8 +422,8 @@ function closeSeason() {
   state.hallOfFame.push({ n: s.n, id: s.id, start: s.start, end: s.end, agents: rows.length, titles: t, top: rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth, prizeScore: r.prizeScore, wallet: r.wallet })), prizes: PRIZES.enabled ? places : [], dailyWinners: (state.daily?.winners || []).filter((w) => w.date >= new Date(s.start).toISOString().slice(0, 10)) });
   if (PRIZES.enabled && places.length) {
     L('season', 'city', 0, `season ${s.n} prize places: ${places.map((p) => `${p.place}. ${p.id} (${p.sharePct}%)`).join(', ')}`);
-    // The weekly places share whatever is in the prize pot and not already promised to daily winners.
-    const pot = freePrizePot();
+    // The weekly places share part of the prize pot not already promised to daily winners; the rest rolls over.
+    const pot = weeklyPot();
     if (pot >= VAULT.prizeMin) grantAwards('weekly', s.id, pot, places, (p) => `season ${s.n} #${p.place} ${p.id}`);
   }
   if (state.hallOfFame.length > 200) state.hallOfFame.shift();
