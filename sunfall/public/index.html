@@ -87,6 +87,9 @@ nav a.cta{background:linear-gradient(180deg,#8fdcf1,#5cc4e3);color:#04181c;font-
 .vl.small span{display:none}.vl.small{padding:3px 7px}.vl.small b{font-size:10px}
 .vl:after{content:'';position:absolute;left:12px;bottom:-6px;width:1px;height:6px;background:rgba(255,255,255,.35)}
 .lm{position:absolute;left:0;top:0;transition:opacity .25s;font-family:var(--serif);font-style:italic;font-size:17px;color:rgba(255,248,236,.92);text-shadow:0 1px 8px rgba(0,0,0,.8);white-space:nowrap;pointer-events:none}
+.lm.big{font-family:var(--mono);font-style:normal;font-size:15px;letter-spacing:.42em;color:#f1d4ff;text-shadow:0 0 14px rgba(192,60,255,.9),0 1px 8px rgba(0,0,0,.8)}
+#chips .cty{border-color:rgba(192,60,255,.55);color:#e7c8ff}
+.rival b{font-family:var(--mono)}.rival .sf{color:#ffcf8a}.rival .nf{color:#e0a8ff}
 #live{position:fixed;left:18px;top:84px;width:min(380px,calc(100vw - 36px));z-index:3;overflow:hidden}
 #live .lh{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;font-family:var(--mono);font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--agent);cursor:pointer;border-bottom:1px solid var(--line)}
 #live .lh i{font-style:normal;color:var(--faint)}
@@ -122,6 +125,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 .ev{display:none;margin-top:4px;font-family:var(--mono);font-size:11px;color:#ffd36e;text-decoration:none;max-width:420px}
 .ev.on{display:block}.ev .fc{display:block;color:var(--faint);font-size:10px;margin-top:1px}
 .ev.storm{color:#a9bcff}.ev.crash{color:#ff8a7a}.ev.festival{color:#ffb86b}.ev.lucky{color:#c9a7ff}.ev.boom,.ev.cargo{color:#7fe0b0}
+.season[hidden]{display:none}
 .season{display:block;text-decoration:none;color:inherit;border-top:1px solid var(--line);margin-top:4px;padding-top:4px}
 .season b{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #tip{position:fixed;pointer-events:none;z-index:6;display:none;padding:8px 11px;font-size:12px;line-height:1.45;max-width:260px}
@@ -221,6 +225,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
   <div class="stat hide-m"><span>Treasury</span><b id="treas">—</b></div>
   <button type="button" class="stat castat" id="castat" hidden><span>$SUNFALL</span><b id="ca">—</b></button>
   <a class="season" href="/records#season"><div class="stat"><span>Season</span><b id="sn">—</b></div><div class="stat"><span>Leader</span><b id="lead" class="agent">—</b></div></a>
+  <a class="season rival" id="rivalstat" href="/records#rivalry" hidden title="A point a day to the city whose venues took more per resident, plus league derbies"><div class="stat"><span>Rivalry</span><b id="rival">—</b></div></a>
 </div>
 
 <div id="intro"><div class="in">
