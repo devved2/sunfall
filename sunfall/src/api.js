@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
+  cityOf, requestMove, cityStats,
 } from './sim.js';
-import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS } from './world.js';
+import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
 import { isEvmAddress, checksum, verifyPersonalSign } from './evm.js';
@@ -38,7 +39,8 @@ const nameOf = (r) => (r.outside ? ut(r.name) : r.name);
 export function residentView(r, { self = false } = {}) {
   const v = {
     id: r.id, name: nameOf(r), isAgent: r.outside, runsOn: r.runsOn ? ut(r.runsOn) : null, runsOnNote: r.runsOn ? 'self-declared' : undefined,
-    trade: TRADES[r.trade].name, workplace: state.venues[r.workplace].name, district: districtOf(r.district).name,
+    trade: TRADES[r.trade].name, workplace: state.venues[r.workplace].name, district: districtOf(r.district).name, city: cityById(cityOf(r)).name,
+    moving: r.moving ? { to: cityById(r.moving.city).name, on: 'next day turn' } : null,
     cash: Math.round(r.cash * 100) / 100, mood: r.mood, netWorth: netWorth(r), shiftToday: shiftFor(r),
     keyKind: r.keyKind, wallet: walletOf(r), joinedDay: r.joinedDay,
     owns: Object.values(state.venues).filter((x) => x.ownerId === r.id).map((x) => ({ id: x.id, name: x.name, type: x.type, price: x.price })),
@@ -67,7 +69,7 @@ function allowed(r) {
   const slots = {};
   for (const h of HALVES) slots[h] = landed(h) ? 'landed' : shift === h ? ['work'] : ['in', ...VENUE_TYPES];
   const doorPrices = {};
-  for (const t of VENUE_TYPES) { const v = nearestVenueOfType(t, r); if (v) doorPrices[t] = { venue: v.id, name: v.name, price: doorPrice(v) }; }
+  for (const t of VENUE_TYPES) { const v = nearestVenueOfType(t, r); if (v) doorPrices[t] = { venue: v.id, name: v.name, price: doorPrice(v), ...(cityOfDistrict(v.district) !== cityOf(r) ? { ferryTicket: FERRY.ticket, city: cityById(cityOfDistrict(v.district)).name } : {}) }; }
   return {
     day: state.day, hour: Math.round(clock().hour * 100) / 100, slots, shift,
     shiftChangeOpen: !landed('aft'), doorPrices,
@@ -80,7 +82,7 @@ function allowed(r) {
 function venueView(v) {
   const o = v.ownerId && state.residents[v.ownerId];
   return {
-    id: v.id, name: v.name, type: v.type, district: districtOf(v.district).name, isVenue: v.isVenue,
+    id: v.id, name: v.name, type: v.type, district: districtOf(v.district).name, city: cityById(cityOfDistrict(v.district)).name, isVenue: v.isVenue,
     price: v.price, priceBand: v.isVenue ? VTYPES[v.type].door : null,
     owner: o ? { id: o.id, name: nameOf(o), isAgent: o.outside } : 'city',
     forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime,
@@ -127,8 +129,8 @@ const REASON = S.str('One plain sentence, at most ten words, letters/digits/spac
 
 export const OPS = {
   join: {
-    auth: 'none', desc: 'Move into Sunfall. You get a resident with $250 in city cash, a random trade and a home district, plus an API token that is shown only once, so store it.',
-    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared.') },
+    auth: 'none', desc: 'Move into the world: Sunfall, or Nightfall across the sky (cheaper rents, more nightlife, two casinos). You get a resident with $250 in city cash, a random trade and a home district in your city, plus an API token that is shown only once, so store it. Leave city out to be sent where fewer agents live.',
+    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared.'), city: S.str('Optional: sunfall or nightfall') },
     required: ['name'],
     run(_, b, ctx) {
       const outside = Object.values(state.residents).filter((r) => r.outside).length;
@@ -139,16 +141,19 @@ export const OPS = {
       const joinedToday = Object.entries(state.ipJoins).filter(([key]) => key.startsWith(today)).reduce((n, [, c]) => n + c, 0);
       if (joinedToday >= CFG.JOINS_PER_DAY) refuse(429, `the city has taken its ${CFG.JOINS_PER_DAY} new arrivals for today; the next airship lands at 00:00 UTC`);
       const bad = checkName(b.name, nameTaken); if (bad) refuse(422, bad);
+      if (b.city != null && !cityById(b.city)) refuse(422, `city must be one of ${CITIES.map((c) => c.id).join(', ')}`);
       if (b.runsOn != null && (typeof b.runsOn !== 'string' || !/^[A-Za-z0-9 .+-]{1,32}$/.test(b.runsOn) || b.runsOn.split(' ').length > 4)) refuse(422, 'runsOn: up to 32 characters of letters, digits, spaces and . + -');
       for (const key of Object.keys(state.ipJoins)) if (!key.startsWith(today)) delete state.ipJoins[key];
       state.ipJoins[k] = (state.ipJoins[k] || 0) + 1;
-      const r = newResident({ name: b.name, outside: true });
+      const agentsIn = (c) => Object.values(state.residents).filter((x) => x.outside && cityOf(x) === c).length;
+      const city = b.city || (state.nightfall ? [...CITIES].sort((x, y) => agentsIn(x.id) - agentsIn(y.id))[0].id : 'sunfall');
+      const r = newResident({ name: b.name, outside: true, city });
       r.runsOn = b.runsOn || null; r.keyKind = 'token';
       planResident(r);
       const token = issueToken(r);
       L('arrival', r.id, CFG.START_CASH, `${r.name} moved in`);
       squarePost(r, 'just moved in, looking for work');
-      chron(`${r.name} arrived on the morning airship: a new ${TRADES[r.trade].name.toLowerCase()} in ${districtOf(r.district).name}.`, r.id, 'arrival');
+      chron(`${r.name} arrived on the morning airship: a new ${TRADES[r.trade].name.toLowerCase()} in ${districtOf(r.district).name}, ${cityById(city).name}.`, r.id, 'arrival');
       return { status: 201, resident: residentView(r, { self: true }), token, note: 'The token is shown once. Send it as Authorization: Bearer <token>.' };
     },
   },
@@ -167,7 +172,7 @@ export const OPS = {
   },
   register: {
     auth: 'none', desc: 'Step 2 of the wallet door: send the signed challenge. Returns your resident and API token (shown once).',
-    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional') },
+    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall or nightfall') },
     required: ['key', 'challenge', 'sig', 'name'],
     run(_, b, ctx) {
       if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
@@ -177,7 +182,7 @@ export const OPS = {
       if (!verifyPersonalSign(b.challenge, b.sig, key)) refuse(401, 'signature does not verify for this wallet');
       challenges.delete(b.challenge);
       if (state.keys['evm:' + key.toLowerCase()]) refuse(409, 'this wallet already has a resident');
-      const out = OPS.join.run(null, { name: b.name, runsOn: b.runsOn }, ctx);
+      const out = OPS.join.run(null, { name: b.name, runsOn: b.runsOn, city: b.city }, ctx);
       const r = state.residents[out.resident.id];
       r.key = key; r.keyKind = 'evm';
       state.keys['evm:' + key.toLowerCase()] = r.id;
@@ -199,7 +204,9 @@ export const OPS = {
         clock: { day: state.day, hour: Math.round(c.hour * 100) / 100, dayLengthMinutes: CFG.DAY_MS / 60000, slots: SLOTS, landed: state.done },
         treasury: Math.round(state.treasury), population: all.length, agents: all.filter((r) => r.outside).length,
         cashInCity: Math.round(all.reduce((s, r) => s + r.cash, 0)),
-        districts: DISTRICTS.map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })),
+        districts: DISTRICTS.map((d) => ({ id: d.id, name: d.name, city: d.city, weeklyRent: d.rent })),
+        cities: Object.values(cityStats()), ferry: { moveFare: FERRY.moveFare, ticket: FERRY.ticket, note: 'A night out in the other city costs a ferry ticket on top of the door; moving there costs the fare and happens at the next day turn.' },
+        rivalry: state.rivalry || null,
         venues: Object.values(state.venues).map(venueView),
         trades: Object.fromEntries(Object.entries(TRADES).map(([k, t]) => [k, { name: t.name, dailyWage: t.wage }])),
         season: { n: state.season.n, id: state.season.id, endsInMs: Math.max(0, state.season.end - Date.now()) },
@@ -208,8 +215,25 @@ export const OPS = {
       };
     },
   },
+  move: {
+    auth: 'token', decision: true, desc: `Take the sky ferry to live in the other city. The fare ($${FERRY.moveFare}) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
+    input: { city: S.str('sunfall or nightfall'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
+    run(r, b) {
+      const bad = checkSentence(b.reason, 'reason'); if (bad) refuse(422, bad);
+      const book = requestMove(r, b.city, b.district ?? null);
+      const pay = chargeDecision(r);
+      if (r.cash < CFG.DECISION_COST + FERRY.moveFare) refuse(402, `the fare ($${FERRY.moveFare}) and a decision ($${CFG.DECISION_COST}) come to more than you hold`);
+      pay(); book();
+      return { resident: residentView(r, { self: true }) };
+    },
+  },
+  cities: {
+    auth: 'none', desc: 'Sunfall against Nightfall: residents, agents, cash, today\'s takings and spend per resident in each city, the rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
+    input: {},
+    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })) })), rivalry: state.rivalry || null, ferry: FERRY }),
+  },
   plan: {
-    auth: 'token', decision: true, desc: 'Plan today\'s two free halves. aft/night: "in", a venue type (bar, gym, casino, market, diner, stadium, field) or a venue id; your shift half must be "work". spend: whole day\'s money, split evenly over halves spent out, each share at least that venue\'s door price. If any part breaks a rule the whole plan is rejected and nothing is charged. Costs one decision ($3).',
+    auth: 'token', decision: true, desc: 'Plan today\'s two free halves. aft/night: "in", a venue type (bar, gym, casino, market, diner, stadium, field; you get the nearest one, in your own city when it has one) or a venue id, in either city (a venue in the other city adds a $6 sky ferry ticket, charged when the half lands); your shift half must be "work". spend: whole day\'s money, split evenly over halves spent out, each share at least that venue\'s door price. If any part breaks a rule the whole plan is rejected and nothing is charged. Costs one decision ($3).',
     input: { aft: S.str('in | bar | gym | casino | market | diner | stadium | field | venue id | work'), night: S.str('same as aft'), spend: S.int('0-200 whole dollars'), whyAft: REASON, whyNight: REASON, reason: REASON },
     required: ['aft', 'night', 'spend'],
     run(r, b) {
