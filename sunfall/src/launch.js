@@ -21,6 +21,10 @@ export const LAUNCH = {
     ? { contract: cfg.feeClaims.contract.toLowerCase(), event: cfg.feeClaims.event.toLowerCase(),
       pool: /^0x[0-9a-fA-F]{64}$/.test(cfg.feeClaims.pool || '') ? cfg.feeClaims.pool.toLowerCase() : null,
       fromMs: Number.isFinite(Date.parse(cfg.feeClaims.from)) ? Date.parse(cfg.feeClaims.from) : 0 } : null,
+  // A one-off top-up of the Vault: {id, amount, to (a bucket, or null for the usual split), at, tx (proof), note}.
+  vaultSeed: cfg.vaultSeed && typeof cfg.vaultSeed.id === 'string' && Number(cfg.vaultSeed.amount) > 0 && /^0x[0-9a-fA-F]{64}$/.test(cfg.vaultSeed.tx || '')
+    ? { id: cfg.vaultSeed.id, amount: Number(cfg.vaultSeed.amount), to: cfg.vaultSeed.to || null, tx: cfg.vaultSeed.tx, note: String(cfg.vaultSeed.note || '').slice(0, 140) || null,
+      atMs: Number.isFinite(Date.parse(cfg.vaultSeed.at)) ? Date.parse(cfg.vaultSeed.at) : 0 } : null,
   purgedAgents: Array.isArray(cfg.purgedAgents) ? cfg.purgedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // How every HYPE that reaches the Vault is split, e.g. {"prize":70,"buyback":30}; must add up to 100.
   vaultPolicy: cfg.vaultPolicy && typeof cfg.vaultPolicy === 'object' && Object.values(cfg.vaultPolicy).every((n) => Number.isFinite(n) && n >= 0)
