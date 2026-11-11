@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse } from './util.js';
-import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LINES } from './world.js';
+import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LINES, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
 import { LIMITS } from './launch.js';
 import { dealHand } from './casino.js';
@@ -11,6 +11,8 @@ import { gridironTick } from './gridiron.js';
 export const CFG = {
   DAY_MS: Number(process.env.DAY_MS) || 30 * 60 * 1000, // one city day = 30 real minutes
   NATIVES: Number(process.env.NATIVES) || 240,
+  NIGHTFALL_NATIVES: Number(process.env.NIGHTFALL_NATIVES) || 100,
+  NIGHTFALL_FUND: 20000, // the city's founding grant to Nightfall's treasury share, so its payroll is covered from day one
   START_CASH: 250,
   DECISION_COST: 3,
   DECISIONS_PER_HOUR: Number(process.env.DECISIONS_PER_HOUR) || 10,
@@ -90,6 +92,8 @@ export const landed = (k) => state.done.includes(k);
 // ---------------------------------------------------------------- world
 const idNum = (id) => Number(String(id).replace(/\D/g, '')) || 0;
 const districtOf = (id) => DISTRICTS.find((d) => d.id === id);
+export const cityOf = (r) => cityOfDistrict(r.district);          // a resident's (or venue's) city id
+const crossing = (r, v) => cityOfDistrict(v.district) !== cityOf(r); // a night out in the other city needs a ferry ticket
 
 function randomHome(district, rnd) {
   const [x, y, w, h] = districtOf(district).rect;
@@ -102,19 +106,20 @@ function weightedTrade(rnd) {
   for (const [k, t] of all) { x -= t.weight; if (x <= 0) return k; }
   return all[0][0];
 }
-function workplaceFor(trade, rnd) {
+function workplaceFor(trade, rnd, city = 'sunfall') {
   const place = TRADES[trade].place;
-  const options = Object.values(state.venues).filter((v) => v.type === place);
-  return pick(options, rnd).id;
+  const all = Object.values(state.venues).filter((v) => v.type === place);
+  const here = all.filter((v) => cityOfDistrict(v.district) === city);
+  return pick(here.length ? here : all, rnd).id;
 }
 export function nameTaken(lower) { return Boolean(state.names[lower]); }
 
-export function newResident({ name, outside = false, rnd = Math.random, cash = CFG.START_CASH, district, trade }) {
+export function newResident({ name, outside = false, rnd = Math.random, cash = CFG.START_CASH, district, trade, city = 'sunfall' }) {
   const id = 'r' + ++state.counters.r;
   trade = trade || weightedTrade(rnd);
-  district = district || pick(DISTRICTS, rnd).id;
+  district = district || pick(districtsOf(city), rnd).id;
   const r = {
-    id, name, trade, workplace: workplaceFor(trade, rnd), district, home: randomHome(district, rnd),
+    id, name, trade, workplace: workplaceFor(trade, rnd, cityOfDistrict(district)), district, home: randomHome(district, rnd),
     cash, mood: 60, traits: { thrift: rnd(), social: rnd(), risk: rnd() },
     outside, runsOn: null, key: null, keyKind: null, tokenHash: null, seq: 0,
     policy: null, decisions: [], squareDay: null, squareCount: 0, shiftOverride: null,
@@ -143,6 +148,7 @@ export function initWorld() {
   }
   L('genesis', 'city', state.treasury, `${n} residents, treasury opened`);
   chron(`Sunfall opens its gates. ${n} residents wake up.`);
+  foundNightfall();
   cityJobs();
   planAll();
   state.season = { n: 1, ...seasonFor(Date.now()) };
@@ -161,6 +167,87 @@ export function ensurePlaces() {
       lifetime: { visits: 0, takings: 0 }, partners: [],
     };
   }
+}
+
+// Nightfall is founded once, in a new world or in an existing one: its own natives, and a founding grant
+// to the shared treasury so its payroll is covered from the first day.
+export function foundNightfall() {
+  if (state.nightfall?.founded != null) return false;
+  const rnd = mulberry32(CFG.SEED + 7777);
+  const n = CFG.NIGHTFALL_NATIVES;
+  let made = 0, guard = 0;
+  while (made < n && guard++ < n * 50) {
+    const name = `${pick(FIRST, rnd)} ${pick(LAST, rnd)}`;
+    if (nameTaken(name.toLowerCase())) continue;
+    newResident({ name, rnd, cash: Math.round(150 + rnd() * 250), city: 'nightfall' });
+    made++;
+  }
+  state.treasury += CFG.NIGHTFALL_FUND;
+  state.nightfall = { founded: state.day, natives: made };
+  state.rivalry ||= { days: { sunfall: 0, nightfall: 0 }, derbies: { sunfall: 0, nightfall: 0, drawn: 0 }, last: null };
+  L('genesis', 'city', CFG.NIGHTFALL_FUND, `Nightfall founded: ${made} residents, founding grant to the treasury`);
+  chron(`Nightfall rises across the sky from Sunfall. ${made} residents move in, and the sky ferry starts running.`, null, 'event');
+  return true;
+}
+
+// ---------------------------------------------------------------- the sky ferry
+// Moving to the other city: the fare is paid now, the move happens at the next day turn (new home, same trade,
+// a workplace of the same kind in the new city).
+export function requestMove(r, city, district = null) {
+  if (!cityById(city)) refuse(422, `city must be one of ${CITIES.map((c) => c.id).join(', ')}`);
+  if (city === cityOf(r)) refuse(409, `you already live in ${cityById(city).name}`);
+  if (district != null && !districtsOf(city).some((d) => d.id === district)) refuse(422, `district must be one of ${districtsOf(city).map((d) => d.id).join(', ')}`);
+  if (r.moving) refuse(409, `you're already booked on the ferry to ${cityById(r.moving.city).name}`);
+  if (r.cash < FERRY.moveFare) refuse(402, `the ferry fare to move is $${FERRY.moveFare} and you hold $${r.cash.toFixed(2)}`);
+  return () => {
+    r.cash -= FERRY.moveFare; state.treasury += FERRY.moveFare;
+    r.moving = { city, district, booked: state.day };
+    L('ferry', r.id, -FERRY.moveFare, `ferry fare: moving to ${cityById(city).name}`);
+    chron(`${r.name} books the sky ferry to ${cityById(city).name}.`, r.id, 'arrival');
+    return r.moving;
+  };
+}
+function applyMoves() {
+  for (const r of Object.values(state.residents)) {
+    if (!r.moving) continue;
+    const { city, district } = r.moving;
+    const from = cityOf(r);
+    r.district = district || pick(districtsOf(city)).id;
+    r.home = randomHome(r.district, secureRandom);
+    r.workplace = workplaceFor(r.trade, secureRandom, city);
+    delete r.moving;
+    r.moves = (r.moves || 0) + 1;
+    chron(`${r.name} steps off the sky ferry: moved from ${cityById(from).name} to ${districtOf(r.district).name}, ${cityById(city).name}.`, r.id, 'arrival');
+  }
+}
+
+// ---------------------------------------------------------------- the rivalry
+// Per city: who lives there, what they hold, what its venues took today. The daily point goes to the city whose
+// venues took more per resident, so the smaller city can win on the night.
+export function cityStats() {
+  const out = {};
+  for (const c of CITIES) out[c.id] = { id: c.id, name: c.name, residents: 0, agents: 0, cash: 0, takingsToday: 0, venues: 0, businessesOwnedByAgents: 0 };
+  for (const r of Object.values(state.residents)) { const o = out[cityOf(r)]; o.residents++; if (r.outside) o.agents++; o.cash += r.cash; }
+  for (const v of Object.values(state.venues)) {
+    const o = out[cityOfDistrict(v.district)];
+    if (!v.isVenue) continue;
+    o.venues++; o.takingsToday += v.takingsToday;
+    if (v.ownerId && state.residents[v.ownerId]?.outside) o.businessesOwnedByAgents++;
+  }
+  for (const o of Object.values(out)) { o.cash = Math.round(o.cash); o.takingsToday = Math.round(o.takingsToday); o.perResident = o.residents ? Math.round((o.takingsToday / o.residents) * 100) / 100 : 0; }
+  return out;
+}
+function scoreRivalryDay() {
+  if (!state.nightfall) return;
+  state.rivalry ||= { days: { sunfall: 0, nightfall: 0 }, derbies: { sunfall: 0, nightfall: 0, drawn: 0 }, last: null };
+  const s = cityStats(), a = s.sunfall, b = s.nightfall;
+  if (!a.residents || !b.residents || (!a.takingsToday && !b.takingsToday)) return;
+  const win = a.perResident === b.perResident ? null : a.perResident > b.perResident ? a : b;
+  if (win) state.rivalry.days[win.id]++;
+  state.rivalry.last = { day: state.day, sunfall: a.perResident, nightfall: b.perResident, winner: win?.id || null };
+  const R = state.rivalry.days;
+  chron(win ? `${win.name} wins day ${state.day} of the rivalry: $${win.perResident} spent per resident against $${(win === a ? b : a).perResident}. Sunfall ${R.sunfall}, Nightfall ${R.nightfall}.`
+    : `Day ${state.day} of the rivalry is a dead heat. Sunfall ${R.sunfall}, Nightfall ${R.nightfall}.`, null, 'rivalry');
 }
 
 // ---------------------------------------------------------------- shifts & plans
@@ -224,6 +311,8 @@ export function clampPlan(r, d, { cashAfterCost = r.cash, keepLanded = true } = 
   if (fresh < 0) refuse(422, 'spend is below what already landed today');
   if (!openOuts.length && fresh !== 0) refuse(422, 'spend must cover only halves spent out: nothing open is spent out');
   if (fresh > Math.floor(cashAfterCost)) refuse(422, `spend is more than you will hold after this decision ($${Math.floor(cashAfterCost)})`);
+  const tickets = openOuts.filter((h) => crossing(r, state.venues[out[h + 'Venue']])).length * FERRY.ticket;
+  if (tickets && fresh + tickets > Math.floor(cashAfterCost)) refuse(422, `a night out in the other city needs a $${FERRY.ticket} ferry ticket each way out: spend plus tickets is more than you will hold ($${Math.floor(cashAfterCost)})`);
   if (openOuts.length) {
     const share = Math.floor(fresh / openOuts.length);
     for (const h of openOuts) {
@@ -253,7 +342,8 @@ function rulesPlan(r) {
   let wantSpend = 0;
   for (const half of HALVES) {
     if (shift === half) { choice[half] = 'work'; continue; }
-    if (r.cash < 25 || secureRandom() < 0.15 + t.thrift * 0.25) { choice[half] = 'in'; continue; }
+    const nightOwl = half === 'night' && cityOf(r) === 'nightfall'; // Nightfall goes out at night
+    if (r.cash < 25 || secureRandom() < (nightOwl ? 0.05 + t.thrift * 0.12 : 0.15 + t.thrift * 0.25)) { choice[half] = 'in'; continue; }
     let options = half === 'aft' ? ['gym', 'diner', 'bar', 'gym', 'diner', 'bar', ...(state.venues.v12 ? ['stadium'] : [])] : ['bar', 'market', 'diner', 'bar', 'market', 'diner', ...(state.venues.v13 ? ['field'] : [])];
     if (half === 'night' && t.risk > 0.6 && r.cash > 160) options = ['casino', 'casino', 'bar'];
     choice[half] = pick(options);
@@ -265,7 +355,7 @@ function rulesPlan(r) {
   const outs = HALVES.filter((h) => choice[h] !== 'in' && choice[h] !== 'work');
   if (outs.length) {
     const cap = 80 + clamp(Math.round((r.cash - 800) * 0.06), 0, 120); // the well-off go out more
-    const budget = clamp(Math.round(r.cash * (0.06 + (1 - t.thrift) * 0.12)), 0, cap);
+    const budget = clamp(Math.round(r.cash * (0.06 + (1 - t.thrift) * 0.12) * (cityOf(r) === 'nightfall' ? 1.35 : 1)), 0, cap);
     const minNeeded = outs.map((h) => doorPrice(state.venues[choice[h]] || nearestVenueOfType(choice[h], r)));
     const per = Math.max(...minNeeded);
     wantSpend = Math.max(budget, per * outs.length);
@@ -357,7 +447,7 @@ function nativesTakeLeftovers(half) {
   for (const j of Object.values(state.jobs)) {
     if (j.by !== 'city' || j.status !== 'open' || j.day !== state.day || j.half !== half) continue;
     const v = state.venues[j.venue];
-    const free = Object.values(state.residents).filter((r) => !r.outside && r.plan && r.plan[half] !== 'work' && r.cash >= doorPrice(v) + 5);
+    const free = Object.values(state.residents).filter((r) => !r.outside && r.plan && r.plan[half] !== 'work' && r.cash >= doorPrice(v) + 5 && !crossing(r, v));
     if (!free.length) continue;
     const r = pick(free);
     const before = r.plan.shares[half] || 0;
@@ -382,10 +472,15 @@ function landHalf(half) {
       p.result[half] = 'closed by the storm';
       continue;
     }
-    if (r.cash < doorPrice(v)) {
+    const ticket = crossing(r, v) ? FERRY.ticket : 0;
+    if (r.cash < doorPrice(v) + ticket) {
       p.result[half] = 'turned away';
-      if (r.outside) L('door', r.id, 0, `turned away at ${v.name}: could not pay the door`);
+      if (r.outside) L('door', r.id, 0, ticket ? `missed the ferry to ${v.name}: could not pay ticket and door` : `turned away at ${v.name}: could not pay the door`);
       continue;
+    }
+    if (ticket) {
+      r.cash -= ticket; state.treasury += ticket;
+      if (r.outside) L('ferry', r.id, -ticket, `ferry ticket to ${v.name}`); else (agg['ferry'] ||= { n: 0, amt: 0, v: { id: 'city', name: 'the sky ferry' }, kind: 'ferry' }, agg['ferry'].n++, agg['ferry'].amt += ticket);
     }
     const amt = Math.min(p.shares[half], Math.floor(r.cash * 100) / 100);
     p.result[half] = 'there';
@@ -420,11 +515,13 @@ function landHalf(half) {
       else (agg[vid] ||= { n: 0, amt: 0, v, kind: 'spend' }, agg[vid].n++, agg[vid].amt -= amt);
     }
   }
-  for (const a of Object.values(agg)) L(a.kind, a.v.id, a.amt, `${a.n} residents at ${a.v.name}`);
-  const outN = Object.values(state.residents).filter((r) => r.plan?.result?.[half] && !['in', 'work', 'turned away', 'closed by the storm'].includes(r.plan.result[half])).length;
+  for (const a of Object.values(agg)) L(a.kind, a.v.id, a.amt, a.kind === 'ferry' ? `${a.n} ferry tickets` : `${a.n} residents at ${a.v.name}`);
+  const isOut = (r) => r.plan?.result?.[half] && !['in', 'work', 'turned away', 'closed by the storm'].includes(r.plan.result[half]);
   const taken = Object.values(state.venues).reduce((s, v) => s + v.takingsToday, 0);
   const busiest = Object.values(state.venues).filter((v) => v.isVenue).sort((a, b) => b.visitsToday - a.visitsToday)[0];
-  chron(`The ${half === 'aft' ? 'afternoon' : 'night'} lands: ${outN} residents out, $${Math.round(taken)} taken across the city today. Busiest: ${busiest.name}.`, null, 'landing');
+  const outs = CITIES.map((c) => [c, Object.values(state.residents).filter((r) => cityOf(r) === c.id && isOut(r)).length]);
+  const outText = state.nightfall ? outs.map(([c, n]) => `${n} out in ${c.name}`).join(', ') : `${outs[0][1]} residents out`;
+  chron(`The ${half === 'aft' ? 'afternoon' : 'night'} lands: ${outText}, $${Math.round(taken)} taken today. Busiest: ${busiest.name}.`, null, 'landing');
   settleJobs(half);
   chatter(half);
 }
@@ -542,11 +639,13 @@ function dayTurn() {
   for (const j of Object.values(state.jobs)) {
     if ((j.status === 'open' || j.status === 'taken') && j.day <= state.day) failJob(j, j.status === 'open' ? 'expired untaken' : 'not delivered');
   }
+  scoreRivalryDay();
   state.dayRoots.push({ day: state.day, root: state.ledgerHead, lines: state.ledgerCount, t: Date.now() });
   if (state.dayRoots.length > 1000) state.dayRoots.shift();
   state.day++;
   state.done = [];
   for (const v of Object.values(state.venues)) { v.visitsToday = 0; v.takingsToday = 0; }
+  applyMoves();
   afterDayTurn();
   nativesBuyBusinesses();
   cityJobs();
