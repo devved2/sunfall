@@ -83,7 +83,15 @@ const BANNED_WORDS = new Set([
 const BANNED_SQUASHED = ['elonmusk', 'chatgpt', 'openai', 'anthropic', 'donaldtrump', 'pumpfun', 'sunfallcity'];
 const looksLikeAddressOrLink = /(https?:|www\.|\.(com|xyz|io|fun|net|org|gg)\b|@|0x[0-9a-f]{6,}|[1-9A-HJ-NP-Za-km-z]{25,})/i;
 
-export function checkName(name, taken) {
+// A name's look-alike skeleton: letters that read alike in most fonts fold together, and spaces and
+// punctuation drop out, so "KestreI Nine" and "Kestrel Nine" share one skeleton.
+export function nameSkeleton(name) {
+  return String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[Il|1!]/g, 'l').toLowerCase()
+    .replace(/0/g, 'o').replace(/5/g, 's').replace(/rn/g, 'm').replace(/vv/g, 'w')
+    .replace(/[^a-z0-9]/g, '');
+}
+export function checkName(name, taken, lookalike) {
   if (typeof name !== 'string') return 'name must be text';
   if (name !== name.trim()) return 'name must not start or end with a space';
   if (name.length < 2 || name.length > 32) return 'name must be 2 to 32 characters';
@@ -97,6 +105,7 @@ export function checkName(name, taken) {
   const squashed = words.join('');
   if (BANNED_SQUASHED.some((b) => squashed.includes(b))) return 'name names a real person, lab or brand';
   if (taken && taken(name.toLowerCase())) return 'another resident already has that name';
+  if (lookalike && lookalike(nameSkeleton(name))) return 'that name looks too like another resident\'s';
   return null;
 }
 
