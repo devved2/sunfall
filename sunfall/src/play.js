@@ -36,6 +36,51 @@ function removeAgents() {
     console.log(`removedAgents: ${id} removed`);
   }
 }
+// Take a ring of agents out together (launch.json "purgedAgents"). A member still tied to someone outside the ring
+// (an active loan with another resident, or a partner in one of its businesses) is left in place and logged.
+function purgeAgents() {
+  const ids = new Set(LAUNCH.purgedAgents.filter((id) => state.residents[id]?.outside));
+  if (!ids.size) return;
+  const ok = (id) => id === 'city' || ids.has(id);
+  for (const id of [...ids]) {
+    const tied = Object.values(state.loans).some((l) => l.status === 'active' && (l.lender === id || l.borrower === id) && !(ok(l.lender) && ok(l.borrower)))
+      || Object.values(state.venues).some((v) => v.ownerId === id && (v.partners || []).some((p) => !ids.has(p.id)));
+    if (tied) { console.error(`purgedAgents: ${id} is tied to residents outside the ring; left in place`); ids.delete(id); }
+  }
+  if (!ids.size) return;
+  for (const l of Object.values(state.loans)) {
+    if (l.status === 'open' && ids.has(l.lender)) cancelOffer(l, 'lender left the city');
+    else if (l.status === 'active' && (ids.has(l.lender) || ids.has(l.borrower))) { l.status = 'defaulted'; l.note = 'left the city'; }
+  }
+  for (const o of Object.values(state.stakeOffers)) if (o.status === 'open' && ids.has(o.seller)) o.status = 'lapsed';
+  voidAgentBets(ids);
+  for (const v of Object.values(state.venues)) {
+    v.partners = (v.partners || []).filter((p) => !ids.has(p.id));
+    if (v.ownerId && ids.has(v.ownerId)) {
+      const base = PLACES.find((p) => p[0] === v.id)?.[6];
+      v.ownerId = null; v.partners = []; v.distress = 0; v.price = VTYPES[v.type].price; delete v.fireSale;
+      v.forSale = true; v.salePrice = base || Math.round((VTYPES[v.type].value * 0.7) / 10) * 10;
+      chron(`${v.name} goes back to the city and is for sale at ${money(v.salePrice)}.`, null, 'business');
+    }
+  }
+  for (const j of Object.values(state.jobs)) {
+    if (ids.has(j.takenBy) && j.status === 'taken' && !ids.has(j.by)) { j.status = 'open'; j.takenBy = null; }
+    if (ids.has(j.by) && ['open', 'taken'].includes(j.status)) state.treasury += j.pay; // escrow goes to the treasury
+    if (ids.has(j.by) || ids.has(j.takenBy)) delete state.jobs[j.id];
+  }
+  for (const l of Object.values(state.loans)) if (ids.has(l.lender) || ids.has(l.borrower)) delete state.loans[l.id];
+  for (const o of Object.values(state.stakeOffers)) if (ids.has(o.seller) || ids.has(o.buyer)) delete state.stakeOffers[o.id];
+  for (const id of ids) {
+    const r = state.residents[id];
+    state.treasury += Math.max(0, r.cash || 0);
+    for (const [k, v] of Object.entries(state.keys)) if (v === id) delete state.keys[k];
+    for (const [k, v] of Object.entries(state.names)) if (v === id) delete state.names[k];
+    delete state.residents[id];
+    L('leave', 'city', Math.max(0, r.cash || 0), `${id} removed from the city (ring), cash to the treasury`);
+    console.log(`purgedAgents: ${id} removed`);
+  }
+  chron(`${ids.size} agents who were trading only among themselves have been removed from the city.`, null, 'event');
+}
 export function migrate() {
   state.loans ||= {};
   state.stakeOffers ||= {};
@@ -63,6 +108,7 @@ export function migrate() {
   if (foundNightfall()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // Nightfall's first natives get today's plan
   for (const v of Object.values(state.venues)) v.partners ||= [];
   removeAgents();
+  purgeAgents();
   if (!Object.values(state.loans).some((l) => l.lender === 'city' && l.status === 'open')) cityBank();
   if (process.env.FORCE_EVENT) { const [kind, district] = process.env.FORCE_EVENT.split(':'); state.event = { kind, district: district || null, day: state.day }; } // testing only
 }
