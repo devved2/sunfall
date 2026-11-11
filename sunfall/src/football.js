@@ -199,20 +199,24 @@ export async function pollReal(now = Date.now()) {
 }
 
 // ---------------------------------------------------------------- bets
-const matchOf = (id) => F().matches[id] || F().real[id];
+// Other sports (src/gridiron.js) register their matches here, so one slip system serves every game in the city.
+const sources = [];
+export const registerMatches = (fn) => { sources.push(fn); };
+const matchOf = (id) => F().matches[id] || F().real[id] || sources.map((fn) => fn(id)).find(Boolean);
 export function placeBet(r, { match, pick: side, stake }) {
   const m = matchOf(match);
   if (!m) refuse(404, 'no such match: see the football op for match ids');
   if (!['home', 'draw', 'away'].includes(side)) refuse(422, 'pick must be home, draw or away');
   if (!Number.isInteger(stake) || stake < 1 || stake > STAKE_MAX) refuse(422, `stake: whole city dollars 1-${STAKE_MAX}`);
-  if (m.kind === 'league' ? m.status !== 'scheduled' || Date.now() >= m.ko : m.state !== 'pre' || Date.now() >= m.ko - 60_000) refuse(409, 'betting on that match has closed');
+  if (m.status ? m.status !== 'scheduled' || Date.now() >= m.ko : m.state !== 'pre' || Date.now() >= m.ko - 60_000) refuse(409, 'betting on that match has closed');
+  if (side === 'draw' && m.odds && !m.odds.draw) refuse(422, 'no draw in this sport: pick home or away');
   if (!m.odds || !m.odds[side]) refuse(409, 'no odds for that match yet');
   const f = F();
   if (f.bets.filter((b) => b.rid === r.id && b.status === 'open').length >= OPEN_BETS_MAX) refuse(429, `at most ${OPEN_BETS_MAX} open bets at once`);
   if (r.cash < stake + CFG.DECISION_COST) refuse(402, `a $${stake} slip and the $${CFG.DECISION_COST} decision need $${stake + CFG.DECISION_COST}; you hold $${r.cash.toFixed(2)}`);
   return () => {
     r.cash -= stake;
-    const arena = state.venues[ARENA]; arena.till += stake; arena.takingsToday += stake; arena.lifetime.takings += stake;
+    const arena = state.venues[m.venue || ARENA]; arena.till += stake; arena.takingsToday += stake; arena.lifetime.takings += stake;
     const b = { id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: Boolean(r.outside), kind: m.kind, match: m.id, matchName: matchLabel(m), pick: side, pickName: pickLabel(m, side), stake, odds: m.odds[side], status: 'open', payout: 0 };
     f.bets.push(b); f.totals.bets++; f.totals.staked += stake;
     if (f.bets.length > 2000) f.bets.splice(0, f.bets.length - 2000);
@@ -225,10 +229,10 @@ const nameOfSide = (m, s) => (m.kind === 'league' ? CLUB[m[s]].name : m[s].name)
 export const matchLabel = (m) => `${nameOfSide(m, 'home')} v ${nameOfSide(m, 'away')}`;
 const pickLabel = (m, s) => (s === 'draw' ? 'the draw' : nameOfSide(m, s));
 
-function settle(matchId, result) {
+export function settle(matchId, result) {
   const f = F(), m = matchOf(matchId);
   if (m) m.settled = result;
-  const arena = state.venues[ARENA];
+  const book = m?.venue || ARENA, arena = state.venues[book];
   let nWin = 0, nLose = 0, natPaid = 0, natLost = 0;
   for (const b of f.bets) {
     if (b.match !== matchId || b.status !== 'open') continue;
@@ -252,15 +256,14 @@ function settle(matchId, result) {
       if (!r.outside) natLost += b.stake;
     }
   }
-  if (natPaid) L('bet', ARENA, -r2(natPaid), `${m ? matchLabel(m) : matchId}: winning slips paid to residents`);
+  if (natPaid) L('bet', book, -r2(natPaid), `${m ? matchLabel(m) : matchId}: winning slips paid to residents`);
 }
 
 // Residents at the Arena put a few dollars on each league match as it kicks off.
-function nativesBet(m) {
+export function nativesBet(m, p = probs(m.home, m.away)) {
   const f = F();
   const pool = Object.values(state.residents).filter((r) => !r.outside && r.cash > 60 && r.traits.risk > 0.35);
   const n = Math.min(pool.length, 6 + Math.floor(secureRandom() * 10));
-  const p = probs(m.home, m.away);
   let total = 0;
   for (let i = 0; i < n; i++) {
     const r = pool.splice(Math.floor(secureRandom() * pool.length), 1)[0];
@@ -268,12 +271,12 @@ function nativesBet(m) {
     const stake = Math.min(Math.floor(r.cash * 0.1), 5 + Math.floor(secureRandom() * 26));
     if (stake < 1) continue;
     r.cash -= stake; total += stake;
-    f.bets.push({ id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: false, kind: 'league', match: m.id, pick: side, stake, odds: m.odds[side], status: 'open', payout: 0 });
+    f.bets.push({ id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: false, kind: m.kind, match: m.id, pick: side, stake, odds: m.odds[side], status: 'open', payout: 0 });
     f.totals.bets++; f.totals.staked += stake;
   }
   if (total) {
-    const arena = state.venues[ARENA]; arena.till += total; arena.takingsToday += total; arena.lifetime.takings += total;
-    L('bet', ARENA, total, `${n} residents bet on ${matchLabel(m)}`);
+    const arena = state.venues[m.venue || ARENA]; arena.till += total; arena.takingsToday += total; arena.lifetime.takings += total;
+    L('bet', m.venue || ARENA, total, `${n} residents bet on ${matchLabel(m)}`);
   }
 }
 
@@ -305,7 +308,8 @@ function realMatchView(m, now = Date.now()) {
     open: m.state === 'pre' && Boolean(m.odds) && now < m.ko - 60_000, result: m.settled || null,
   };
 }
-const betView = (b) => {
+const FOOTBALL_KINDS = ['league', 'real'];
+export const betView = (b) => {
   const m = matchOf(b.match);
   return { id: b.id, t: b.t, rid: b.rid, name: b.agent ? ut(b.name) : b.name, agent: b.agent, kind: b.kind, match: b.match, matchName: b.matchName || (m ? matchLabel(m) : b.match), pick: b.pick, pickName: b.pickName || (m ? pickLabel(m, b.pick) : b.pick), stake: b.stake, odds: b.odds, status: b.status, payout: b.payout };
 };
@@ -329,12 +333,13 @@ export function footballView(resident) {
       upcoming: real.filter((m) => m.state === 'pre' && m.ko > now - 3600_000).slice(0, 60).map((m) => realMatchView(m, now)),
       results: real.filter((m) => m.completed).slice(-30).reverse().map((m) => realMatchView(m, now)),
     },
-    agentBets: f.bets.filter((b) => b.agent).slice(-40).reverse().map(betView),
-    mine: me && me.outside ? { id: me.id, name: ut(me.name), bets: f.bets.filter((b) => b.rid === me.id).slice(-30).reverse().map(betView) } : null,
+    agentBets: f.bets.filter((b) => b.agent && FOOTBALL_KINDS.includes(b.kind)).slice(-40).reverse().map(betView),
+    mine: me && me.outside ? { id: me.id, name: ut(me.name), bets: f.bets.filter((b) => b.rid === me.id && FOOTBALL_KINDS.includes(b.kind)).slice(-30).reverse().map(betView) } : null,
     totals: { bets: f.totals.bets, staked: Math.round(f.totals.staked), paid: Math.round(f.totals.paid) },
     rules: `Back the home side, the draw or the away side with city cash, $1-${STAKE_MAX} a slip, at most ${OPEN_BETS_MAX} open slips. Odds are fixed when you bet. A winning slip pays stake x odds from Sunfall Arena; a losing one goes to the Arena. Sunfall League matches kick off at ${KICKOFFS.map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; their goals are drawn at kick-off. Real matches settle on the 90-minute result from ESPN; a match called off returns the stake. Football winnings don't count towards the prize score.`,
   };
 }
+export const allBets = () => F().bets;
 export function myOpenBets(r) { return F().bets.filter((b) => b.rid === r.id && b.status === 'open').map(betView); }
 // A compact line for the 3D city: what's on at the Arena right now, or next.
 export function arenaNow(now = Date.now()) {
