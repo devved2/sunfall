@@ -1,13 +1,29 @@
-// Static geography of Sunfall. Map space is 1000 x 700.
+// Static geography of the world: Sunfall and, across the sky, Nightfall. Sunfall's map space is 1000 x 700;
+// Nightfall sits further east in the same map space (x 1540-2200), joined to Sunfall by the sky ferry.
+
+export const CITIES = [
+  { id: 'sunfall', name: 'Sunfall', tagline: 'a world above the clouds', bounds: [0, 0, 1000, 700] },
+  { id: 'nightfall', name: 'Nightfall', tagline: 'the city that never lands', bounds: [1520, 40, 2220, 660] },
+];
+export const cityById = (id) => CITIES.find((c) => c.id === id);
+// The sky ferry: moving house costs a fare, a night out in the other city a ticket.
+export const FERRY = { moveFare: 30, ticket: 6, pierSunfall: [990, 400], pierNightfall: [1530, 400] };
 
 export const DISTRICTS = [
-  { id: 'flats', name: 'The Terraces', rent: 75, rect: [30, 40, 300, 300], tint: '#3a2f4a' },
-  { id: 'hillside', name: 'The Spires', rent: 175, rect: [360, 30, 380, 190], tint: '#2f4a3a' },
-  { id: 'neon', name: 'Crystal Row', rent: 150, rect: [770, 40, 200, 420], tint: '#4a2f3f' },
-  { id: 'oldtown', name: 'Old Lanterns', rent: 120, rect: [360, 250, 380, 210], tint: '#4a3f2f' },
-  { id: 'harbour', name: 'Skyport', rent: 95, rect: [30, 370, 300, 300], tint: '#2f3f4a' },
-  { id: 'saltworks', name: 'Cloudworks', rent: 80, rect: [360, 490, 610, 180], tint: '#3f3f3f' },
+  { id: 'flats', name: 'The Terraces', rent: 75, rect: [30, 40, 300, 300], tint: '#3a2f4a', city: 'sunfall' },
+  { id: 'hillside', name: 'The Spires', rent: 175, rect: [360, 30, 380, 190], tint: '#2f4a3a', city: 'sunfall' },
+  { id: 'neon', name: 'Crystal Row', rent: 150, rect: [770, 40, 200, 420], tint: '#4a2f3f', city: 'sunfall' },
+  { id: 'oldtown', name: 'Old Lanterns', rent: 120, rect: [360, 250, 380, 210], tint: '#4a3f2f', city: 'sunfall' },
+  { id: 'harbour', name: 'Skyport', rent: 95, rect: [30, 370, 300, 300], tint: '#2f3f4a', city: 'sunfall' },
+  { id: 'saltworks', name: 'Cloudworks', rent: 80, rect: [360, 490, 610, 180], tint: '#3f3f3f', city: 'sunfall' },
+  // Nightfall: cheaper to live in, heavier on nightlife (two casinos, three bars), riskier with it.
+  { id: 'velvet', name: 'Velvet Mile', rent: 110, rect: [1540, 60, 340, 280], tint: '#3a1f4a', city: 'nightfall' },
+  { id: 'halo', name: 'Halo Heights', rent: 160, rect: [1900, 60, 300, 280], tint: '#1f2f4a', city: 'nightfall' },
+  { id: 'undertow', name: 'The Undertow', rent: 50, rect: [1540, 360, 340, 280], tint: '#2a2433', city: 'nightfall' },
+  { id: 'ashdock', name: 'Ashdock', rent: 65, rect: [1900, 360, 300, 280], tint: '#33281f', city: 'nightfall' },
 ];
+export const cityOfDistrict = (id) => DISTRICTS.find((d) => d.id === id)?.city || 'sunfall';
+export const districtsOf = (city) => DISTRICTS.filter((d) => d.city === city);
 
 // Places you pay to walk into. `door` is the band an owner may set the price in.
 export const VTYPES = {
@@ -57,7 +73,20 @@ export const PLACES = [
   ['w1', 'docks', 'Cloudworks Quay', 'saltworks', 800, 610, null],
   ['w2', 'office', 'Exchange Tower', 'oldtown', 560, 290, null],
   ['w3', 'yard', 'Freight Yard', 'saltworks', 640, 540, null],
+  // Nightfall
+  ['v14', 'bar', 'The Velvet Room', 'velvet', 1640, 160, null],
+  ['v15', 'casino', 'The Black Orchid', 'velvet', 1800, 240, null],
+  ['v16', 'bar', 'Neon Gutter', 'velvet', 1600, 280, 650],
+  ['v17', 'casino', 'Halo Casino', 'halo', 2080, 160, null],
+  ['v18', 'gym', 'Halo Athletic', 'halo', 1960, 280, null],
+  ['v19', 'bar', 'Low Moon', 'undertow', 1640, 440, null],
+  ['v20', 'market', 'Midnight Market', 'undertow', 1800, 520, null],
+  ['v21', 'diner', 'All-Night Diner', 'undertow', 1600, 600, 550],
+  ['w4', 'docks', 'Ashdock Wharf', 'ashdock', 2120, 560, null],
+  ['w5', 'office', 'Obsidian Exchange', 'halo', 2120, 280, null],
+  ['w6', 'yard', 'Ember Yard', 'ashdock', 1960, 480, null],
 ];
+export const placeCity = (p) => cityOfDistrict(p.district);
 
 export const FIRST = ['Mara', 'Teo', 'Ines', 'Rafe', 'Odile', 'Juno', 'Cass', 'Hollis', 'Wren', 'Dario', 'Petra', 'Silas', 'Noor', 'Emil', 'Lux', 'Bram', 'Ada', 'Kit', 'Ottilie', 'Remy', 'Sol', 'Vera', 'Ezra', 'Maeve', 'Idris', 'Lena', 'Tomas', 'Yara', 'Felix', 'Greta', 'Hugo', 'Iris', 'Jonah', 'Kaia', 'Leon', 'Mina', 'Nils', 'Orla', 'Pablo', 'Quinn', 'Rosa', 'Saul', 'Tess', 'Uma', 'Vito', 'Willa', 'Xavi', 'Zora'];
 export const LAST = ['Okafor', 'Halloway', 'Vance', 'Moreau', 'Sato', 'Brennan', 'Castell', 'Duarte', 'Eklund', 'Farrow', 'Gage', 'Hart', 'Ilves', 'Jarrow', 'Kemp', 'Lind', 'Marsh', 'Nakamura', 'Oyelaran', 'Pike', 'Quarry', 'Rook', 'Stroud', 'Thorne', 'Ueda', 'Varga', 'Webb', 'Yeats', 'Zeller', 'Abara', 'Bastos', 'Crane', 'Delacroix', 'Ferro', 'Grieve', 'Holm'];
