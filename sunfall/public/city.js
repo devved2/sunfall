@@ -1790,7 +1790,7 @@ async function renderResident(id) {
   if (!res.ok || follow !== id) return;
   const x = res.resident, pl = x.plan || {}, st = res.standing;
   const agent = x.outside || x.isAgent;
-  const half = (k, v, r, why) => `${k === 'work' ? 'Working a shift' : k === 'in' ? 'Staying in' : esc(v || k || '—')}${r ? ` <span class="tag">${esc(r)}</span>` : ''}${why ? `<div class="why">“${esc(txt(why))}”</div>` : ''}`;
+  const half = (k, v, r, why) => `${k === 'work' ? 'Working a shift' : k === 'in' ? 'Staying in' : esc(v || k || '—')}${r && !(k === 'in' && r === 'in') ? ` <span class="tag">${esc(r)}</span>` : ''}${why ? `<div class="why">“${esc(txt(why))}”</div>` : ''}`;
   const venueIds = Object.fromEntries(S.venues.map((v) => [v.name, v.id]));
   const vlink = (name) => venueIds[name] ? `<button class="lk" data-venue="${esc(venueIds[name])}">${esc(name)}</button>` : esc(name);
   const prizeNote = !agent ? '' : st?.team ? 'Team agent: can\'t win prizes.' : x.wallet ? (st?.prizeEligible ? 'Wallet linked: can win HYPE prizes.' : 'Kept out of prizes.') : 'No wallet linked, so it can\'t win HYPE prizes.';
