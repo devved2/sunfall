@@ -7,14 +7,19 @@
 // Bets are in city cash. The Arena is the bookmaker: stakes go into its till, winnings come out of it (then the
 // treasury). Football winnings don't count towards the HYPE prize score, the same as the casino.
 import { state, L, chron, CFG, payFromVenue } from './sim.js';
-import { DISTRICTS, LAST } from './world.js';
+import { DISTRICTS, LAST, cityOfDistrict, cityById } from './world.js';
 import { secureRandom, mulberry32, pick, clamp, refuse, ut } from './util.js';
 import { footballPlays, liveFeed } from './playbyplay.js';
 
 export const ARENA = 'v12';
 const MATCH_HOURS = 2;                 // a league match lasts two city hours
-const KICKOFFS = [11, 15, 19];         // city hours of the day's three fixtures
-const ROUNDS = 10;                     // a league season: every club plays every other twice
+// A season: every club plays every other twice, half the clubs' worth of fixtures a day. Seasons that started
+// before Nightfall's clubs existed keep their six clubs (three fixtures a day) until they finish.
+const KICKOFF_SETS = { 3: [11, 15, 19], 4: [10, 13, 16, 19] };
+const LEGACY = ['TER', 'SPI', 'CRY', 'LAN', 'SKY', 'CLO'];
+const clubsOf = (lg) => lg.clubs || LEGACY;
+const roundsOf = (lg) => 2 * (clubsOf(lg).length - 1);
+const kickoffsOf = (lg) => KICKOFF_SETS[clubsOf(lg).length / 2];
 const MARGIN = 1.06;                   // the Arena's edge on league odds
 const STAKE_MAX = 200, OPEN_BETS_MAX = 10;
 
@@ -25,6 +30,9 @@ export const CLUBS = [
   { id: 'LAN', name: 'Lanterns United', district: 'oldtown', att: 1.05, def: 0.95, col: '#e2a63c' },
   { id: 'SKY', name: 'Skyport City', district: 'harbour', att: 0.95, def: 1.0, col: '#4fb8e8' },
   { id: 'CLO', name: 'Cloudworks Albion', district: 'saltworks', att: 0.9, def: 1.08, col: '#9aa3ad' },
+  // Nightfall
+  { id: 'VEL', name: 'Velvet Mile FC', district: 'velvet', att: 1.1, def: 1.02, col: '#c03cff' },
+  { id: 'ASH', name: 'Ashdock Athletic', district: 'ashdock', att: 0.97, def: 0.94, col: '#ff6a3d' },
 ];
 const CLUB = Object.fromEntries(CLUBS.map((c) => [c.id, c]));
 // Each club has a fixed squad of strikers and midfielders who get the goals.
@@ -42,10 +50,10 @@ export const REAL_LEAGUES = {
 const F = () => {
   state.football ||= { league: null, matches: {}, bets: [], real: {}, counters: { b: 0 }, totals: { bets: 0, staked: 0, paid: 0 } };
   const f = state.football;
-  f.league ||= { n: 1, startDay: state.day, table: freshTable() };
+  f.league ||= { n: 1, startDay: state.day, clubs: CLUBS.map((c) => c.id), table: freshTable(CLUBS.map((c) => c.id)) };
   return f;
 };
-function freshTable() { return Object.fromEntries(CLUBS.map((c) => [c.id, { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }])); }
+function freshTable(ids) { return Object.fromEntries(ids.map((id) => [id, { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }])); }
 const r2 = (x) => Math.round(x * 100) / 100;
 
 // ---------------------------------------------------------------- odds
@@ -68,20 +76,21 @@ const toOdds = (p) => Math.max(1.05, Math.round((1 / (p * MARGIN)) * 100) / 100)
 
 // ---------------------------------------------------------------- fixtures
 // Circle method: five rounds for six clubs, then the same five with home and away swapped.
-function roundPairs(round) {
-  const ids = CLUBS.map((c) => c.id);
-  const k = round % 5, flip = round >= 5;
-  const rot = [ids[0], ...ids.slice(1).map((_, i) => ids[1 + ((i + k) % 5)])];
-  const pairs = [[rot[0], rot[5]], [rot[1], rot[4]], [rot[2], rot[3]]];
+function roundPairs(round, ids) {
+  const n = ids.length, m = n - 1;
+  const k = round % m, flip = round >= m;
+  const rot = [ids[0], ...ids.slice(1).map((_, i) => ids[1 + ((i + k) % m)])];
+  const pairs = Array.from({ length: n / 2 }, (_, i) => [rot[i], rot[n - 1 - i]]);
   return pairs.map(([a, b], i) => ((i + k + (flip ? 1 : 0)) % 2 ? [b, a] : [a, b]));
 }
 function koMs(day, hour) { return state.epoch + day * CFG.DAY_MS + (hour / 24) * CFG.DAY_MS; }
 function ensureFixtures(day) {
   const f = F();
   const lg = f.league;
-  if (day - lg.startDay >= ROUNDS) return; // a new league season starts at the day turn
-  const round = day - lg.startDay;
-  roundPairs(round).forEach(([home, away], i) => {
+  if (day - lg.startDay >= roundsOf(lg)) return; // a new league season starts at the day turn
+  if (Object.values(f.matches).some((m) => m.day === day && m.kind === 'league')) return; // that day's fixtures exist
+  const round = day - lg.startDay, KICKOFFS = kickoffsOf(lg);
+  roundPairs(round, clubsOf(lg)).forEach(([home, away], i) => {
     const id = `m${day}-${i + 1}`;
     if (f.matches[id]) return;
     const p = probs(home, away);
@@ -118,23 +127,38 @@ export function minuteOf(m, now = Date.now()) {
 }
 function fullTime(m) {
   m.status = 'ft'; m.score = m.final;
-  const t = F().league.table;
+  const lg = F().league, t = lg.table;
   const [hg, ag] = m.score, H = t[m.home], A = t[m.away];
-  H.p++; A.p++; H.gf += hg; H.ga += ag; A.gf += ag; A.ga += hg;
-  if (hg > ag) { H.w++; A.l++; H.pts += 3; } else if (hg < ag) { A.w++; H.l++; A.pts += 3; } else { H.d++; A.d++; H.pts++; A.pts++; }
   m.result = hg > ag ? 'home' : hg < ag ? 'away' : 'draw';
+  if (m.season === lg.n && H && A) {
+    H.p++; A.p++; H.gf += hg; H.ga += ag; A.gf += ag; A.ga += hg;
+    if (hg > ag) { H.w++; A.l++; H.pts += 3; } else if (hg < ag) { A.w++; H.l++; A.pts += 3; } else { H.d++; A.d++; H.pts++; A.pts++; }
+  }
+  derby(CLUB[m.home], CLUB[m.away], m.result, `${CLUB[m.home].name} ${hg}-${ag} ${CLUB[m.away].name}`);
   settle(m.id, m.result);
   chron(`Full time at Sunfall Arena: ${CLUB[m.home].name} ${hg}-${ag} ${CLUB[m.away].name}.`, null, 'football');
+}
+
+// A game between a Sunfall side and a Nightfall side is a derby: it counts in the cities' rivalry.
+export function derby(home, away, result, line) {
+  const hc = cityOfDistrict(home.district), ac = cityOfDistrict(away.district);
+  if (hc === ac || !state.rivalry) return;
+  const d = state.rivalry.derbies;
+  const win = result === 'home' ? hc : result === 'away' ? ac : null;
+  if (win) d[win]++; else d.drawn++;
+  chron(`Derby: ${line}. ${win ? `${cityById(win).name} take it` : 'Honours even'}. Derbies: Sunfall ${d.sunfall}, Nightfall ${d.nightfall}${d.drawn ? `, ${d.drawn} drawn` : ''}.`, null, 'rivalry');
 }
 
 // ---------------------------------------------------------------- the loop (called from sim.tick)
 export function footballTick(now = Date.now()) {
   if (!state.venues[ARENA]) return;
   const f = F();
-  if (state.day - f.league.startDay >= ROUNDS) {
+  if (state.day - f.league.startDay >= roundsOf(f.league)) {
     const top = leagueTable()[0];
     if (top) chron(`${CLUB[top.id].name} win Sunfall League season ${f.league.n} with ${top.pts} points.`, null, 'football');
-    f.league = { n: f.league.n + 1, startDay: state.day, table: freshTable(), lastChampion: top ? top.id : null };
+    const clubs = CLUBS.filter((c) => state.nightfall || cityOfDistrict(c.district) === 'sunfall').map((c) => c.id);
+    f.league = { n: f.league.n + 1, startDay: state.day, clubs, table: freshTable(clubs), lastChampion: top ? top.id : null };
+    if (!f.league.clubs.every((id) => LEGACY.includes(id))) chron(`Sunfall League season ${f.league.n} kicks off with ${clubs.length} clubs, Nightfall's among them: four fixtures a day at Sunfall Arena.`, null, 'football');
   }
   ensureFixtures(state.day); ensureFixtures(state.day + 1);
   for (const m of Object.values(f.matches)) {
@@ -289,7 +313,7 @@ export function voidAgentBets(agentIds) {
 // ---------------------------------------------------------------- views
 export function leagueTable() {
   const t = F().league.table;
-  return CLUBS.map((c) => ({ id: c.id, name: c.name, district: DISTRICTS.find((d) => d.id === c.district)?.name, col: c.col, ...t[c.id], gd: t[c.id].gf - t[c.id].ga }))
+  return clubsOf(F().league).map((id) => CLUB[id]).map((c) => ({ id: c.id, name: c.name, district: DISTRICTS.find((d) => d.id === c.district)?.name, col: c.col, ...t[c.id], gd: t[c.id].gf - t[c.id].ga }))
     .sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.name.localeCompare(b.name));
 }
 function leagueMatchView(m, now = Date.now()) {
@@ -322,7 +346,7 @@ export function footballView(resident) {
   return {
     arena: { id: ARENA, name: state.venues[ARENA]?.name },
     league: {
-      season: f.league.n, round: Math.min(ROUNDS, state.day - f.league.startDay + 1), rounds: ROUNDS, lastChampion: f.league.lastChampion ? CLUB[f.league.lastChampion].name : null,
+      season: f.league.n, round: Math.min(roundsOf(f.league), state.day - f.league.startDay + 1), rounds: roundsOf(f.league), lastChampion: f.league.lastChampion ? CLUB[f.league.lastChampion].name : null,
       table: leagueTable(),
       live: league.filter((m) => m.status === 'live').map((m) => leagueMatchView(m, now)),
       upcoming: league.filter((m) => m.status === 'scheduled').map((m) => leagueMatchView(m, now)),
@@ -337,7 +361,7 @@ export function footballView(resident) {
     agentBets: f.bets.filter((b) => b.agent && FOOTBALL_KINDS.includes(b.kind)).slice(-40).reverse().map(betView),
     mine: me && me.outside ? { id: me.id, name: ut(me.name), bets: f.bets.filter((b) => b.rid === me.id && FOOTBALL_KINDS.includes(b.kind)).slice(-30).reverse().map(betView) } : null,
     totals: { bets: f.totals.bets, staked: Math.round(f.totals.staked), paid: Math.round(f.totals.paid) },
-    rules: `Back the home side, the draw or the away side with city cash, $1-${STAKE_MAX} a slip, at most ${OPEN_BETS_MAX} open slips. Odds are fixed when you bet. A winning slip pays stake x odds from Sunfall Arena; a losing one goes to the Arena. Sunfall League matches kick off at ${KICKOFFS.map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; their goals are drawn at kick-off. Real matches settle on the 90-minute result from ESPN; a match called off returns the stake. Football winnings don't count towards the prize score.`,
+    rules: `Back the home side, the draw or the away side with city cash, $1-${STAKE_MAX} a slip, at most ${OPEN_BETS_MAX} open slips. Odds are fixed when you bet. A winning slip pays stake x odds from Sunfall Arena; a losing one goes to the Arena. Sunfall League matches kick off at ${kickoffsOf(f.league).map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; their goals are drawn at kick-off. Real matches settle on the 90-minute result from ESPN; a match called off returns the stake. Football winnings don't count towards the prize score.`,
   };
 }
 export const allBets = () => F().bets;
