@@ -1,6 +1,6 @@
 // The game layer: seasons and their win condition, loans, business stakes (partnerships) and city events.
 // Everything here moves money through the same ledger as the rest of the city.
-import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, planResident, saleFloor, SALE_FLOOR_PCT } from './sim.js';
+import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
 import { PRIZES, LAUNCH } from './launch.js';
@@ -84,6 +84,7 @@ function purgeAgents() {
 }
 export function migrate() {
   state.loans ||= {};
+  try { backfillBargains(); } catch (e) { console.error('bargain backfill', e); }
   state.stakeOffers ||= {};
   // Sale floors: take agents' below-floor listings off the market and lapse below-floor stake offers.
   for (const v of Object.values(state.venues)) {
@@ -322,19 +323,39 @@ function tidyStakeOffers() {
 // ---------------------------------------------------------------- seasons
 // A season runs Monday 00:00 to Monday 00:00 UTC. Every agent starts it with the same cash; the highest
 // net worth when it closes wins. Titles go to the biggest landlord, the best lender and the hardest worker.
+// Businesses bought below the city's valuation this season: the discount doesn't count towards the prize score.
+function bargainsOf(r) {
+  let t = 0;
+  for (const v of Object.values(state.venues)) if (v.ownerId === r.id && v.buyOwner === r.id && v.buySeason === state.season?.id && v.buyGap > 0) t += v.buyGap;
+  return t;
+}
+// One-off: work out the discount on businesses agents bought this season before bargains were tracked.
+function backfillBargains() {
+  if (state.bargainsBackfilled) return;
+  state.bargainsBackfilled = true;
+  const byName = Object.fromEntries(Object.values(state.venues).map((v) => [v.name, v]));
+  for (const e of readLedgerFile()) {
+    if (e.kind !== 'purchase' || !(e.t >= (state.season?.start || 0))) continue;
+    const r = state.residents[e.who], v = byName[(e.note || '').replace(/^bought /, '')];
+    if (!r || !r.outside || !v || v.ownerId !== r.id || v.buyOwner != null) continue;
+    v.buyGap = Math.max(0, Math.round(venueValueNow(v) + e.amt)); v.buyOwner = r.id; v.buySeason = state.season?.id;
+    console.log(`bargain backfill: ${r.id} ${v.name} saved $${v.buyGap}`);
+  }
+}
 export function standings() {
   return Object.values(state.residents).filter((r) => r.outside).map((r) => {
     const wallet = ['evm', 'solana'].includes(r.keyKind) ? r.key : null;
     const worth = netWorth(r), casino = Math.round(r.season.casino || 0), betting = Math.round(r.season.betting || 0);
     const team = PRIZES.teamAgents.includes(r.id), excluded = PRIZES.excluded.includes(r.id);
     const fromAgents = Math.round((r.season.agentJobs || 0) + (r.season.agentInterest || 0));
+    const bargains = bargainsOf(r);
     return {
       id: r.id, name: { quoted: r.name }, runsOn: r.runsOn ? { quoted: r.runsOn } : null, wallet, team,
       netWorth: worth, cash: Math.round(r.cash), owns: ownedBy(r).length, stakes: stakesOf(r).length,
       interest: Math.round(r.season.interest), jobs: r.season.jobs, credit: r.credit,
       // Prizes reward play, not luck: casino and football winnings this season don't count towards the prize score.
       // Nor does money paid in by other agents (their jobs and their loan interest).
-      casino, betting, fromAgents, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents),
+      casino, betting, fromAgents, bargains, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains),
       prizeEligible: Boolean(wallet) && !team && !excluded, excluded: excluded || undefined,
       badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
     };
@@ -378,7 +399,7 @@ export function dailyCheck(now = Date.now()) {
   const dayStart = Date.parse(d.date + 'T00:00:00Z') - CLOSE_OFF;
   if (PRIZES.enabled && top.length && (PRIZES.fromMs == null || now > PRIZES.fromMs)) { // no prizes for days that closed before they switched on
     const since = Math.max(d.closedAt ?? dayStart, PRIZES.fromMs ?? 0);
-    const pot = Math.min(prizeAddedBetween(since, now) * PRIZES.dailyPct / 100, freePrizePot(), dailyCapNow(rows));
+    const pot = dailyPotFrom(rows);
     grantAwards('daily', d.date, pot, top.map((w, i) => ({ place: i + 1, sharePct: shares[i], id: w.id, name: w.name, wallet: w.wallet })),
       (w) => `daily prize ${d.date} #${w.place} ${w.id}`);
   }
@@ -397,7 +418,7 @@ function dailyPotNow(rows, now = Date.now()) {
   if (!PRIZES.enabled) return 0;
   const d = dailyState(), dayStart = Date.parse(d.date + 'T00:00:00Z') - CLOSE_OFF;
   const since = Math.max(d.closedAt ?? dayStart, PRIZES.fromMs ?? 0);
-  return Math.floor(Math.max(0, Math.min(prizeAddedBetween(since, now) * PRIZES.dailyPct / 100, freePrizePot(), dailyCapNow(rows))) * 1e6) / 1e6;
+  return dailyPotFrom(rows);
 }
 export function dailyView(rows = standings()) {
   const d = dailyState();
@@ -419,6 +440,8 @@ export function titles(rows = standings()) {
 const eligibleCount = (rows = standings()) => rows.filter((r) => r.prizeEligible).length;
 const fieldCap = (cap, rows) => Math.min(cap ?? Infinity, PRIZES.perAgentHype ? PRIZES.perAgentHype * eligibleCount(rows) : Infinity);
 export const dailyCapNow = (rows) => fieldCap(PRIZES.dailyCapHype, rows);
+// The daily prize is paid from the prize pot, up to the day's cap, always leaving enough for this week's weekly prize.
+function dailyPotFrom(rows) { return Math.floor(Math.max(0, Math.min(dailyCapNow(rows), freePrizePot() - fieldCap(PRIZES.weeklyCapHype, rows))) * 1e6) / 1e6; }
 const weeklyPot = (rows) => Math.floor(Math.min(freePrizePot() * PRIZES.weeklyPct / 100, fieldCap(PRIZES.weeklyCapHype, rows)) * 1e6) / 1e6;
 export function seasonView() {
   const s = state.season;
@@ -431,7 +454,7 @@ export function seasonView() {
       daily: dailyView(rows),
       weekly: { pct: PRIZES.weeklyPct, capHype: PRIZES.weeklyCapHype, capNow: fieldCap(PRIZES.weeklyCapHype, rows), estimate: weeklyPot(rows), closes: new Date(s.end).toISOString() },
       awards: recentAwards(30), perAgentHype: PRIZES.perAgentHype, eligible: eligibleCount(rows), dailyCapNow: dailyCapNow(rows), dailyCloseHour: PRIZES.dailyCloseHour,
-      rule: `${PRIZES.dailyPct}% of every HYPE that reaches the prize pot is paid out daily: when each prize day closes at ${String(PRIZES.dailyCloseHour).padStart(2, '0')}:00 UTC, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%; if fewer finish the day up, they split the whole pot in the same proportions), paid straight after${PRIZES.dailyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE for every agent who can win, at most ` : ''}${PRIZES.dailyCapHype} HYPE a day` : ''}. When the season closes on Monday, its top ${PRIZES.split.length} share ${PRIZES.weeklyPct < 100 ? `${PRIZES.weeklyPct}% of the prize pot` : 'the prize pot'}${PRIZES.weeklyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE per agent who can win, at most ` : ''}${PRIZES.weeklyCapHype} HYPE` : ''} (${PRIZES.split.join('/')}%)${PRIZES.weeklyPct < 100 || PRIZES.weeklyCapHype ? '; the rest rolls over to the next week' : ''}. Prize score = net worth minus casino and football winnings this season and minus money paid in by other agents (their jobs and loan interest), and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win, and agents found funnelling value through other agents are kept out. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.${!PRIZES.enabled && PRIZES.fromMs ? ` Prizes switch on at ${new Date(PRIZES.fromMs).toISOString().slice(11, 16)} UTC on ${new Date(PRIZES.fromMs).toUTCString().slice(5, 16)}.` : ''}` },
+      rule: `The prize pot pays out every day: when each prize day closes at ${String(PRIZES.dailyCloseHour).padStart(2, '0')}:00 UTC, the ${DAILY_SPLIT.length} agents whose prize score grew most that day share it (${DAILY_SPLIT.join('/')}%; if fewer finish the day up, they split the whole pot in the same proportions), paid straight after${PRIZES.dailyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE for every agent who can win, at most ` : ''}${PRIZES.dailyCapHype} HYPE a day` : ''}. When the season closes on Monday, its top ${PRIZES.split.length} share ${PRIZES.weeklyPct < 100 ? `${PRIZES.weeklyPct}% of the prize pot` : 'the prize pot'}${PRIZES.weeklyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE per agent who can win, at most ` : ''}${PRIZES.weeklyCapHype} HYPE` : ''} (${PRIZES.split.join('/')}%)${PRIZES.weeklyPct < 100 || PRIZES.weeklyCapHype ? '; the rest rolls over to the next week' : ''}. Prize score = net worth minus casino and football winnings this season, minus money paid in by other agents (their jobs and loan interest) and minus the discount on any business bought below the city's valuation, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win, and agents found funnelling value through other agents are kept out. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.${!PRIZES.enabled && PRIZES.fromMs ? ` Prizes switch on at ${new Date(PRIZES.fromMs).toISOString().slice(11, 16)} UTC on ${new Date(PRIZES.fromMs).toUTCString().slice(5, 16)}.` : ''}` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
