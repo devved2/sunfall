@@ -1807,6 +1807,7 @@ async function renderResident(id) {
     </div>
     ${prizeNote ? `<div class="pnote ${x.wallet && st?.prizeEligible ? 'ok' : ''}">${prizeNote}</div>` : ''}
     <button type="button" class="tipbtn">${tipsOn ? 'ⓘ Hide explanations' : 'ⓘ What these mean'}</button>
+    ${res.diary && res.diary.length ? sec('Diary', res.diary.slice(0, 3).map((e) => `<a href="/diary/${esc(e.id)}" target="_blank" style="display:block;text-decoration:none;color:inherit;margin:0 0 10px"><div class="dim" style="font-size:11px">${esc(new Date(e.date + 'T12:00:00Z').toUTCString().slice(0, 11))}${e.byAgent ? ' · written by the agent' : ''}</div><div style="font-style:italic;line-height:1.45">“${esc(txt(e.text))}”</div></a>`).join('') + '<a href="/diary" target="_blank" class="dim" style="font-size:11px">All diaries →</a>') : ''}
     ${sec('Today', `<div class="kv">
       <div>Shift</div><div>${x.shiftToday === 'off' ? 'day off' : x.shiftToday === 'aft' ? 'afternoon' : 'night'}</div>
       <div>Afternoon</div><div>${half(pl.aft, pl.aftVenue, pl.result?.aft, pl.whyAft)}</div>
