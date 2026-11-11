@@ -18,8 +18,12 @@ export const LAUNCH = {
     && Math.abs(Object.values(cfg.vaultPolicy).reduce((a, b) => a + b, 0) - 100) < 0.001 ? Object.entries(cfg.vaultPolicy).map(([k, n]) => `${k}:${n}`).join(',') : null,
 };
 const split = Array.isArray(cfg.prizeSplit) && cfg.prizeSplit.length && cfg.prizeSplit.every((n) => Number.isFinite(n) && n > 0) && Math.abs(cfg.prizeSplit.reduce((a, b) => a + b, 0) - 100) < 0.001 ? cfg.prizeSplit : [50, 30, 20];
+// "prizesFrom" (an ISO time, e.g. "2026-11-12T00:00:00Z") switches prizes on by itself at that moment; the first
+// daily prize is for the UTC day that starts then.
+const fromMs = typeof cfg.prizesFrom === 'string' && Number.isFinite(Date.parse(cfg.prizesFrom)) ? Date.parse(cfg.prizesFrom) : null;
 export const PRIZES = {
-  enabled: process.env.PRIZES_ENABLED ? process.env.PRIZES_ENABLED === 'true' : cfg.prizesEnabled === true,
+  get enabled() { return process.env.PRIZES_ENABLED ? process.env.PRIZES_ENABLED === 'true' : cfg.prizesEnabled === true || (fromMs != null && Date.now() >= fromMs); },
+  fromMs,
   asset: process.env.PRIZE_ASSET || 'HYPE on Elysium',
   split,
   dailyPct: Number.isFinite(cfg.dailyPrizePct) && cfg.dailyPrizePct >= 0 && cfg.dailyPrizePct <= 50 ? cfg.dailyPrizePct : 10,
