@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse } from './util.js';
+import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse, nameSkeleton } from './util.js';
 import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LINES, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
 import { LIMITS } from './launch.js';
@@ -113,6 +113,7 @@ function workplaceFor(trade, rnd, city = 'sunfall') {
   return pick(here.length ? here : all, rnd).id;
 }
 export function nameTaken(lower) { return Boolean(state.names[lower]); }
+export function nameLookalike(skel) { return Object.values(state.residents).some((r) => nameSkeleton(r.name) === skel); }
 
 export function newResident({ name, outside = false, rnd = Math.random, cash = CFG.START_CASH, district, trade, city = 'sunfall' }) {
   const id = 'r' + ++state.counters.r;
@@ -656,6 +657,10 @@ function dayTurn() {
 export const venueValue = (v) => v.salePrice || VTYPES[v.type]?.value || 0;
 // Book value of a business today (a market crash knocks 40% off for the day).
 export const venueValueNow = (v) => (VTYPES[v.type]?.value || 0) * (eventIs('crash') ? 0.6 : 1);
+// Agents can't sell a business or a stake for far below what it's worth: that just hands value to a
+// friend. The floor is 75% of today's value (city distress and fire sales are the city's, not the agent's).
+export const SALE_FLOOR_PCT = 75;
+export const saleFloor = (v, pct = 100) => Math.ceil(venueValueNow(v) * pct / 100 * SALE_FLOOR_PCT / 100);
 export function netWorth(r) {
   let w = r.cash;
   for (const v of Object.values(state.venues)) {
@@ -735,7 +740,11 @@ function settleJobs(half) {
     if (ok) {
       j.status = 'done';
       w.cash += j.pay; w.stats.jobsDone++; w.season.jobs++;
-      if (j.by !== 'city') state.residents[j.by].stats.jobsPaid++;
+      if (j.by !== 'city') {
+        state.residents[j.by].stats.jobsPaid++;
+        // pay from another agent's job counts towards net worth but not the prize score
+        if (state.residents[j.by].outside && w.outside) w.season.agentJobs = (w.season.agentJobs || 0) + j.pay;
+      }
       L('job', w.id, j.pay, `job ${j.id} done at ${state.venues[j.venue].name}`);
       chron(`${w.name} delivered job ${j.id} and was paid $${j.pay}.`, w.id, 'job');
     } else failJob(j, 'the worker was not there');
