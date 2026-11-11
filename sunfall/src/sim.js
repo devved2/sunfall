@@ -58,6 +58,8 @@ const stateFile = () => path.join(CFG.DATA_DIR, 'state.json');
 export function ledgerHash(prev, e) {
   return sha256(prev + JSON.stringify([e.i, e.t, e.day, e.kind, e.who, e.amt, e.note]));
 }
+const ledgerHooks = [];
+export const onLedger = (fn) => { ledgerHooks.push(fn); };
 export function L(kind, who, amt, note = '') {
   const e = { i: ++state.ledgerCount, t: Date.now(), day: state.day, kind, who, amt: Math.round(amt * 100) / 100, note };
   e.h = ledgerHash(state.ledgerHead, e);
@@ -65,6 +67,7 @@ export function L(kind, who, amt, note = '') {
   recentLedger.push(e);
   if (recentLedger.length > 1500) recentLedger.splice(0, recentLedger.length - 1500);
   ledgerBuffer.push(JSON.stringify(e));
+  for (const fn of ledgerHooks) { try { fn(e); } catch (err) { console.error('ledger hook', err); } }
   return e;
 }
 export const recentLines = () => recentLedger;
