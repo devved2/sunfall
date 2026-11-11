@@ -101,7 +101,7 @@ async function load() {
   $('#asof').textContent = 'updated ' + new Date().toLocaleTimeString();
   $('#inflow').textContent = hype(V.inflow);
   $('#outflow').textContent = hype(V.outflow);
-  $('#bal').innerHTML = V.wallet ? (V.walletBalance == null ? '…' : hype(V.walletBalance)) : '<span style="color:var(--faint);font-size:13px">not set yet</span>';
+  $('#bal').innerHTML = V.wallet ? (V.walletBalance == null ? '…' : hype(V.walletBalance) + (V.prizeCovered === false ? `<span style="display:block;font-size:11px;color:#ff8a7a;font-family:var(--mono);margin-top:4px">${hype(V.prizeShortBy)} HYPE short of the prize pot</span>` : '')) : '<span style="color:var(--faint);font-size:13px">not set yet</span>';
   $('#nflows').textContent = V.entries.length;
   const ks = Object.keys(V.policy);
   $('#split').innerHTML = ks.map((k) => `<i style="width:${V.policy[k]}%;background:${COLORS[k] || '#888'}" title="${esc(k)} ${V.policy[k]}%"></i>`).join('');
