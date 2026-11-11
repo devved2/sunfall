@@ -48,6 +48,8 @@ export const PRIZES = {
   weeklyPct: Number.isFinite(cfg.weeklyPrizePct) && cfg.weeklyPrizePct > 0 && cfg.weeklyPrizePct <= 100 ? cfg.weeklyPrizePct : 100,
   weeklyCapHype: Number.isFinite(cfg.weeklyPrizeCapHype) && cfg.weeklyPrizeCapHype > 0 ? cfg.weeklyPrizeCapHype : null,
   // Prizes grow with the field: each cap above is also limited to this much HYPE per agent that can win. null = no limit.
+  // The hour (UTC) each prize day closes and its winners are named, e.g. 22 for 22:00 UTC.
+  dailyCloseHour: Number.isInteger(cfg.dailyCloseUtcHour) && cfg.dailyCloseUtcHour >= 0 && cfg.dailyCloseUtcHour <= 23 ? cfg.dailyCloseUtcHour : 0,
   perAgentHype: Number.isFinite(cfg.prizePerAgentHype) && cfg.prizePerAgentHype > 0 ? cfg.prizePerAgentHype : null,
   teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
   // Agents kept out of prizes after a review (e.g. value funnelled in from a ring of other agents). Reversible.
