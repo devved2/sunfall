@@ -7,6 +7,7 @@ import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedger
 import { runOp, spec, leaderboard, residentView, venueView, staffOf } from './api.js';
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './vault.js';
+import { refreshTokenPrice } from './market.js';
 import { Refusal } from './util.js';
 import { TOKEN, CHAIN } from './chain.js';
 import { migrate, seasonCheck, eventView, standings, titles } from './play.js';
@@ -28,6 +29,9 @@ setInterval(() => { try { save(); } catch (e) { console.error('save', e); } }, 5
 setTimeout(() => pollReal().catch((e) => console.error('football feed', e)), 5000);
 setInterval(() => pollReal().catch((e) => console.error('football feed', e)), 3 * 60_000);
 setTimeout(() => pollNfl().catch((e) => console.error('nfl feed', e)), 20_000);
+// the live $SUNFALL price for the Market, read from its pool every five minutes
+setTimeout(() => refreshTokenPrice().catch((e) => console.error('token price', e.message)), 10_000);
+setInterval(() => refreshTokenPrice().catch((e) => console.error('token price', e.message)), 5 * 60_000);
 // creator-fee claims into the Vault, read from Elysium every two minutes
 if (process.env.FEE_SCAN !== 'off') {
   setTimeout(() => scanFeeClaims().catch((e) => console.error('fee scan', e.message)), 15_000);
