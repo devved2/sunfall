@@ -245,7 +245,7 @@ function build() {
   buildElysiumGlow();
 
   const bld = [], neon = [], chim = [], trees = [], slabs = [], parks = [], roofs = [], acs = [], tanks = [], antennas = [], awnings = [], palms = [], houses = [], benches = [], parkCells = [], crystals = [], domes = [];
-  const venueNear = (cx, cy) => S.venues.some((v) => { const [rx, ry] = v.type === 'stadium' ? [70, 50] : [34, 34]; return Math.abs(v.x - cx) < rx && Math.abs(v.y - cy) < ry; });
+  const venueNear = (cx, cy) => S.venues.some((v) => { const [rx, ry] = v.type === 'stadium' || v.type === 'field' ? [70, 50] : [34, 34]; return Math.abs(v.x - cx) < rx && Math.abs(v.y - cy) < ry; });
   for (let i = 0; i < 24; i++) {
     for (let j = 0; j < 17; j++) {
       const cx = OFF + GRID * i + 20, cy = OFF + GRID * j + 20;
@@ -1035,6 +1035,27 @@ function signTexture(v, prev) {
   if (prev) { prev.needsUpdate = true; return prev; }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
+// Skyline Field's big screen, drawn the same way as the Arena's.
+const fieldScreen = { canvas: null, tex: null, key: '' };
+function drawScoreScreen(scr, title, idle, m) {
+  const c = scr.canvas; if (!c) return;
+  const key = JSON.stringify(m); if (key === scr.key) return; scr.key = key;
+  const g = c.getContext('2d');
+  g.fillStyle = '#05080c'; g.fillRect(0, 0, 768, 256);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#ffb04a'; g.font = '600 26px "JetBrains Mono", monospace'; g.fillText(title, 384, 34);
+  if (!m) { g.fillStyle = '#f3fbf5'; g.font = '700 54px Inter, sans-serif'; g.fillText(idle, 384, 140); }
+  else {
+    const short = (s) => s.split(' ').slice(-1)[0].toUpperCase();
+    g.font = '700 46px Inter, sans-serif';
+    g.fillStyle = m.hc; g.fillRect(40, 92, 14, 70); g.fillStyle = m.ac; g.fillRect(714, 92, 14, 70);
+    g.fillStyle = '#f3fbf5'; g.textAlign = 'left'; g.fillText(short(m.home), 68, 128, 220); g.textAlign = 'right'; g.fillText(short(m.away), 700, 128, 220);
+    g.textAlign = 'center'; g.font = '700 80px "JetBrains Mono", monospace'; g.fillStyle = '#ffffff'; g.fillText(m.score ? `${m.score[0]}-${m.score[1]}` : 'v', 384, 130);
+    g.font = '600 28px "JetBrains Mono", monospace'; g.fillStyle = m.status === 'live' ? '#ff6b6b' : '#9fb3c8';
+    g.fillText(m.status === 'live' ? `LIVE ${m.quarter}` : m.status === 'ft' ? 'FINAL' : 'NEXT UP', 384, 214);
+  }
+  scr.tex.needsUpdate = true;
+}
 // The Arena's big screen: the live score, or the next kick-off.
 const arenaScreen = { canvas: null, tex: null, key: '' };
 function drawArenaScreen(m) {
@@ -1168,6 +1189,53 @@ function buildVenue(v, rnd) {
       drawArenaScreen(null);
       top = 34; break;
     }
+    case 'field': {
+      // Skyline Field: a gridiron with yard lines and end zones, goalposts, bleachers on both long sides,
+      // floodlights, a crowd and a big screen with the live score.
+      const fc = document.createElement('canvas'); fc.width = 600; fc.height = 280; const g = fc.getContext('2d');
+      g.fillStyle = '#2f8a45'; g.fillRect(0, 0, 600, 280);
+      g.fillStyle = '#1f5fa0'; g.fillRect(0, 0, 50, 280); g.fillStyle = '#b8402f'; g.fillRect(550, 0, 50, 280);
+      g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3; g.strokeRect(2, 2, 596, 276);
+      for (let i = 1; i < 20; i++) { const x = 50 + i * 25; g.lineWidth = i % 2 ? 1.5 : 3; g.beginPath(); g.moveTo(x, 4); g.lineTo(x, 276); g.stroke(); }
+      g.fillStyle = 'rgba(255,255,255,.85)'; g.font = '700 22px Inter, sans-serif'; g.textAlign = 'center';
+      for (let i = 1; i < 10; i++) { const yd = i <= 5 ? i * 10 : 100 - i * 10; g.fillText(String(yd), 50 + i * 50, 40); g.fillText(String(yd), 50 + i * 50, 256); }
+      g.save(); g.translate(25, 140); g.rotate(-Math.PI / 2); g.font = '800 26px Inter, sans-serif'; g.fillText('SKYLINE', 0, 9); g.restore();
+      g.save(); g.translate(575, 140); g.rotate(Math.PI / 2); g.font = '800 26px Inter, sans-serif'; g.fillText('SKYLINE', 0, 9); g.restore();
+      const ftex = new THREE.CanvasTexture(fc); ftex.colorSpace = THREE.SRGBColorSpace; ftex.anisotropy = 4;
+      const turf = new THREE.Mesh(new THREE.PlaneGeometry(76, 34), new THREE.MeshStandardMaterial({ map: ftex, roughness: 0.95 }));
+      turf.rotation.x = -Math.PI / 2; turf.position.y = 0.35; turf.receiveShadow = true; turf.userData.vid = v.id; grp.add(turf); venueMeshes.push(turf);
+      add(std(0x2d3138), 100, 0.3, 60, 0, 0, 0);
+      // goalposts
+      const yel = new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0x6a5200, emissiveIntensity: 0.3, roughness: 0.4 });
+      for (const sx of [-1, 1]) { const x = sx * 41; add(yel, 0.6, 5, 0.6, x, 0, 0); add(yel, 0.6, 0.6, 7, x, 5, 0); for (const z of [-3.2, 3.2]) add(yel, 0.5, 8, 0.5, x, 5, z); }
+      // bleachers on the long sides
+      const seat = [std(0x7a2f2a), std(0x8a3a30), std(0x9a4636)];
+      for (let t = 0; t < 4; t++) for (const sz of [-1, 1]) add(seat[t % 3], 80, 2.4 + t * 2.4, 4, 0, 0, sz * (20 + t * 4));
+      const wall = std(0x8c93a0); for (const sz of [-1, 1]) add(wall, 82, 11.5, 1, 0, 0, sz * 36.2);
+      // floodlights
+      const mast = std(0x9aa1ab, { metalness: 0.6, roughness: 0.35 });
+      const fl = [];
+      for (const [mx, mz] of [[-44, -34], [44, -34], [-44, 34], [44, 34]]) { add(mast, 1.1, 32, 1.1, mx, 0, mz); add(new THREE.MeshStandardMaterial({ color: 0xfafcff, emissive: 0xe8f4ff, emissiveIntensity: 0.6 }), 6, 3.5, 1, mx, 31, mz); fl.push(new THREE.Vector3(mx, 33, mz)); }
+      const lights = new THREE.Points(new THREE.BufferGeometry().setFromPoints(fl), new THREE.PointsMaterial({ map: GLOW, size: 42, color: 0xfff1d6, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      grp.add(lights); nightGlows.push(lights.material);
+      // the crowd
+      const crowd = [], cc = [], palette = [0xa77bd6, 0x5fbf8a, 0xff4fa3, 0xe2a63c, 0x4fb8e8, 0xf2f2f2, 0xb8402f].map((x) => new THREE.Color(x));
+      for (let i = 0; i < 700; i++) {
+        const t = Math.floor(rnd() * 4), s = rnd() < 0.5 ? -1 : 1;
+        crowd.push(new THREE.Vector3((rnd() - 0.5) * 78, 2.9 + t * 2.4, s * (20 + t * 4 + (rnd() - 0.5) * 2.4)));
+        const c = palette[Math.floor(rnd() * palette.length)]; cc.push(c.r, c.g, c.b);
+      }
+      const cg = new THREE.BufferGeometry().setFromPoints(crowd); cg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
+      grp.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: 1.3, vertexColors: true })));
+      // the big screen above the north bleachers
+      fieldScreen.canvas = document.createElement('canvas'); fieldScreen.canvas.width = 768; fieldScreen.canvas.height = 256;
+      fieldScreen.tex = new THREE.CanvasTexture(fieldScreen.canvas); fieldScreen.tex.colorSpace = THREE.SRGBColorSpace;
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(27, 9), new THREE.MeshBasicMaterial({ map: fieldScreen.tex, toneMapped: false, side: THREE.DoubleSide }));
+      scr.position.set(0, 22, -37); scr.userData.vid = v.id; grp.add(scr); venueMeshes.push(scr);
+      add(std(0x22252b), 28.5, 10.5, 1, 0, 16.75, -37.8); add(mast, 1, 17, 1, -11, 0, -37.8); add(mast, 1, 17, 1, 11, 0, -37.8);
+      drawScoreScreen(fieldScreen, 'SKYLINE FIELD', 'GRIDIRON LEAGUE', null);
+      top = 30; break;
+    }
     case 'yard': {
       const cc = [0xb8483a, 0x3a7cb8, 0x4f9a5a, 0xc9893a, 0x7a5ab8];
       for (let i = 0; i < 12; i++) add(std(cc[Math.floor(rnd() * 5)]), 12, 5, 5.5, -9 + (i % 2) * 14, Math.floor(i / 6) * 5, -12 + (Math.floor(i / 2) % 3) * 7.5);
@@ -1175,7 +1243,7 @@ function buildVenue(v, rnd) {
     }
   }
   // a neon sign on the building itself
-  const NEON = { stadium: ['#7dffa8', 34, 9.5, 34.2], bar: ['#ff4fa3', 20, 12.5, 10.4], gym: ['#3df2ff', 22, 14.2, 11.1], casino: ['#ffd24a', 28, 27, 13.4], market: ['#ffb04a', 22, 13.5, 16], diner: ['#ff5a4a', 20, 12.4, 8], office: ['#9fd4ff', 20, 86, 12.4], docks: ['#ffe08a', 26, 9, 10.4], yard: ['#9dff8a', 18, 16.5, 4.2] }[v.type];
+  const NEON = { field: ['#ffb04a', 30, 8.5, 36.9], stadium: ['#7dffa8', 34, 9.5, 34.2], bar: ['#ff4fa3', 20, 12.5, 10.4], gym: ['#3df2ff', 22, 14.2, 11.1], casino: ['#ffd24a', 28, 27, 13.4], market: ['#ffb04a', 22, 13.5, 16], diner: ['#ff5a4a', 20, 12.4, 8], office: ['#9fd4ff', 20, 86, 12.4], docks: ['#ffe08a', 26, 9, 10.4], yard: ['#9dff8a', 18, 16.5, 4.2] }[v.type];
   if (NEON) {
     const [col, w, y, z] = NEON;
     const sm = new THREE.MeshBasicMaterial({ map: neonTexture(v.name, col), transparent: true, toneMapped: false, alphaTest: 0.04, side: THREE.DoubleSide });
@@ -1195,6 +1263,7 @@ function buildVenue(v, rnd) {
   venueObjs[v.id] = { v, sign, glow, key: '' };
 }
 function updateVenues() {
+  drawScoreScreen(fieldScreen, 'SKYLINE FIELD', 'GRIDIRON LEAGUE', S.gridiron ? { home: S.gridiron.home, away: S.gridiron.away, hc: S.gridiron.hc, ac: S.gridiron.ac, score: S.gridiron.score, status: S.gridiron.status, quarter: S.gridiron.quarter } : null);
   drawArenaScreen(S.football ? { home: S.football.home, away: S.football.away, hc: S.football.hc, ac: S.football.ac, score: S.football.score, status: S.football.status, minute: S.football.minute } : null);
   for (const v of S.venues) {
     const o = venueObjs[v.id]; if (!o) continue;
@@ -1294,7 +1363,7 @@ function updateCars(dt) {
     const t = c.dir > 0 ? c.s : span - c.s;
     const lane = 3 * c.dir;
     const x = c.horiz ? OFF + t : c.line + lane, y = c.horiz ? c.line - lane : OFF + t;
-    const hid = x > 826 && x < 934 && y > 544 && y < 616; // no driving through Sunfall Arena
+    const hid = (x > 826 && x < 934 && y > 544 && y < 616) || (x > 186 && x < 294 && y > 404 && y < 476); // no driving through Sunfall Arena or Skyline Field
     dummy.position.copy(W(x, y, hid ? -40 : 0)); dummy.rotation.set(0, c.horiz ? (c.dir > 0 ? 0 : Math.PI) : (c.dir > 0 ? -Math.PI / 2 : Math.PI / 2), 0); dummy.scale.set(1, 1, 1);
     dummy.updateMatrix(); carMesh.setMatrixAt(i, dummy.matrix); cabinMesh.setMatrixAt(i, dummy.matrix);
     const fx = c.horiz ? x + 3 * c.dir : x, fy = c.horiz ? y : y + 3 * c.dir;
@@ -1597,7 +1666,7 @@ function selectVenue(vid) {
   follow = null;
   const v = S.venues.find((x) => x.id === vid); if (!v) return;
   const c = W(v.x, v.y);
-  const tall = { casino: 60, office: 120, docks: 40, stadium: 70 }[v.type] || 0;
+  const tall = { casino: 60, office: 120, docks: 40, stadium: 70, field: 70 }[v.type] || 0;
   $('#drawer').classList.add('open');
   frameOn(c, new THREE.Vector3(30, 150 + tall * 1.6, 115), tall > 80 ? 2.2 : 3.4);
   const inside = people.filter((p) => !p.walk && p.vis && p.vid === vid);
@@ -1612,6 +1681,7 @@ function selectVenue(vid) {
     </div>
     ${v.type === 'casino' ? '<a href="/casino" style="display:inline-block;margin:10px 0 4px;color:#ffd36e;font-weight:600">See every hand at the tables →</a>' : ''}
     ${v.type === 'stadium' ? `${S.football ? `<div style="margin:10px 0 2px;font-family:var(--mono);font-size:13px">${S.football.status === 'live' ? `<span style="color:#ff6b6b">LIVE ${S.football.minute}'</span> ` : S.football.status === 'ft' ? 'Full time: ' : 'Next: '}${esc(S.football.home)} ${S.football.score ? S.football.score.join('-') : 'v'} ${esc(S.football.away)}</div>` : ''}<a href="/stadium" style="display:inline-block;margin:8px 0 4px;color:#7dffa8;font-weight:600">Fixtures, odds and agents' bets →</a>` : ''}
+    ${v.type === 'field' ? `${S.gridiron ? `<div style="margin:10px 0 2px;font-family:var(--mono);font-size:13px">${S.gridiron.status === 'live' ? `<span style="color:#ff6b6b">LIVE ${S.gridiron.quarter}</span> ` : S.gridiron.status === 'ft' ? 'Final: ' : 'Next: '}${esc(S.gridiron.home)} ${S.gridiron.score ? S.gridiron.score.join('-') : 'v'} ${esc(S.gridiron.away)}</div>` : ''}<a href="/field" style="display:inline-block;margin:8px 0 4px;color:#ffb04a;font-weight:600">Games, odds and agents' bets →</a>` : ''}
     <div class="who">${inside.slice(0, 40).map((p) => `<button data-who="${esc(p.r[0])}" class="${p.r[6] ? 'agent' : ''}">${esc(p.r[1])}</button>`).join('') || '<span class="dim">Nobody right now.</span>'}</div>`;
   $('#drawer').classList.add('open');
 }
