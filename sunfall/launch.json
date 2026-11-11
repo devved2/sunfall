@@ -22,5 +22,5 @@
   "teamAgents": ["r242", "r243", "r244"],
   "prizeExcluded": ["r351"],
   "purgedAgents": ["r349", "r350", "r351", "r352", "r353", "r354", "r355", "r356", "r357", "r358", "r359", "r360"],
-  "removedAgents": ["r241"]
+  "removedAgents": ["r241", "r247"]
 }
