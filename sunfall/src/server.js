@@ -166,6 +166,8 @@ const server = http.createServer(async (req, res) => {
       const out = await runOp(op, fields, { ip: ipOf(req), token: bearer(req) || fields.token });
       return send(res, out.status || 200, out);
     }
+    // The Districts page has been retired; old links land on the city.
+    if (p === '/districts' || p === '/districts.html') { res.writeHead(301, { location: '/' }); return res.end(); }
     // static
     let file = p === '/' ? '/index.html' : p;
     file = path.normalize(path.join(PUBLIC, file));
