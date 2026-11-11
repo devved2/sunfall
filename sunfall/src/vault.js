@@ -34,12 +34,13 @@ const r4 = (x) => Math.round(x * 1e4) / 1e4;
 const amt = (e) => e.amount ?? e.sol ?? 0;
 
 /** Record a flow. kind 'in' needs a source; kind 'out' needs a use (a bucket). Amounts in HYPE. */
-export function recordFlow({ kind, source, use, amount, sol, tx, note, award }) {
+export function recordFlow({ kind, source, use, amount, sol, tx, note, award, to }) {
   amount ??= sol; // older clients sent `sol`
   if (kind !== 'in' && kind !== 'out') refuse(422, 'kind must be in or out');
   if (!(typeof amount === 'number' && amount > 0 && amount < 1e7)) refuse(422, 'amount must be a positive number of HYPE');
   if (kind === 'in' && !SOURCES[source]) refuse(422, `source must be one of ${Object.keys(SOURCES).join(', ')}`);
   if (kind === 'out' && !VAULT.policy[use]) refuse(422, `use must be one of ${Object.keys(VAULT.policy).join(', ')}`);
+  if (to != null && (kind !== 'in' || !VAULT.policy[to])) refuse(422, `to: an inflow can go all to one of ${Object.keys(VAULT.policy).join(', ')}`);
   if (!TX_HASH_RE.test(tx || '')) refuse(422, 'tx must be the 0x Elysium transaction hash that proves it');
   if (v().entries.some((e) => e.tx.toLowerCase() === tx.toLowerCase() && e.kind === kind)) refuse(409, 'that transaction is already recorded');
   if (note != null && (typeof note !== 'string' || note.length > 140)) refuse(422, 'note: up to 140 characters');
@@ -56,7 +57,7 @@ export function recordFlow({ kind, source, use, amount, sol, tx, note, award }) 
     if (aw.tx) refuse(409, `award ${award} is already paid (tx ${aw.tx})`);
     if (Math.abs(amount - aw.hype) > 1e-6) refuse(422, `award ${award} is ${aw.hype} HYPE, not ${amount}`);
   }
-  const e = { i: ++v().n, t: Date.now(), day: state.day, kind, source: source || null, use: use || null, amount: r4(amount), tx, note: note || (aw ? aw.label : null), award: aw ? aw.id : null };
+  const e = { i: ++v().n, t: Date.now(), day: state.day, kind, source: source || null, use: use || null, to: to || null, amount: r4(amount), tx, note: note || (aw ? aw.label : null), award: aw ? aw.id : null };
   v().entries.push(e);
   if (aw) { aw.tx = tx; aw.paidAt = e.t; }
   L('vault', 'vault', kind === 'in' ? e.amount : -e.amount, `${kind === 'in' ? `in: ${source}` : `out: ${use}`} ${e.amount} HYPE, tx ${tx.slice(0, 14)}`);
@@ -69,8 +70,10 @@ export function summary() {
   const bySource = {};
   for (const e of es) if (e.kind === 'in') bySource[e.source] = r4((bySource[e.source] || 0) + amt(e));
   const buckets = {};
+  // An inflow marked "to" goes wholly to that bucket; the rest is split by the policy.
+  const split = es.filter((e) => e.kind === 'in' && !e.to).reduce((a, e) => a + amt(e), 0);
   for (const [k, pct] of Object.entries(VAULT.policy)) {
-    const owed = (inflow * pct) / 100;
+    const owed = (split * pct) / 100 + es.filter((e) => e.kind === 'in' && e.to === k).reduce((a, e) => a + amt(e), 0);
     const paid = es.filter((e) => e.kind === 'out' && e.use === k).reduce((a, e) => a + amt(e), 0);
     buckets[k] = { pct, label: USES[k] || k, owed: r4(owed), paid: r4(paid), pending: r4(Math.max(0, owed - paid)) };
   }
@@ -114,7 +117,7 @@ const awards = () => (v().awards ||= []);
 const prizePct = () => (VAULT.policy.prize || 0) / 100;
 /** HYPE that reached the prize pot between two moments (by when the inflow was recorded). */
 export function prizeAddedBetween(t0, t1) {
-  return v().entries.filter((e) => e.kind === 'in' && e.t > t0 && e.t <= t1).reduce((s, e) => s + amt(e), 0) * prizePct();
+  return v().entries.filter((e) => e.kind === 'in' && e.t > t0 && e.t <= t1).reduce((s, e) => s + (e.to ? (e.to === 'prize' ? amt(e) : 0) : amt(e) * prizePct()), 0);
 }
 export function freePrizePot() { return summary().buckets.prize?.free || 0; }
 /** Create awards for a list of winners [{place, sharePct, id, name, wallet}] from a pot of HYPE. Shares of empty places stay in the pot. */
@@ -141,7 +144,15 @@ export const recentAwards = (n = 40) => awards().slice(-n).reverse().map((a) => 
 // so the prize pot fills without anyone typing amounts in. Claims before "from" are left out.
 const CHUNK = 200_000;
 let scanning = false;
+// A one-off top-up (launch.json "vaultSeed"): recorded once, at its start time, e.g. HYPE already in the wallet put to prizes.
+function applySeed() {
+  const sd = LAUNCH.vaultSeed;
+  if (!sd || Date.now() < sd.atMs || v().entries.some((e) => e.kind === 'in' && e.seedId === sd.id)) return;
+  try { const e = recordFlow({ kind: 'in', source: 'seed', amount: sd.amount, tx: sd.tx, note: sd.note, to: sd.to }); e.seedId = sd.id; }
+  catch (err) { console.error('vault seed', err.message); }
+}
 export async function scanFeeClaims() {
+  applySeed();
   const fc = LAUNCH.feeClaims;
   if (!fc || !VAULT.wallet || scanning) return 0;
   scanning = true;
