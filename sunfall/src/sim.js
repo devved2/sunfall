@@ -696,6 +696,8 @@ export function buyBusiness(r, v) {
   } else state.treasury += price;
   L('purchase', r.id, -price, `bought ${v.name}`);
   v.ownerId = r.id; v.forSale = false; v.salePrice = null; v.partners = []; delete v.fireSale;
+  // A bargain isn't a prize gain: what the buyer saved on the city's valuation is left out of their prize score.
+  v.buyGap = Math.max(0, Math.round(venueValueNow(v) - price)); v.buyOwner = r.id; v.buySeason = state.season?.id;
   chron(`${r.name} bought ${v.name} for $${price}.`, r.id, 'business');
 }
 function nativesBuyBusinesses() {
