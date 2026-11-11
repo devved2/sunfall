@@ -105,3 +105,4 @@ export const LINES = {
   broke: ['nothing left until payday', 'counting coins again', 'skipping dinner to make rent'],
 };
 // (The city view is built from these places; see public/city.js for how each island is drawn.)
+// restart: weekly prize caps
