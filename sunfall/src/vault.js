@@ -5,7 +5,7 @@
 import { state, L } from './sim.js';
 import { refuse } from './util.js';
 import { TOKEN, CHAIN, TX_HASH_RE, hypeBalance, txUrl, addressUrl } from './chain.js';
-import { isEvmAddress, checksum } from './evm.js';
+import { isEvmAddress, checksum, rpc } from './evm.js';
 import { LAUNCH } from './launch.js';
 
 const parsePolicy = (s) => Object.fromEntries(String(s).split(',').map((kv) => kv.split(':')).map(([k, v]) => [k.trim(), Number(v)]));
@@ -134,6 +134,44 @@ export function grantAwards(kind, key, pot, winners, labelOf) {
 }
 export const dueAwards = () => awards().filter((a) => !a.tx);
 export const recentAwards = (n = 40) => awards().slice(-n).reverse().map((a) => ({ id: a.id, kind: a.kind, key: a.key, place: a.place, rid: a.rid, name: a.name, wallet: a.wallet, hype: a.hype, tx: a.tx, txUrl: a.tx ? txUrl(a.tx) : null }));
+
+// ---------------------------------------------------------------- creator fees, recorded automatically
+// Every time the Vault wallet claims $SUNFALL creator fees, the launchpad logs the claim (launch.json "feeClaims").
+// The city reads those logs from Elysium and records each claim as an inflow, with its transaction as proof,
+// so the prize pot fills without anyone typing amounts in. Claims before "from" are left out.
+const CHUNK = 200_000;
+let scanning = false;
+export async function scanFeeClaims() {
+  const fc = LAUNCH.feeClaims;
+  if (!fc || !VAULT.wallet || scanning) return 0;
+  scanning = true;
+  let added = 0;
+  try {
+    const st = (v().feeScan ||= { block: null });
+    const head = parseInt(await rpc(CHAIN.rpc, 'eth_blockNumber', []), 16);
+    let from = st.block == null ? Math.max(0, head - 1_000_000) : st.block + 1; // first run: look back ~40 hours
+    const who = '0x' + VAULT.wallet.slice(2).toLowerCase().padStart(64, '0');
+    const times = new Map();
+    while (from <= head) {
+      const to = Math.min(head, from + CHUNK - 1);
+      const logs = await rpc(CHAIN.rpc, 'eth_getLogs', [{ fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16), address: fc.contract, topics: [fc.event, fc.pool, who] }], 20_000);
+      for (const l of logs) {
+        if (l.removed) continue;
+        let t = times.get(l.blockNumber);
+        if (t == null) { t = parseInt((await rpc(CHAIN.rpc, 'eth_getBlockByNumber', [l.blockNumber, false])).timestamp, 16) * 1000; times.set(l.blockNumber, t); }
+        if (t < fc.fromMs) continue;
+        if (v().entries.some((e) => e.kind === 'in' && e.tx.toLowerCase() === l.transactionHash.toLowerCase())) continue;
+        const hype = Number(BigInt(l.data.slice(0, 66)) / 10n ** 12n) / 1e6;
+        if (!(hype > 0)) continue;
+        try { recordFlow({ kind: 'in', source: 'creator_fees', amount: hype, tx: l.transactionHash, note: 'creator fees claimed (recorded automatically)' }); added++; }
+        catch (e) { console.error('fee claim', l.transactionHash, e.message); }
+      }
+      st.block = to;
+      from = to + 1;
+    }
+  } finally { scanning = false; }
+  return added;
+}
 
 export function checkAdmin(key) {
   if (!VAULT.adminKey) refuse(503, 'recording is off: set ADMIN_KEY on the server');
