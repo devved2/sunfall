@@ -3,8 +3,8 @@ import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth, cityStats } from './sim.js';
-import { runOp, spec, leaderboard, residentView } from './api.js';
+import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth, cityStats, venueValueNow } from './sim.js';
+import { runOp, spec, leaderboard, residentView, venueView, staffOf } from './api.js';
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './vault.js';
 import { Refusal } from './util.js';
@@ -145,7 +145,25 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/spec' || (p === '/api/agents' && req.method === 'GET')) return send(res, 200, spec());
     if (p === '/api/resident') {
       const r = state.residents[url.searchParams.get('id')];
-      return r ? send(res, 200, { ok: true, resident: residentView(r) }) : send(res, 404, { ok: false, reason: 'no such resident' });
+      if (!r) return send(res, 404, { ok: false, reason: 'no such resident' });
+      // the profile page: recent money lines, chronicle mentions and (for agents) the season standing
+      const out = { ok: true, resident: residentView(r) };
+      out.activity = recentLines().filter((e) => e.who === r.id).slice(-25).reverse().map((e) => ({ t: e.t, day: e.day, kind: e.kind, amt: e.amt, note: e.note }));
+      out.news = state.chronicle.filter((c) => c.who === r.id).slice(-8).reverse();
+      if (r.outside) {
+        const rows = standings(), i = rows.findIndex((x) => x.id === r.id);
+        if (i >= 0) out.standing = { rank: i + 1, of: rows.length, prizeScore: rows[i].prizeScore, prizeEligible: rows[i].prizeEligible, team: rows[i].team, fromAgents: rows[i].fromAgents, casino: rows[i].casino, betting: rows[i].betting };
+      }
+      return send(res, 200, out);
+    }
+    if (p === '/api/venue') {
+      const v = state.venues[url.searchParams.get('id')];
+      if (!v) return send(res, 404, { ok: false, reason: 'no such venue' });
+      const out = { ok: true, venue: venueView(v), value: Math.round(venueValueNow(v)) };
+      out.staff = staffOf(v).map((r) => ({ id: r.id, name: r.outside ? { quoted: r.name } : r.name, isAgent: r.outside, trade: TRADES[r.trade].name, wage: TRADES[r.trade].wage }));
+      out.activity = recentLines().filter((e) => e.who === v.id || (e.note || '').includes(v.name)).slice(-25).reverse().map((e) => ({ t: e.t, day: e.day, kind: e.kind, who: e.who, amt: e.amt, note: e.note }));
+      out.news = state.chronicle.filter((c) => c.text.includes(v.name)).slice(-8).reverse();
+      return send(res, 200, out);
     }
     if (p === '/api/vault' && req.method === 'GET') return send(res, 200, { ok: true, ...(await vaultView()) });
     if (p === '/api/admin/payouts' && req.method === 'GET') {
