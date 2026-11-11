@@ -6,6 +6,7 @@ import { secureRandom, pick, clamp, refuse } from './util.js';
 import { PRIZES, LAUNCH } from './launch.js';
 import { VAULT, prizeAddedBetween, freePrizePot, grantAwards, recentAwards } from './vault.js';
 import { voidAgentBets } from './football.js';
+import { writeDiaries } from './diary.js';
 
 export const GAME = {
   LOAN_MIN: 20, LOAN_MAX: 2000, LOAN_RATE_MAX: 50, LOAN_DAYS_MAX: 14, LOANS_ACTIVE_MAX: 3, LOAN_OFFERS_MAX: 5,
@@ -354,6 +355,7 @@ const dailyShares = (n) => { const s = DAILY_SPLIT.slice(0, n), t = s.reduce((a,
 // A prize day closes at PRIZES.dailyCloseHour UTC; it is named by the UTC date it ends on.
 const CLOSE_OFF = ((24 - PRIZES.dailyCloseHour) % 24) * 3_600_000;
 const utcDay = (t = Date.now()) => new Date(t + CLOSE_OFF).toISOString().slice(0, 10);
+export const prizeDay = () => dailyState().date;
 function dailyState() {
   state.daily ||= { date: utcDay(), base: {}, winners: [] };
   return state.daily;
@@ -385,6 +387,7 @@ export function dailyCheck(now = Date.now()) {
     L('season', 'city', 0, `daily prize ${d.date}: ${top.map((w, i) => `${i + 1}. ${w.id} +${money(w.gain)}`).join(', ')}`);
     chron(`${best.name.quoted} had the best day in Sunfall (${d.date}): up ${money(best.gain)}.`, best.id, 'season');
   }
+  try { writeDiaries(d.date, d.closedAt ?? dayStart, rows, now); } catch (e) { console.error('diaries', e); }
   d.date = today; d.closedAt = now;
   d.base = Object.fromEntries(rows.map((r) => [r.id, r.prizeScore]));
   return true;
