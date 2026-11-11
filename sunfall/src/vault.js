@@ -148,7 +148,9 @@ let scanning = false;
 // A one-off top-up (launch.json "vaultSeed"): recorded once, at its start time, e.g. HYPE already in the wallet put to prizes.
 function applySeed() {
   const sd = LAUNCH.vaultSeed;
-  if (!sd || Date.now() < sd.atMs || v().entries.some((e) => e.kind === 'in' && e.seedId === sd.id)) return;
+  if (!sd || Date.now() < sd.atMs) return;
+  const had = v().entries.find((e) => e.kind === 'in' && e.seedId === sd.id);
+  if (had) { if (sd.countsFromMs && had.countsFrom !== sd.countsFromMs) had.countsFrom = sd.countsFromMs; return; } // a moved start date applies to the recorded seed too
   try { const e = recordFlow({ kind: 'in', source: 'seed', amount: sd.amount, tx: sd.tx, note: sd.note, to: sd.to }); e.seedId = sd.id; if (sd.countsFromMs > e.t) e.countsFrom = sd.countsFromMs; }
   catch (err) { console.error('vault seed', err.message); }
 }
