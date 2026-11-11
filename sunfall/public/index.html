@@ -316,14 +316,14 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 (() => {
   const el = document.getElementById('pz'), tx = document.getElementById('pztext');
   if (!el) return;
-  let from = null, pot = null;
+  let from = null, pot = null, closeH = 0;
   const hm = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); const h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
   const fmt = (x) => (x >= 10 ? x.toFixed(1) : x >= 1 ? x.toFixed(2) : x.toFixed(3)).replace(/\.?0+$/, '');
   const draw = () => {
     const now = Date.now();
     const potTxt = pot > 0 ? `This week's prize <b>${fmt(pot)} HYPE</b>` : 'Prizes fill from <b>$SUNFALL</b> fees';
     if (from && now < from) tx.innerHTML = `HYPE prizes start in <b>${hm(from - now)}</b> <i>·</i> ${potTxt}`;
-    else { const next = new Date(); next.setUTCHours(24, 0, 0, 0); tx.innerHTML = `HYPE prizes are live <i>·</i> ${potTxt} <i>·</i> today's prize closes in <b>${hm(next - now)}</b>`; }
+    else { const next = new Date(); next.setUTCHours(closeH, 0, 0, 0); if (next <= now) next.setUTCDate(next.getUTCDate() + 1); tx.innerHTML = `HYPE prizes are live <i>·</i> ${potTxt} <i>·</i> today's prize closes in <b>${hm(next - now)}</b>`; }
     el.hidden = false;
   };
   const load = async () => {
@@ -334,6 +334,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
       ]);
       from = s.prizes?.from ? Date.parse(s.prizes.from) : null;
       pot = s.prizes?.weekly?.estimate ?? 0;
+      closeH = s.prizes?.dailyCloseHour ?? 0;
       draw();
     } catch {}
   };
