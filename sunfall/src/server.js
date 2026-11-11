@@ -10,7 +10,7 @@ import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './v
 import { refreshTokenPrice } from './market.js';
 import { Refusal } from './util.js';
 import { TOKEN, CHAIN } from './chain.js';
-import { migrate, seasonCheck, eventView, standings, titles } from './play.js';
+import { migrate, seasonCheck, dailyCheck, eventView, standings, titles } from './play.js';
 import { pollReal, arenaNow } from './football.js';
 import { pollNfl, fieldNow } from './gridiron.js';
 import { execFile } from 'node:child_process';
@@ -24,6 +24,7 @@ if (!load()) { initWorld(); save(); console.log('new city generated'); } else { 
 seasonCheck();
 tick();
 setInterval(() => { try { tick(); } catch (e) { console.error('tick', e); } }, 500);
+setInterval(() => { try { dailyCheck(); } catch (e) { console.error('daily close', e); } }, 5000); // close each prize day on the dot, not at the next city day turn
 setInterval(() => { try { save(); } catch (e) { console.error('save', e); } }, 5000);
 // Real football fixtures, odds and results: the next week every half hour, today's scores every three minutes.
 setTimeout(() => pollReal().catch((e) => console.error('football feed', e)), 5000);
