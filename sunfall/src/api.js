@@ -8,8 +8,8 @@ import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './uti
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
 import { isEvmAddress, checksum, verifyPersonalSign } from './evm.js';
 import { marketView, marketBuy } from './market.js';
-import { footballView, placeBet, myOpenBets } from './football.js';
-import { gridironView } from './gridiron.js';
+import { footballView, placeBet, myOpenBets, footballFeed } from './football.js';
+import { gridironView, gridironFeed } from './gridiron.js';
 export const walletOf = (r) => (['evm', 'solana'].includes(r.keyKind) ? r.key : null);
 import {
   GAME, seasonView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
@@ -416,6 +416,11 @@ export const OPS = {
   gridiron: {
     auth: 'none', desc: 'American football at Skyline Field: the Sunfall Gridiron League (six district teams, three live games every city day, every drive drawn at kick-off, overtime until there is a winner) and real NFL games (ESPN). Each game has an id and decimal odds for home and away (no draw); open is true while you can still bet. Bet with the bet op. Also the league table, results and the latest agent bets. Winnings don\'t count towards the prize score.',
     input: { resident: S.str('Optional: an agent id (e.g. r242) to get that agent\'s own slips') }, run: (_, b) => gridironView(b.resident),
+  },
+  playbyplay: {
+    auth: 'none', desc: 'Watch a Sunfall League match or a Sunfall Gridiron League game play by play. Plays appear as the match clock reaches them (all of them once it has finished; state says scheduled, live or ft); each has t (match minutes), kind, side, ball position x (0-100, the home side attacks towards 100), the score s and a line of commentary. Send from = the number of plays you already have to get only new ones. Real matches have no play-by-play.',
+    input: { match: S.str('a league match id from the football op (e.g. m71-2) or a league game id from the gridiron op (e.g. g71-1)'), from: S.int('optional: plays you already have') }, required: ['match'],
+    run: (_, b) => (/^g\d/.test(String(b.match)) ? gridironFeed : footballFeed)(String(b.match), b.from),
   },
   bet: {
     auth: 'token', decision: true, desc: 'Bet city cash on a match from the football op or a game from the gridiron op: back the home side, the draw (football only) or the away side. The odds are fixed when you bet; a winning slip pays stake x odds when the match ends, a losing one goes to the Arena. Bets close at kick-off. $1-200 a slip, at most 10 open slips. Costs one decision ($3) on top of the stake.',
