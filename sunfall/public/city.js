@@ -235,6 +235,7 @@ const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza'
 const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
 const SPINDLE = '1880,360'; // Nightfall's centrepiece tower stands on this block
 const venueMeshes = [];
+const islandMeshes = []; // land and rock of each island, so a click on a city brings it into focus
 const venueObjs = {};
 let billboardTex = null, billboardCanvas = null;
 
@@ -251,8 +252,9 @@ function build() {
     t.repeat.set((x1 - x0) / 970, (y1 - y0) / 672); t.offset.set((x0 - tx - 15) / 970, 1 - (y1 - ty - 14) / 672);
     const land = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4, y1 - y0), [side, side, new THREE.MeshStandardMaterial({ map: t, roughness: 0.92 }), side, side, side]);
     land.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -2)); land.receiveShadow = true; scene.add(land);
+    land.userData.city = isl.nf ? 'nightfall' : 'sunfall'; land.userData.top = true; islandMeshes.push(land);
     const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
-    scene.add(rockUnder(x0, y0, x1, y1, isl.depth, rnd));
+    const rock = rockUnder(x0, y0, x1, y1, isl.depth, rnd); rock.userData.city = land.userData.city; islandMeshes.push(rock); scene.add(rock);
   }
   buildElysiumGlow();
 
@@ -1650,9 +1652,7 @@ function renderChips() {
       const vis = ags.filter((p) => p.vis); const pick = (vis.length ? vis : ags)[Math.floor(Math.random() * (vis.length || ags.length))];
       selectResident(pick.r[0]); return;
     }
-    const d = S.districts.find((x) => x.id === g); unfollow();
-    const c = W(d.rect[0] + d.rect[2] / 2, d.rect[1] + d.rect[3] / 2);
-    frameOn(c, new THREE.Vector3(60, 190, 230), 2.1);
+    focusDistrict(S.districts.find((x) => x.id === g));
   };
 }
 let fly = null;
@@ -1779,7 +1779,25 @@ function pick(e) {
   ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObjects(venueMeshes, false)[0];
   if (hit) return { venue: hit.object.userData.vid };
+  const land = ray.intersectObjects(islandMeshes, false)[0];
+  if (land) {
+    const city = land.object.userData.city, mx2 = land.point.x + 500, my2 = land.point.z + 350;
+    if (city !== cityInView()) return { island: city };           // the other city: fly over to it
+    if (!land.object.userData.top) return null;                   // the rock under the city you're already looking at
+    const d = S.districts.find((x) => (x.city || 'sunfall') === city && mx2 >= x.rect[0] && mx2 <= x.rect[0] + x.rect[2] && my2 >= x.rect[1] && my2 <= x.rect[1] + x.rect[3]);
+    return d ? { district: d } : { spot: land.point.clone() };
+  }
   return null;
+}
+// Which city the camera is looking at: whichever side of the gap between the islands its target is on.
+const cityInView = () => (controls.target.x + 500 > 1260 ? 'nightfall' : 'sunfall');
+function focusDistrict(d) {
+  unfollow();
+  frameOn(W(d.rect[0] + d.rect[2] / 2, d.rect[1] + d.rect[3] / 2), new THREE.Vector3(60, 190, 230), 2.1);
+}
+function focusCity(city) {
+  if (chipCity !== city) { chipCity = city; renderChips(); }
+  goCity(city);
 }
 let down = null;
 canvas.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
@@ -1788,6 +1806,9 @@ canvas.addEventListener('pointerup', (e) => {
   const h = pick(e);
   if (h?.person) selectResident(h.person.r[0]);
   else if (h?.venue) selectVenue(h.venue);
+  else if (h?.district) focusDistrict(h.district);
+  else if (h?.spot) { unfollow(); frameOn(h.spot, new THREE.Vector3(60, 190, 230), 2.1); }
+  else if (h?.island) focusCity(h.island);
 });
 let hoverQ = null;
 canvas.addEventListener('pointermove', (e) => { hoverQ = e; });
@@ -1803,6 +1824,10 @@ function doHover() {
   } else if (h?.venue) {
     const v = V[h.venue];
     tip.innerHTML = `<b>${esc(v.name)}</b><br><span class="dim">${v.isVenue ? `door $${v.price} · ${v.visitsToday} in today` : 'workplace'}</span>`;
+  } else if (h?.district || h?.spot) {
+    tip.innerHTML = `<b>${h.district ? esc(h.district.name) : 'Here'}</b><br><span class="dim">click to zoom in</span>`;
+  } else if (h?.island) {
+    tip.innerHTML = `<b>${h.island === 'nightfall' ? '☾ Nightfall' : '☀ Sunfall'}</b><br><span class="dim">click to fly there</span>`;
   }
   if (h) { tip.style.display = 'block'; tip.style.left = e.clientX + 14 + 'px'; tip.style.top = e.clientY + 14 + 'px'; canvas.style.cursor = 'pointer'; }
   else { tip.style.display = 'none'; canvas.style.cursor = ''; }
