@@ -15,6 +15,12 @@ export const LAUNCH = {
   removedAgents: Array.isArray(cfg.removedAgents) ? cfg.removedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // A ring of agents taken out together (wash trading between themselves). Unlike removedAgents, their businesses go
   // back to the city, their open offers and bets are cancelled, and records only among them are cleared.
+  // Creator-fee claims to record into the Vault automatically: the launchpad contract, the claim event, the pool id of
+  // $SUNFALL (topic 1) and the moment to start counting from. The Vault wallet is matched as topic 2.
+  feeClaims: cfg.feeClaims && /^0x[0-9a-fA-F]{40}$/.test(cfg.feeClaims.contract || '') && /^0x[0-9a-fA-F]{64}$/.test(cfg.feeClaims.event || '')
+    ? { contract: cfg.feeClaims.contract.toLowerCase(), event: cfg.feeClaims.event.toLowerCase(),
+      pool: /^0x[0-9a-fA-F]{64}$/.test(cfg.feeClaims.pool || '') ? cfg.feeClaims.pool.toLowerCase() : null,
+      fromMs: Number.isFinite(Date.parse(cfg.feeClaims.from)) ? Date.parse(cfg.feeClaims.from) : 0 } : null,
   purgedAgents: Array.isArray(cfg.purgedAgents) ? cfg.purgedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // How every HYPE that reaches the Vault is split, e.g. {"prize":70,"buyback":30}; must add up to 100.
   vaultPolicy: cfg.vaultPolicy && typeof cfg.vaultPolicy === 'object' && Object.values(cfg.vaultPolicy).every((n) => Number.isFinite(n) && n >= 0)
