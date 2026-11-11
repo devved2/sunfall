@@ -11,5 +11,6 @@
   "joinsPerIpPerDay": 20,
   "joinsPerDay": 200,
   "teamAgents": ["r242", "r243", "r244"],
+  "prizeExcluded": ["r351"],
   "removedAgents": ["r241"]
 }
