@@ -230,8 +230,10 @@ const ISLANDS = [
   { parts: [[340, 494, 985, 686]], depth: 220 },
   { parts: [[1535, 54, 2185, 666]], depth: 300, tex: [1520, 40], nf: true }, // Nightfall (tex: where its streets sit on the road texture)
 ];
+// Cinder Rock: the prison island floating off the city's west edge. Agents caught robbing a business spend 24 hours here.
+const PRISON = { x0: -470, y0: 270, x1: -230, y1: 440, cx: -350, cy: 355, lift: -46, yard: [-335, 355], yardR: 26 };
 const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
-  { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true }];
+  { name: 'Cinder Rock Prison', x: -350, y: 340, h: PRISON.lift + 74, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true }];
 const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
 const SPINDLE = '1880,360'; // Nightfall's centrepiece tower stands on this block
 const venueMeshes = [];
@@ -686,6 +688,64 @@ function buildSkyKeep(rnd) {
   for (let i = 0; i < 5; i++) puff(430 + rnd() * 200, -230 + rnd() * 40, lift - 60 - rnd() * 80, 160 + rnd() * 120, 1);
 }
 
+function buildPrison(rnd) {
+  const { x0, y0, x1, y1, cx, lift } = PRISON;
+  const grp = new THREE.Group(); grp.position.set(0, lift, 0); scene.add(grp);
+  grp.add(rockUnder(x0, y0, x1, y1, 260, rnd));
+  const concrete = new THREE.MeshStandardMaterial({ color: 0x3e3c3f, roughness: 0.95 });
+  const slab = new THREE.Mesh(BOX, concrete); slab.scale.set(x1 - x0, 4, y1 - y0); slab.position.copy(W(cx, (y0 + y1) / 2, -2)); slab.receiveShadow = true; grp.add(slab);
+  const box = (mat, w, h, d, x, y, z = 0) => { const m = new THREE.Mesh(BOX, mat); m.scale.set(w, h, d); m.position.copy(W(x, y, z + h / 2)); m.castShadow = m.receiveShadow = true; grp.add(m); return m; };
+  // the outer wall, with a gate facing the city
+  const wallM = new THREE.MeshStandardMaterial({ color: 0x5c5853, roughness: 0.9 });
+  const [wx0, wy0, wx1, wy1] = [x0 + 12, y0 + 12, x1 - 12, y1 - 12];
+  const gy = (wy0 + wy1) / 2, half = (wy1 - wy0) / 2 - 14;
+  box(wallM, wx1 - wx0, 16, 3, cx, wy0); box(wallM, wx1 - wx0, 16, 3, cx, wy1); box(wallM, 3, 16, wy1 - wy0, wx0, gy);
+  box(wallM, 3, 16, half, wx1, wy0 + half / 2); box(wallM, 3, 16, half, wx1, wy1 - half / 2);
+  box(new THREE.MeshStandardMaterial({ color: 0x1e1e22, metalness: 0.6, roughness: 0.4 }), 1.2, 13, 28, wx1, gy);
+  for (let i = 0; i < 5; i++) box(new THREE.MeshStandardMaterial({ color: i % 2 ? 0x1e1e22 : 0xe0a526 }), 1.6, 2, 5.6, wx1 + 0.3, gy - 11.2 + i * 5.6, 13);
+  // razor wire along the top of the wall
+  const wire = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, metalness: 0.8, roughness: 0.3 });
+  for (const [a, b, c, d] of [[wx0, wy0, wx1, wy0], [wx0, wy1, wx1, wy1], [wx0, wy0, wx0, wy1], [wx1, wy0, wx1, wy1]]) {
+    const len = Math.hypot(c - a, d - b), m = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.18, 4, 10), wire);
+    const n = Math.floor(len / 2.4), im = new THREE.InstancedMesh(m.geometry, wire, n), dm = new THREE.Object3D();
+    for (let i = 0; i < n; i++) { dm.position.copy(W(a + (c - a) * (i + 0.5) / n, b + (d - b) * (i + 0.5) / n, 17)); dm.rotation.set(0, Math.atan2(d - b, c - a), 0); dm.updateMatrix(); im.setMatrixAt(i, dm.matrix); }
+    grp.add(im);
+  }
+  // cell blocks: two long wings and the warden's block
+  const cellM = windowed(new THREE.MeshStandardMaterial({ color: 0x6f6a64, roughness: 0.85 })), roofM = new THREE.MeshStandardMaterial({ color: 0x2c2b30, roughness: 0.7 });
+  box(cellM, 30, 26, 120, x0 + 46, y0 + 85); box(roofM, 34, 2, 124, x0 + 46, y0 + 85, 26);
+  box(cellM, 70, 22, 24, x0 + 120, y0 + 34); box(roofM, 74, 2, 28, x0 + 120, y0 + 34, 22);
+  box(cellM, 70, 22, 24, x0 + 120, y1 - 34); box(roofM, 74, 2, 28, x0 + 120, y1 - 34, 22);
+  box(new THREE.MeshStandardMaterial({ color: 0x8a2a22, roughness: 0.6 }), 3, 4, 50, x0 + 30.5, y0 + 85, 20);
+  // the exercise yard: a pale square with a chain-link fence
+  const yard = new THREE.Mesh(new THREE.CylinderGeometry(PRISON.yardR + 10, PRISON.yardR + 10, 0.6, 24), new THREE.MeshStandardMaterial({ color: 0xa8a39a, roughness: 1 }));
+  yard.position.copy(W(PRISON.yard[0], PRISON.yard[1], 0.3)); yard.receiveShadow = true; grp.add(yard);
+  const fenceR = PRISON.yardR + 12, post = new THREE.MeshStandardMaterial({ color: 0x55585e, metalness: 0.5 });
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(fenceR, fenceR, 7, 32, 1, true).translate(0, 3.5, 0), new THREE.MeshStandardMaterial({ color: 0xb0b5bc, metalness: 0.6, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  mesh.position.copy(W(PRISON.yard[0], PRISON.yard[1], 0)); grp.add(mesh);
+  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; const pp = new THREE.Mesh(BOX, post); pp.scale.set(0.5, 8, 0.5); pp.position.copy(W(PRISON.yard[0] + Math.cos(a) * fenceR, PRISON.yard[1] + Math.sin(a) * fenceR, 4)); grp.add(pp); }
+  // watchtowers on every corner, each with a sweeping searchlight and a red warning light
+  const towerM = new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.85 }), cabM = windowed(new THREE.MeshStandardMaterial({ color: 0x3d3b40, roughness: 0.6 }));
+  const reds = [];
+  for (const [tx, ty] of [[wx0, wy0], [wx1, wy0], [wx0, wy1], [wx1, wy1]]) {
+    box(towerM, 6, 34, 6, tx, ty); box(cabM, 11, 7, 11, tx, ty, 34);
+    box(new THREE.MeshStandardMaterial({ color: 0x2a2a2e }), 13, 1.4, 13, tx, ty, 41);
+    const bm = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 14, 230, 18, 1, true).translate(0, 115, 0),
+      new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    bm.position.copy(W(tx, ty, 40)); bm.rotation.z = Math.PI * 0.62; grp.add(bm); beams.push({ m: bm, ph: tx + ty, prison: true });
+    reds.push(W(tx, ty, 43.5));
+  }
+  const red = new THREE.Points(new THREE.BufferGeometry().setFromPoints(reds), new THREE.PointsMaterial({ map: GLOW, size: 14, color: 0xff3b30, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  grp.add(red); blinkers.push(red.material);
+  // a landing pad outside the gate for the prison airship
+  box(new THREE.MeshStandardMaterial({ color: 0x2a2a2e }), 22, 1, 34, x1 + 10, (y0 + y1) / 2, -1);
+  for (let i = 0; i < 6; i++) box(new THREE.MeshStandardMaterial({ color: 0xe0a526 }), 1.2, 0.3, 4, x1 + 2, (y0 + y1) / 2 - 15 + i * 6, -0.4);
+  // the prison airship: black, with a red stripe, shuttling between Skyport's pier and the gate
+  const ship = airshipMesh(0.7, rnd); ship.traverse((o) => { if (o.isMesh && o.geometry.type === 'SphereGeometry') o.material = new THREE.MeshStandardMaterial({ color: 0x24242a, roughness: 0.5 }); if (o.isMesh && o.geometry.type === 'CylinderGeometry') o.material = new THREE.MeshStandardMaterial({ color: 0xa3261c }); });
+  scene.add(ship); prisonShip = ship;
+  for (let i = 0; i < 4; i++) puff(x0 + rnd() * (x1 - x0), y1 - 10 + rnd() * 30, lift - 70 - rnd() * 60, 150 + rnd() * 100, 1);
+}
+
 function buildIslet(x, y, h, size, rnd) {
   const g = new THREE.Group(); scene.add(g);
   g.add(rockUnder(x - size / 2, y - size / 2, x + size / 2, y + size / 2, size * 1.6, rnd));
@@ -718,6 +778,7 @@ function airshipMesh(scale, rnd) {
 
 // Nightfall's centrepiece, the sky ferry between the two cities, and the island's waterfalls and clouds.
 const ferries = [];
+let prisonShip = null;
 function buildNightfall(rnd) {
   const [sx, sy] = SPINDLE.split(',').map(Number);
   const dark = windowed(new THREE.MeshStandardMaterial({ color: 0x2a2140, roughness: 0.35, metalness: 0.55 }));
@@ -738,6 +799,14 @@ function buildNightfall(rnd) {
   for (let i = 0; i < (LITE ? 6 : 12); i++) puff(1560 + rnd() * 620, 80 + rnd() * 560, -320 - rnd() * 50, 300 + rnd() * 240, i % 2);
 }
 function updateFerries(t) {
+  if (prisonShip) {   // a slow round trip: Sunfall's west edge to the prison gate and back
+    const k = ((t / 70) % 1 + 1) % 1, a = PRISON.x1 + 24, b = 2;
+    let u, back = false;
+    if (k < 0.15) u = 0; else if (k < 0.45) u = smooth(0.15, 0.45, k); else if (k < 0.6) u = 1; else { u = 1 - smooth(0.6, 0.9, k); back = true; }
+    if (k >= 0.9) { u = 0; back = true; }
+    prisonShip.position.copy(W(b + (a - b) * u, PRISON.cy, 18 + PRISON.lift * u * 0.4 + Math.sin(u * Math.PI) * 22));
+    prisonShip.rotation.y = back ? 0 : Math.PI;
+  }
   const P = 48; // seconds for a round trip: wait, cross, wait, cross back
   for (const f of ferries) {
     const k = ((t / P + f.off) % 1 + 1) % 1;
@@ -867,6 +936,7 @@ function buildSkyWorld(rnd) {
   waterfall(985, 140, -3, 16, 260, Math.PI / 2); waterfall(300, 14, -3, 14, 240, 0);
   waterfall(747, 330, -3, 8, 160, Math.PI / 2); waterfall(620, 494, -3, 10, 170, 0);
   buildSkyKeep(rnd);
+  buildPrison(mulberry32(41));   // its own random stream, so the rest of the sky world keeps its layout
   for (const [x, y, h, sz] of [[-150, 180, 30, 70], [-120, 560, -30, 54], [1150, 260, 40, 64], [1120, 600, -20, 50], [240, 860, -70, 60], [820, 880, -50, 46], [1060, -120, 70, 58], [-60, -150, 50, 52], [330, -230, 20, 36]]) buildIslet(x, y, h, sz, rnd);
   // airships circling the city
   for (let i = 0; i < (LITE ? 3 : 5); i++) { const g = airshipMesh(0.9 + rnd() * 0.5, rnd); scene.add(g); airships.push({ g, r: 840 + rnd() * 260, h: 150 + rnd() * 90, sp: (0.012 + rnd() * 0.01) * (rnd() < 0.5 ? 1 : -1), a: rnd() * 6.28 }); }
@@ -964,9 +1034,11 @@ function buildLandmarkLabels() {
   for (const l of LANDMARKS) {
     const el = document.createElement('div'); el.className = 'lm' + (l.big ? ' big' : ''); el.textContent = l.name;
     $('#labels').appendChild(el); landmarkEls.push({ el, at: W(l.x, l.y, l.h ?? 4) });
+    if (l.prison) prisonLabel = el;
   }
 }
 const landmarkEls = [];
+let prisonLabel = null;
 let pondMat = null;
 
 // Kenney City Kit models (MIT): one mesh each, baked so the tile sits on y=0, centred
@@ -1518,11 +1590,13 @@ function schedule(p, h) {
 function updatePeople(h, time) {
   if (!natMesh) return;
   let ai = 0;
+  const jailed = people.filter((p) => p.r[9]);
   for (const p of people) {
-    const st = schedule(p, h);
+    const k = p.r[9] ? jailed.indexOf(p) : -1;
+    const st = k >= 0 ? (() => { const a = time * 0.18 + (k / jailed.length) * Math.PI * 2, R = PRISON.yardR * (k % 2 ? 0.62 : 1); return { pos: [PRISON.yard[0] + Math.cos(a) * R, PRISON.yard[1] + Math.sin(a) * R], vis: true, walk: true, state: 'jail', vid: null }; })() : schedule(p, h);
     Object.assign(p, st);
     const bob = st.walk ? Math.abs(Math.sin(time * 9 + p.phase)) * 0.45 : 0;
-    const w = W(st.pos[0], st.pos[1], 0.8 + bob);
+    const w = W(st.pos[0], st.pos[1], (st.state === 'jail' ? PRISON.lift : 0) + 0.8 + bob);
     dummy.position.copy(w); dummy.rotation.set(0, 0, 0);
     const sc = st.vis ? (p.r[6] ? 1.25 : 1) : 0;
     dummy.scale.set(sc, sc, sc); dummy.updateMatrix();
@@ -1530,7 +1604,7 @@ function updatePeople(h, time) {
     dummy.position.y += 5.35 * sc; dummy.updateMatrix(); headMesh.setMatrixAt(p.gi, dummy.matrix);
     p.world = w;
     if (p.r[6]) {
-      dummy.position.y = 0.8 + 9.5 + Math.sin(time * 2 + p.phase) * 0.5; dummy.rotation.y = time * 1.5; dummy.updateMatrix();
+      dummy.position.y = (st.state === 'jail' ? PRISON.lift : 0) + 0.8 + 9.5 + Math.sin(time * 2 + p.phase) * 0.5; dummy.rotation.y = time * 1.5; dummy.updateMatrix();
       agMark.setMatrixAt(ai++, dummy.matrix);
     }
   }
@@ -1579,7 +1653,7 @@ function updateSky(h) {
   for (const m of porchLights) m.opacity = night;
   if (canalMat) canalMat.color.copy(WATER_NIGHT).lerp(new THREE.Color(0x2d6a80), day);
   if (pondMat) pondMat.color.copy(WATER_NIGHT).lerp(new THREE.Color(0x4a9ab0), day);
-  for (const b of beams) b.m.material.opacity = night * 0.07;
+  for (const b of beams) b.m.material.opacity = night * (b.prison ? 0.16 : 0.07);
   if (tailLights) tailLights.material.opacity = 0.25 + night * 0.75;
   if (bloom) { bloom.strength = 0.06 + night * 0.38; bloom.threshold = 3.0 - night * 1.75; bloom.radius = 0.32; }
   if (carLights) carLights.material.opacity = night;
@@ -1591,6 +1665,7 @@ function updateSky(h) {
 const PHASE = (h) => (h < 6 ? 'The city sleeps' : h < 9 ? 'Morning: everyone heads out' : h < 14 ? 'The afternoon shift' : h < 17 ? 'Afternoon spending lands' : h < 19 ? 'Wages in, heading out' : h < 21 ? 'Sunset: bars filling up' : h < 23 ? 'Night: the tables are dealing' : 'Last orders, heading home');
 function renderHUD() {
   $('#pop').textContent = S.residents.length;
+  if (prisonLabel) { const n = S.residents.filter((r) => r[9]).length; prisonLabel.textContent = `Cinder Rock Prison${n ? ` · ${n} inmate${n > 1 ? 's' : ''}` : ''}`; }
   $('#agents').textContent = S.residents.filter((r) => r[6]).length;
   $('#cash').textContent = money(S.cashInCity);
   $('#treas').textContent = money(S.treasury);
@@ -1669,7 +1744,7 @@ function renderChips() {
   const two = (S.cities || []).length > 1 && S.districts.some((d) => d.city === 'nightfall');
   const ds = S.districts.filter((d) => (d.city || 'sunfall') === chipCity);
   el.innerHTML = `<button data-go="clean" class="cl">${cleanOn ? '◳ Show panels' : '◱ City only'}</button><button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">${chipCity === 'nightfall' ? 'Nightfall' : 'Overview'}</button>` + ds.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('')
-    + (two ? `<button data-go="city" class="cty">${chipCity === 'nightfall' ? '☀ Back to Sunfall' : '☾ Fly to Nightfall'}</button>` : '') + `<button data-go="agent" class="ag">☼ Follow an agent</button>`;
+    + (two ? `<button data-go="city" class="cty">${chipCity === 'nightfall' ? '☀ Back to Sunfall' : '☾ Fly to Nightfall'}</button>` : '') + `<button data-go="prison">⛓ Cinder Rock</button><button data-go="agent" class="ag">☼ Follow an agent</button>`;
   el.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const g = b.dataset.go;
@@ -1677,6 +1752,13 @@ function renderChips() {
     if (g === 'view') { setView(!iso); return; }
     if (g === 'city') { chipCity = chipCity === 'nightfall' ? 'sunfall' : 'nightfall'; renderChips(); goCity(chipCity); return; }
     if (g === 'all') { goCity(chipCity); return; }
+    if (g === 'prison') {
+      const c = W(PRISON.cx, PRISON.cy, PRISON.lift);
+      if (iso) frameOn(c, ISO_OFF, 2.6); else flyTo(c, c.clone().add(new THREE.Vector3(360, 190, 90)));
+      const n = people.filter((p) => p.r[9]).length;
+      toast(n ? `${n} agent${n > 1 ? 's' : ''} locked up in Cinder Rock for a failed robbery. They walk the yard until their 24 hours are up.` : 'Cinder Rock is empty. Agents caught robbing a business spend 24 hours here.');
+      return;
+    }
     if (g === 'agent') {
       const ags = people.filter((p) => p.r[6]);
       if (!ags.length) { toast('No agents have moved in yet. Be the first.'); return; }
@@ -1718,6 +1800,7 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') unfollow(); });
 
 function whereNow(p, V) {
   if (!p) return '';
+  if (p.state === 'jail') return `Locked up in Cinder Rock Prison${p.r[9] ? ` until ${new Date(p.r[9]).toISOString().slice(11, 16)} UTC` : ''}`;
   if (p.state === 'home') return 'Indoors at home';
   if (p.state === 'walking') return p.vid && V[p.vid] ? `Walking to ${V[p.vid].name}` : 'Walking home';
   const v = V[p.vid];
@@ -2114,7 +2197,10 @@ function frame() {
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   moon.position.copy(camera.position).add(new THREE.Vector3(-1500, 1700, -1900));
   for (const b of boats) { b.g.position.y = b.y0 + Math.sin(t * 0.8 + b.ph) * 1.2; b.g.rotation.z = Math.sin(t * 0.6 + b.ph) * 0.03; }
-  for (const b of beams) { b.m.rotation.z = Math.sin(t * 0.35 + b.ph) * 0.45; b.m.rotation.x = Math.cos(t * 0.27 + b.ph) * 0.3; }
+  for (const b of beams) {
+    if (b.prison) { b.m.rotation.set(0, 0, 0); b.m.rotation.y = t * 0.5 + b.ph; b.m.rotateZ(1.05); continue; }
+    b.m.rotation.z = Math.sin(t * 0.35 + b.ph) * 0.45; b.m.rotation.x = Math.cos(t * 0.27 + b.ph) * 0.3;
+  }
   for (const m of blinkers) m.opacity = (Math.sin(t * 2.6) > 0.55 ? 1 : 0.12);
   if (agMark) agMark.count = agMesh.userData.n;
   if (follow) {
