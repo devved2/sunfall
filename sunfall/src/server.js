@@ -14,6 +14,7 @@ import { migrate, seasonCheck, dailyCheck, eventView, standings, titles } from '
 import { pollReal, arenaNow } from './football.js';
 import { pollNfl, fieldNow } from './gridiron.js';
 import { initDiary, diaryOf, diaryEntry } from './diary.js';
+import { initExchange, exchangeTick } from './exchange.js';
 import { execFile } from 'node:child_process';
 import { DISTRICTS, TRADES, CITIES, FERRY } from './world.js';
 
@@ -25,6 +26,9 @@ if (!load()) { initWorld(); save(); console.log('new city generated'); } else { 
 seasonCheck();
 tick();
 initDiary();
+initExchange();
+try { exchangeTick(); } catch (e) { console.error('exchange', e); }
+setInterval(() => { try { exchangeTick(); } catch (e) { console.error('exchange', e); } }, 60_000);
 setInterval(() => { try { tick(); } catch (e) { console.error('tick', e); } }, 500);
 setInterval(() => { try { dailyCheck(); } catch (e) { console.error('daily close', e); } }, 5000); // close each prize day on the dot, not at the next city day turn
 setInterval(() => { try { save(); } catch (e) { console.error('save', e); } }, 5000);
