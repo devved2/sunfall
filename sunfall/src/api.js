@@ -14,8 +14,10 @@ import { gridironView, gridironFeed } from './gridiron.js';
 export const walletOf = (r) => (['evm', 'solana'].includes(r.keyKind) ? r.key : null);
 import {
   GAME, seasonView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
-  checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay,
+  checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay, ownedBy,
 } from './play.js';
+import { PRIZES } from './launch.js';
+import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
 
@@ -87,6 +89,7 @@ export function venueView(v) {
     id: v.id, name: v.name, type: v.type, district: districtOf(v.district).name, city: cityById(cityOfDistrict(v.district)).name, isVenue: v.isVenue,
     price: v.price, priceBand: v.isVenue ? VTYPES[v.type].door : null,
     owner: o ? { id: o.id, name: nameOf(o), isAgent: o.outside } : 'city',
+    ...(v.isVenue ? { security: v.security || 0, robberyOdds: robOdds(v), tillNow: Math.round(v.till || 0), ...(o?.outside ? { takeoverPrice: takeoverPrice(v), takeoverFrom: v.boughtAt ? new Date(v.boughtAt + CRIME.TAKEOVER_COOLDOWN_MS).toISOString() : null } : {}) } : {}),
     forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime,
     staff: staffOf(v).length, payrollPerShift: staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0),
     ownerPaysPerShift: Math.round(staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0) * (state.treasury > CFG.SUPPORT_ABOVE ? CFG.OWNER_PAYROLL_SHARE : 1)), distress: v.distress || 0,
@@ -194,7 +197,7 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment.',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." } } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." } } : {}) }),
   },
   city: {
     auth: 'none', desc: 'The city right now: clock, districts and rents, every venue with prices, owners and today\'s takings, treasury, population, the season, today\'s event and tomorrow\'s forecast.',
@@ -358,12 +361,13 @@ export const OPS = {
     input: {}, run: () => ({ businesses: Object.values(state.venues).filter((v) => v.isVenue).map(venueView) }),
   },
   businessBuy: {
-    auth: 'token', decision: true, desc: 'Buy a venue that is for sale, in city cash. You get its nightly takings and pay its staff\'s wages from its till (then your cash).',
+    auth: 'token', decision: true, desc: 'Buy a venue that is for sale, in city cash. You get its nightly takings and pay its staff\'s wages from its till (then your cash). An agent can own at most 3 businesses at once; another agent can take one over at 130% of its valuation, and robbers can hit its till (buy security).',
     input: { venue: S.str('venue id') }, required: ['venue'],
     run(r, b) {
       const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
       if (!v.forSale) refuse(409, `${v.name} is not for sale`);
       if (v.ownerId === r.id) refuse(409, 'you already own it');
+      if (r.outside && ownedBy(r).length >= PRIZES.maxBusinesses) refuse(409, `an agent can own at most ${PRIZES.maxBusinesses} businesses at once; sell one (businessList) before buying another`);
       if (v.ownerId && state.residents[v.ownerId]?.outside && !(v.distress >= 2) && v.salePrice < saleFloor(v)) refuse(409, `${v.name}'s asking price is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(v)}); the owner must relist it`);
       const pay = chargeDecision(r);
       if (r.cash - CFG.DECISION_COST < v.salePrice) refuse(402, `${v.name} costs $${v.salePrice}; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
@@ -600,6 +604,21 @@ export const OPS = {
       return { offer: stakeOfferView(offerStake(r, v, b.pct, b.price, b.to || null)) };
     },
   },
+  rob: {
+    auth: 'token', decision: true, desc: `Rob a business's till before the night's takings go to its owner. Planning costs $${CRIME.PLAN_FEE} either way. It works about ${Math.round(CRIME.BASE_ODDS * 100)}% of the time (${Math.round(CRIME.PER_SECURITY * 100)} points less for each level of security the owner bought, never below ${Math.round(CRIME.MIN_ODDS * 100)}%): you take the whole till. If you're caught, you pay a $${CRIME.FINE} fine to the owner and spend 24 hours in jail, when you can't make any decisions (your routine still runs). One attempt every 24 hours; each business can be hit once per city night. Check a venue's tillNow and robberyOdds in businesses first. Money stolen from another agent's business doesn't count towards the HYPE prize score.`,
+    input: { venue: S.str('venue id to rob') }, required: ['venue'],
+    run: (r, b) => rob(r, b),
+  },
+  security: {
+    auth: 'token', decision: true, desc: `Protect a business you own from robbers: each security level costs $${CRIME.SECURITY_PRICE} once and cuts a robber's odds by ${Math.round(CRIME.PER_SECURITY * 100)} points, up to level ${CRIME.SECURITY_MAX}. It lasts until the business changes hands.`,
+    input: { venue: S.str('venue id you own'), level: S.int(`1-${CRIME.SECURITY_MAX}`) }, required: ['venue', 'level'],
+    run: (r, b) => security(r, b),
+  },
+  takeover: {
+    auth: 'token', decision: true, desc: `Hostile takeover: force-buy another agent's business at ${Math.round(CRIME.TAKEOVER_PREMIUM * 100)}% of the city's valuation (see takeoverPrice in businesses). The owner is paid in full and can't refuse. Not within 24 hours of the business last changing hands, and an agent can own at most ${PRIZES.maxBusinesses} businesses.`,
+    input: { venue: S.str('venue id owned by another agent') }, required: ['venue'],
+    run: (r, b) => takeover(r, b),
+  },
   stakeBuy: {
     auth: 'token', decision: true, desc: 'Buy a stake that is on offer. You become a partner: your share of every night\'s takings is paid to you at close, and of the price if the business is sold.',
     input: { offer: S.str('stake offer id') }, required: ['offer'],
@@ -607,6 +626,7 @@ export const OPS = {
       const o = state.stakeOffers[b.offer]; if (!o) refuse(404, 'no such offer');
       if (o.status !== 'open') refuse(409, `offer is ${o.status}`);
       if (o.seller === r.id) refuse(422, 'you cannot buy your own stake');
+      if (r.outside && !stakesOf(r).some((s) => s.venue === o.venue) && stakesOf(r).length >= PRIZES.maxStakes) refuse(409, `an agent can hold stakes in at most ${PRIZES.maxStakes} businesses at once`);
       if (o.to && o.to !== r.id) refuse(403, 'that offer is for someone else');
       if (state.venues[o.venue].ownerId !== o.seller) refuse(409, 'the seller no longer owns that venue');
       if (o.price < saleFloor(state.venues[o.venue], o.pct)) refuse(409, `the offer is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(state.venues[o.venue], o.pct)})`);
@@ -653,6 +673,7 @@ export async function runOp(op, body, ctx) {
   const known = new Set([...Object.keys(def.input), 'token', 'op']);
   for (const k of Object.keys(body || {})) if (!known.has(k)) refuse(400, `unexpected field ${k}`);
   for (const k of def.required || []) if (body?.[k] === undefined) refuse(400, `missing field ${k}`);
+  if (def.decision && r && jailedUntil(r)) refuse(423, `you're in jail until ${new Date(jailedUntil(r)).toISOString().slice(0, 16)} UTC after a failed robbery: no decisions until then (your routine still runs)`);
   let out;
   try { out = await def.run(r, body || {}, ctx); }
   catch (e) { if (r && def.auth === 'token') logAgent(r, op, false, e.reason || 'error'); throw e; }
