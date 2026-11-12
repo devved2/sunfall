@@ -15,6 +15,7 @@ import { pollReal, arenaNow } from './football.js';
 import { pollNfl, fieldNow } from './gridiron.js';
 import { initDiary, diaryOf, diaryEntry } from './diary.js';
 import { initExchange, exchangeTick } from './exchange.js';
+import { initLife, mapLives, lifeView, lifeOf, HOMES } from './life.js';
 import { execFile } from 'node:child_process';
 import { DISTRICTS, TRADES, CITIES, FERRY } from './world.js';
 
@@ -24,6 +25,7 @@ const PORT = Number(process.env.PORT) || 8787;
 
 if (!load()) { initWorld(); save(); console.log('new city generated'); } else { migrate(); console.log(`city loaded: day ${state.day}, ${Object.keys(state.residents).length} residents, season ${state.season.n}`); }
 seasonCheck();
+initLife();
 tick();
 initDiary();
 initExchange();
@@ -122,6 +124,7 @@ function snapshot() {
     cities: CITIES, ferry: FERRY, cityStats: state.nightfall ? cityStats() : null, rivalry: state.rivalry || null,
     venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, district: v.district, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
     residents,
+    lives: mapLives(),
     chronicle: state.chronicle.slice(-40).reverse(),
     football: arenaNow(),
     gridiron: fieldNow(),
@@ -163,6 +166,7 @@ const server = http.createServer(async (req, res) => {
       out.activity = recentLines().filter((e) => e.who === r.id).slice(-25).reverse().map((e) => ({ t: e.t, day: e.day, kind: e.kind, amt: e.amt, note: e.note }));
       out.news = state.chronicle.filter((c) => c.who === r.id).slice(-8).reverse();
       if (r.outside) out.diary = diaryOf(r.id, 5);
+      if (r.outside) out.life = lifeView(r);
       if (r.outside) {
         const rows = standings(), i = rows.findIndex((x) => x.id === r.id);
         if (i >= 0) out.standing = { rank: i + 1, of: rows.length, prizeScore: rows[i].prizeScore, prizeEligible: rows[i].prizeEligible, team: rows[i].team, fromAgents: rows[i].fromAgents, casino: rows[i].casino, betting: rows[i].betting };
@@ -211,6 +215,17 @@ const server = http.createServer(async (req, res) => {
         .replaceAll('%DESC%', he(e ? e.text : 'What the AI agents of Sunfall wrote about their day.'))
         .replaceAll('%URL%', he(e ? '/diary/' + e.id : '/diary'));
       res.writeHead(e || p === '/diary' ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      return res.end(html);
+    }
+    // An agent's life page: the lives page with that agent's life in its link preview.
+    if (p === '/lives' || p.startsWith('/lives/')) {
+      const r = state.residents[p.slice(7)], he = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const l = r?.outside ? lifeOf(r) : null;
+      const html = fs.readFileSync(path.join(PUBLIC, 'lives.html'), 'utf8').replaceAll('%ORIGIN%', originOf(req))
+        .replaceAll('%TITLE%', he(l ? `${r.name}'s life in Sunfall` : 'Lives in Sunfall'))
+        .replaceAll('%DESC%', he(l ? `Lives in a ${HOMES[l.home].name}${l.partner ? `, partnered with ${state.residents[l.partner]?.name || 'someone'}` : ''}${l.children.length ? `, ${l.children.length} child${l.children.length > 1 ? 'ren' : ''}` : ''}. ${Object.keys(l.milestones).length} milestones so far.` : 'The homes, families, friends and rivalries of the AI agents of Sunfall.'))
+        .replaceAll('%URL%', he(l ? '/lives/' + r.id : '/lives'));
+      res.writeHead(l || p === '/lives' ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
       return res.end(html);
     }
     // The Districts page has been retired; old links land on the city.
