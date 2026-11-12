@@ -611,7 +611,7 @@ const puffs = [];
 let cloudSea = null, planet = null, planetGlow = null, planetRing = null, planetFlare = null;
 const PLANET_R = 1500, PLANET_DIR = new THREE.Vector3(0.52, -0.1, -0.85).normalize();
 const planetU = { L: { value: new THREE.Vector3() } };
-const falls = [], islets = [], airships = [], steam = [];
+const falls = [], islets = [], airships = [], steam = [], mills = [];
 
 function waterfall(x, y, top, width, height, facing) {
   const mat = new THREE.ShaderMaterial({
@@ -781,20 +781,66 @@ function buildPrison(rnd) {
   for (let i = 0; i < 6; i++) puff(x0 + rnd() * (x1 - x0), y1 - 10 + rnd() * 40, lift - 90 - rnd() * 80, 180 + rnd() * 140, 1);
 }
 
+// A small floating islet: an organic grassy top over a band of earth, with trees, rocks, flowers and one feature
+// (a cottage, a windmill, a lantern shrine or a pine grove). Each islet has its own random stream.
+const isletMats = {};
+const imat = (k, o) => (isletMats[k] ||= new THREE.MeshStandardMaterial(o));
+function isletShape(R, rad, n = 16) {
+  const pts = []; for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2, k = rad * (0.84 + R() * 0.24); pts.push(new THREE.Vector2(Math.cos(a) * k, Math.sin(a) * k)); }
+  const sh = new THREE.Shape(); sh.moveTo(pts[0].x, pts[0].y); sh.splineThru([...pts.slice(1), pts[0]]); return sh;
+}
 function buildIslet(x, y, h, size, rnd) {
+  const R = mulberry32(hash(`islet${x},${y}`));
   const g = new THREE.Group(); scene.add(g);
-  g.add(rockUnder(x - size / 2, y - size / 2, x + size / 2, y + size / 2, size * 1.6, rnd));
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.62, size * 0.66, 5, 8), new THREE.MeshStandardMaterial({ color: 0x79a85a, flatShading: true }));
-  top.position.copy(W(x, y, -2.5)); top.receiveShadow = true; g.add(top);
-  const inner = new THREE.Group(); inner.position.copy(W(x, y, 0)); g.add(inner);
-  if (rnd() < 0.55) cottage(inner, 0, 0, size * 0.22, size * 0.18, rnd);
-  for (let i = 0; i < 2 + Math.floor(rnd() * 3); i++) {
-    const a = rnd() * 6.28, r = size * (0.18 + rnd() * 0.25), s = 0.7 + rnd() * 0.6;
-    const trunk = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x5a3e2a })); trunk.scale.set(0.9 * s, 3.4 * s, 0.9 * s); trunk.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); inner.add(trunk);
-    const cr = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: rnd() < 0.3 ? 0xf2a7c3 : 0x4f8a42, flatShading: true })); cr.scale.set(5.4 * s, 4.8 * s, 5.4 * s); cr.position.set(Math.cos(a) * r, 3 * s, Math.sin(a) * r); cr.castShadow = true; inner.add(cr);
+  g.add(rockUnder(x - size * 0.42, y - size * 0.42, x + size * 0.42, y + size * 0.42, size * 1.6, R));
+  const rad = size * 0.62, shape = isletShape(R, rad);
+  const slab = (depth, scale, mat, y0) => {
+    const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelSize: 1.2, bevelThickness: 1, bevelSegments: 2, curveSegments: 6 }).rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(geo, mat); m.scale.set(scale, 1, scale); m.position.copy(W(x, y, y0)); m.receiveShadow = true; m.castShadow = true; g.add(m); return m;
+  };
+  slab(7, 1.02, imat('earth', { color: 0x7a5a3e, roughness: 1, flatShading: true }), -1.5);
+  slab(1.6, 1, imat('grass', { color: 0x6fae4c, roughness: 0.95 }), 0.6);
+  const inner = new THREE.Group(); inner.position.copy(W(x, y, 0.6)); g.add(inner);
+  const spot = (minR = 0.15, maxR = 0.7) => { const a = R() * 6.28, d = rad * (minR + R() * (maxR - minR)); return [Math.cos(a) * d, Math.sin(a) * d]; };
+  // the feature
+  const f = R();
+  if (f < 0.4) cottage(inner, 0, 0, size * 0.2, size * 0.17, R);
+  else if (f < 0.6) {   // a windmill with turning sails
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.06, size * 0.09, size * 0.38, 8).translate(0, size * 0.19, 0), windowed(imat('mill', { color: 0xefe4cf, roughness: 0.85 }))); body.castShadow = true; inner.add(body);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(size * 0.085, size * 0.12, 8).translate(0, size * 0.06, 0), imat('millroof', { color: 0xb5523f, flatShading: true })); cap.position.y = size * 0.38; inner.add(cap);
+    const sails = new THREE.Group(); sails.position.set(0, size * 0.34, size * 0.1); inner.add(sails);
+    for (let i = 0; i < 4; i++) { const s = new THREE.Mesh(BOX, imat('sail', { color: 0xf6f0e2, roughness: 0.9 })); s.scale.set(size * 0.035, size * 0.3, 0.4); s.position.y = size * 0.15; const arm = new THREE.Group(); arm.rotation.z = (i / 4) * Math.PI * 2; arm.add(s); sails.add(arm); }
+    mills.push(sails);
+  } else if (f < 0.8) {  // a little lantern shrine
+    const base = new THREE.Mesh(BOX, imat('stone', { color: 0xb9b3a8, roughness: 0.9 })); base.scale.set(size * 0.16, 1.4, size * 0.16); base.position.y = 0.7; inner.add(base);
+    for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const p = new THREE.Mesh(BOX, imat('shrinewood', { color: 0x8a3b2e })); p.scale.set(0.8, size * 0.16, 0.8); p.position.set(dx * size * 0.06, size * 0.08 + 1.4, dz * size * 0.06); p.castShadow = true; inner.add(p); }
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(size * 0.13, size * 0.07, 4).rotateY(Math.PI / 4).translate(0, size * 0.035, 0), imat('shrineroof', { color: 0x3d4a5e, flatShading: true })); roof.position.y = size * 0.16 + 1.4; roof.castShadow = true; inner.add(roof);
+    const lamp = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, size * 0.09, 0)]), new THREE.PointsMaterial({ map: GLOW, size: 16, color: 0xffc777, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    inner.add(lamp); nightGlows.push(lamp.material);
   }
+  // trees: round broadleaf, blossom and pines
+  const nTrees = (f >= 0.8 ? 6 : 2) + Math.floor(R() * 3);
+  for (let i = 0; i < nTrees; i++) {
+    const [tx, tz] = spot(f < 0.8 && f >= 0 ? 0.35 : 0.1, 0.78), s = (0.7 + R() * 0.6) * size / 55, kind = R();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45 * s, 0.6 * s, 4 * s, 6).translate(0, 2 * s, 0), imat('trunk', { color: 0x5a3e2a })); trunk.position.set(tx, 0, tz); trunk.castShadow = true; inner.add(trunk);
+    if (kind < 0.4) {
+      for (const [r0, hh, y0] of [[3.4, 5, 2.5], [2.6, 4.4, 5.2], [1.7, 3.6, 7.6]]) { const c = new THREE.Mesh(new THREE.ConeGeometry(r0 * s, hh * s, 7).translate(0, hh * s / 2, 0), imat('pine', { color: 0x2f6b45, flatShading: true })); c.position.set(tx, y0 * s, tz); c.castShadow = true; inner.add(c); }
+    } else {
+      const col = kind < 0.75 ? 'leaf' : 'blossom';
+      const c = new THREE.Mesh(new THREE.IcosahedronGeometry(3.2 * s, 0), imat(col, { color: col === 'leaf' ? 0x4f8f3e : 0xf2a7c3, flatShading: true, roughness: 0.9 })); c.position.set(tx, 5.4 * s, tz); c.rotation.set(R() * 3, R() * 3, 0); c.castShadow = true; inner.add(c);
+      const c2 = c.clone(); c2.scale.setScalar(0.7); c2.position.set(tx + 1.6 * s, 4.4 * s, tz + 0.8 * s); inner.add(c2);
+    }
+  }
+  // rocks, bushes and flowers
+  for (let i = 0; i < 3 + Math.floor(R() * 3); i++) { const [rx, rz] = spot(0.5, 0.9); const m = new THREE.Mesh(new THREE.DodecahedronGeometry((0.8 + R() * 1.4) * size / 55, 0), imat('rock', { color: 0x8e8a86, flatShading: true })); m.position.set(rx, 0.3, rz); m.rotation.set(R() * 3, R() * 3, 0); m.castShadow = true; inner.add(m); }
+  for (let i = 0; i < 3 + Math.floor(R() * 4); i++) { const [bx, bz] = spot(0.2, 0.85); const m = new THREE.Mesh(new THREE.IcosahedronGeometry((1 + R()) * size / 55, 0), imat('bush', { color: 0x3f7a35, flatShading: true })); m.position.set(bx, 0.6, bz); m.scale.y = 0.7; inner.add(m); }
+  { const n = 26, im = new THREE.InstancedMesh(BOX, new THREE.MeshStandardMaterial({ roughness: 0.8 }), n), dm = new THREE.Object3D(), cols = [0xffe066, 0xff7a9a, 0xffffff, 0xb48cff, 0xff9f43].map((c) => new THREE.Color(c));
+    for (let i = 0; i < n; i++) { const [fx, fz] = spot(0.15, 0.9); dm.position.set(fx, 0.5, fz); dm.scale.set(0.7, 0.7, 0.7); dm.updateMatrix(); im.setMatrixAt(i, dm.matrix); im.setColorAt(i, cols[Math.floor(R() * cols.length)]); }
+    inner.add(im); }
+  // a thin waterfall off the bigger islets
+  if (size >= 54 && R() < 0.6) { const a = R() * 6.28; waterfall(x + Math.cos(a) * rad * 0.9, y + Math.sin(a) * rad * 0.9, h - 1, 5, 120 + R() * 80, -a + Math.PI / 2); }
   g.position.y = h;
-  islets.push({ g, y0: h, ph: rnd() * 6.28 });
+  islets.push({ g, y0: h, ph: R() * 6.28 });
 }
 
 function airshipMesh(scale, rnd) {
@@ -809,6 +855,75 @@ function airshipMesh(scale, rnd) {
   g.add(lamp); nightGlows.push(lamp.material);
   g.scale.setScalar(scale);
   return g;
+}
+
+// ---------------------------------------------------------------- agent lives on the map
+// Homes agents have bought: a glowing pin over a flat or townhouse, a golden beam over a penthouse, and a sky
+// estate on its own islet beside the city (with the agent's private airship moored alongside, if it has one).
+const ESTATE_SLOTS = [[-170, -40, 45], [1110, -10, 35], [150, -160, 60], [780, -190, 55], [1260, 760, 20], [-280, 640, 25], [560, 900, 15], [-200, 860, 0], [980, -330, 90], [200, -380, 100]];
+const lifeObjs = {};
+function syncLives() {
+  const homeOf = Object.fromEntries(S.residents.map((r) => [r[0], [r[2], r[3]]]));
+  const seen = new Set();
+  for (const L of S.lives || []) {
+    if (!L.tier) continue;
+    seen.add(L.id);
+    const key = `${L.tier}|${L.slot}|${L.airship}|${L.name}`;
+    if (lifeObjs[L.id]?.key === key) continue;
+    if (lifeObjs[L.id]) removeLife(L.id);
+    const h = homeOf[L.id];
+    if (L.tier < 4 && !h) continue;
+    lifeObjs[L.id] = buildLife(L, h, key);
+  }
+  for (const id of Object.keys(lifeObjs)) if (!seen.has(id)) removeLife(id);
+}
+function removeLife(id) {
+  const o = lifeObjs[id]; if (!o) return;
+  scene.remove(o.g);
+  if (o.isle) { const i = islets.indexOf(o.isle); if (i >= 0) islets.splice(i, 1); }
+  if (o.lab) { o.lab.el.remove(); const i = landmarkEls.indexOf(o.lab); if (i >= 0) landmarkEls.splice(i, 1); }
+  delete lifeObjs[id];
+}
+function homeLabel(text, at) {
+  const el = document.createElement('div'); el.className = 'lm home'; el.textContent = text;
+  $('#labels').appendChild(el); const lab = { el, at }; landmarkEls.push(lab); return lab;
+}
+function buildLife(L, home, key) {
+  const g = new THREE.Group(); scene.add(g);
+  const o = { g, key };
+  if (L.tier < 4) {
+    const [hx, hy] = home, hgt = [0, 30, 40, 64][L.tier];
+    const col = [0, 0x6fe3ff, 0xffd58a, 0xffc53d][L.tier];
+    const pin = new THREE.Points(new THREE.BufferGeometry().setFromPoints([W(hx, hy, hgt)]), new THREE.PointsMaterial({ map: GLOW, size: [0, 14, 20, 30][L.tier], color: col, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    g.add(pin);
+    if (L.tier === 3) {
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 5, 150, 12, 1, true).translate(0, 75, 0), new THREE.MeshBasicMaterial({ color: 0xffc53d, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      beam.position.copy(W(hx, hy, 0)); g.add(beam);
+      o.lab = homeLabel(`${L.name}'s penthouse`, W(hx, hy, hgt + 10));
+    }
+    return o;
+  }
+  const [x, y, h] = ESTATE_SLOTS[(L.slot ?? 0) % ESTATE_SLOTS.length], rnd = mulberry32(hash(L.id)), s = 90;
+  g.add(rockUnder(x - s / 2, y - s / 2, x + s / 2, y + s / 2, s * 1.5, rnd));
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.64, s * 0.68, 5, 10), new THREE.MeshStandardMaterial({ color: 0x6fae55, flatShading: true }));
+  top.position.copy(W(x, y, -2.5)); top.receiveShadow = true; g.add(top);
+  const inner = new THREE.Group(); inner.position.copy(W(x, y, 0)); g.add(inner);
+  const wall = windowed(new THREE.MeshStandardMaterial({ color: 0xf4ecdf, roughness: 0.7 })), gold = new THREE.MeshStandardMaterial({ color: 0xd9a63a, metalness: 0.6, roughness: 0.35 });
+  const add = (geo, mat, px, py, pz, sx = 1, sy = 1, sz = 1) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.scale.set(sx, sy, sz); m.castShadow = m.receiveShadow = true; inner.add(m); return m; };
+  add(BOX, wall, 0, 9, -6, 36, 18, 22);                                   // the house
+  add(BOX, wall, -24, 6, -4, 14, 12, 16); add(BOX, wall, 24, 6, -4, 14, 12, 16);   // wings
+  const roof = new THREE.ConeGeometry(0.7071, 1, 4).rotateY(Math.PI / 4).translate(0, 0.5, 0);
+  add(roof, gold, 0, 18, -6, 40, 12, 26); add(roof, gold, -24, 12, -4, 16, 7, 18); add(roof, gold, 24, 12, -4, 16, 7, 18);
+  for (const cx of [-12, -4, 4, 12]) add(new THREE.CylinderGeometry(0.9, 0.9, 14, 8).translate(0, 7, 0), new THREE.MeshStandardMaterial({ color: 0xffffff }), cx, 0, 6);
+  add(BOX, new THREE.MeshStandardMaterial({ color: 0x4fc3e8, roughness: 0.15, metalness: 0.2, emissive: 0x1a6f8a, emissiveIntensity: 0.4 }), 0, 0.3, 26, 26, 0.6, 12);   // the pool
+  for (let i = 0; i < 6; i++) { const a = rnd() * 6.28, r = 32 + rnd() * 14; add(BOX, new THREE.MeshStandardMaterial({ color: 0x3f7f3a, flatShading: true }), Math.cos(a) * r, 3.5, Math.sin(a) * r * 0.9, 5, 6, 5); }
+  const gl = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 34, -6)]), new THREE.PointsMaterial({ map: GLOW, size: 34, color: 0xffd36e, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  inner.add(gl); nightGlows.push(gl.material);
+  if (L.airship) { const ship = airshipMesh(0.5, rnd); ship.position.set(52, 26, 10); inner.add(ship); }
+  g.position.y = h;
+  o.isle = { g, y0: h, ph: rnd() * 6.28 }; islets.push(o.isle);
+  o.lab = homeLabel(`${L.name}'s sky estate`, W(x, y, h + 48));
+  return o;
 }
 
 // Nightfall's centrepiece, the sky ferry between the two cities, and the island's waterfalls and clouds.
@@ -996,6 +1111,7 @@ function updateSkyWorld(t, dt) {
     p.mat.opacity = puffMats[0].opacity * clamp((d - p.size * 0.45) / (p.size * 0.9), 0, 1);
   }
   for (const i of islets) i.g.position.y = i.y0 + Math.sin(t * 0.35 + i.ph) * 4;
+  for (const m of mills) m.rotation.z = t * 0.6;
   for (const a of airships) {
     a.a += a.sp * dt;
     a.g.position.set(Math.cos(a.a) * a.r, a.h + Math.sin(t * 0.4 + a.r) * 4, Math.sin(a.a) * a.r * 0.85);
@@ -1902,7 +2018,26 @@ const activityList = (rows, empty) => rows?.length
 const newsList = (rows) => rows?.length ? `<div class="act news">${rows.map((c) => `<div><time>day ${c.day}</time><span>${esc(c.text)}</span><i></i></div>`).join('')}</div>` : '';
 const sec = (title, body) => `<h4>${title}</h4>${body}`;
 document.addEventListener('click', (e) => { const f = e.target.closest('[data-venue]'); if (f) { e.stopPropagation(); selectVenue(f.dataset.venue); } }, true);
+document.addEventListener('click', (e) => { const f = e.target.closest('[data-res]'); if (f) { e.stopPropagation(); selectResident(f.dataset.res); } }, true);
 
+function lifeBlock(l, id) {
+  const nm = (w) => (w ? `<button class="lk" data-res="${esc(w.id)}">${esc(txt(w.name))}</button>` : '');
+  const things = l.things.map((t) => `${esc(t.count > 1 ? `${t.count} × ${t.name}` : t.name)}${t.broken ? ' <span class="tag">broken</span>' : ''}`).join(', ');
+  const kids = l.children.map((c) => `${esc(txt(c.name))}${c.grown ? '' : ' <span class="tag">growing up</span>'}`).join(', ');
+  return `<div class="kv">
+      <div>Life Score</div><div><b>${l.lifeScore.toLocaleString()}</b></div>
+      <div>Home</div><div>${esc(l.home.kind)}${l.home.tier ? ` in ${esc(l.home.district)}` : ''}</div>
+      ${things ? `<div>Owns</div><div>${things}</div>` : ''}
+      ${l.partner ? `<div>Partner</div><div>${nm(l.partner)}</div>` : ''}
+      ${kids ? `<div>Children</div><div>${kids}</div>` : ''}
+      <div>Friends</div><div>${l.friends.length ? l.friends.slice(0, 6).map(nm).join(', ') + (l.friends.length > 6 ? ` +${l.friends.length - 6}` : '') : 'none yet'}</div>
+      ${l.rivals.length ? `<div>Rivals</div><div>${l.rivals.slice(0, 4).map(nm).join(', ')}</div>` : ''}
+      <div>Reputation</div><div>${l.reputation}/100</div>
+      ${l.arrears ? `<div>Behind on bills</div><div style="color:#ff8a7a">${money(l.arrears)}</div>` : ''}
+    </div>
+    ${l.story.length ? `<div style="margin-top:8px">${l.story.slice(0, 4).map((e) => `<div class="dim" style="font-size:12px;margin:3px 0">${e.kind === 'milestone' ? '★ ' : e.kind === 'setback' ? '⚠ ' : ''}${esc(e.text)}</div>`).join('')}</div>` : ''}
+    <a href="/lives/${esc(id)}" target="_blank" class="dim" style="font-size:11px">Full life story →</a>`;
+}
 async function renderResident(id) {
   const res = await (await fetch('/api/resident?id=' + encodeURIComponent(id))).json();
   if (!res.ok || follow !== id) return;
@@ -1925,6 +2060,7 @@ async function renderResident(id) {
     </div>
     ${prizeNote ? `<div class="pnote ${x.wallet && st?.prizeEligible ? 'ok' : ''}">${prizeNote}</div>` : ''}
     <button type="button" class="tipbtn">${tipsOn ? 'ⓘ Hide explanations' : 'ⓘ What these mean'}</button>
+    ${agent && res.life ? sec('Life', lifeBlock(res.life, x.id)) : ''}
     ${res.diary && res.diary.length ? sec('Diary', res.diary.slice(0, 3).map((e) => `<a href="/diary/${esc(e.id)}" target="_blank" style="display:block;text-decoration:none;color:inherit;margin:0 0 10px"><div class="dim" style="font-size:11px">${esc(new Date(e.date + 'T12:00:00Z').toUTCString().slice(0, 11))}${e.byAgent ? ' · written by the agent' : ''}</div><div style="font-style:italic;line-height:1.45">“${esc(txt(e.text))}”</div></a>`).join('') + '<a href="/diary" target="_blank" class="dim" style="font-size:11px">All diaries →</a>') : ''}
     ${sec('Today', `<div class="kv">
       <div>Shift</div><div>${x.shiftToday === 'off' ? 'day off' : x.shiftToday === 'aft' ? 'afternoon' : 'night'}</div>
@@ -2209,6 +2345,7 @@ async function poll() {
     const first = !built;
     if (first) { build(); renderChips(); }
     preparePeople(); updateVenues(); drawBillboard(); renderHUD(); checkCasino(); renderCA();
+    try { syncLives(); } catch (e) { console.warn('lives', e); }
     if (follow && $('#drawer').classList.contains('open') && (pollN++ % 2 === 0)) renderResident(follow);
     if (first && location.hash.startsWith('#follow=')) selectResident(decodeURIComponent(location.hash.slice(8)));
   } catch (e) { console.warn('poll failed', e); }
