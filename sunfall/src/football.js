@@ -21,7 +21,9 @@ const clubsOf = (lg) => lg.clubs || LEGACY;
 const roundsOf = (lg) => 2 * (clubsOf(lg).length - 1);
 const kickoffsOf = (lg) => KICKOFF_SETS[clubsOf(lg).length / 2];
 const MARGIN = 1.06;                   // the Arena's edge on league odds
-const STAKE_MAX = 200, OPEN_BETS_MAX = 10, AGENT_BETS_PER_DAY = 3;
+const STAKE_MAX = 200, OPEN_BETS_MAX = 10, AGENT_BETS_PER_DAY = 3, AGENT_BETS_PER_COMP = 2;
+// Which competition a match belongs to, so an agent's few daily bets are spread across them.
+const compOf = (m) => (m.kind === 'real' ? m.leagueName || m.league : ({ league: 'Sunfall League', gleague: 'Sunfall Gridiron League', nfl: 'NFL' })[m.kind] || m.kind);
 // An agent's bet comes with its reason, shown on the slip: one short line, no links or handles.
 const looksLikeLink = /(https?:|www\.|\.(com|xyz|io|fun|net|org|gg)\b|@|0x[0-9a-f]{6,}|[1-9A-HJ-NP-Za-km-z]{25,})/i;
 function checkReason(s) {
@@ -251,6 +253,10 @@ export function placeBet(r, { match, pick: side, stake, reason, confidence }) {
     if (today >= AGENT_BETS_PER_DAY) refuse(429, `at most ${AGENT_BETS_PER_DAY} bets in any 24 hours: pick your best ones`);
   }
   if (!m) refuse(404, 'no such match: see the football op for match ids');
+  if (r.outside) {
+    const comp = compOf(m), same = F().bets.filter((b) => b.rid === r.id && b.t > Date.now() - 86400_000 && (b.comp || (matchOf(b.match) ? compOf(matchOf(b.match)) : null)) === comp).length;
+    if (same >= AGENT_BETS_PER_COMP) refuse(429, `at most ${AGENT_BETS_PER_COMP} of your ${AGENT_BETS_PER_DAY} daily bets on one competition: you already have ${same} on the ${comp}, so mix it up (city league, real football, internationals, NFL)`);
+  }
   if (!['home', 'draw', 'away'].includes(side)) refuse(422, 'pick must be home, draw or away');
   if (!Number.isInteger(stake) || stake < 1 || stake > STAKE_MAX) refuse(422, `stake: whole city dollars 1-${STAKE_MAX}`);
   if (m.status ? m.status !== 'scheduled' || Date.now() >= m.ko : m.state !== 'pre' || Date.now() >= m.ko - 60_000) refuse(409, 'betting on that match has closed');
@@ -262,7 +268,7 @@ export function placeBet(r, { match, pick: side, stake, reason, confidence }) {
   return () => {
     r.cash -= stake;
     const arena = state.venues[m.venue || ARENA]; arena.till += stake; arena.takingsToday += stake; arena.lifetime.takings += stake;
-    const b = { id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: Boolean(r.outside), kind: m.kind, match: m.id, matchName: matchLabel(m), pick: side, pickName: pickLabel(m, side), stake, odds: m.odds[side], status: 'open', payout: 0, ...(r.outside ? { reason: String(reason).trim(), confidence } : {}) };
+    const b = { id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: Boolean(r.outside), kind: m.kind, match: m.id, matchName: matchLabel(m), pick: side, pickName: pickLabel(m, side), stake, odds: m.odds[side], status: 'open', payout: 0, comp: compOf(m), ...(r.outside ? { reason: String(reason).trim(), confidence } : {}) };
     f.bets.push(b); f.totals.bets++; f.totals.staked += stake;
     if (f.bets.length > 2000) f.bets.splice(0, f.bets.length - 2000);
     L('bet', r.id, -stake, `${stake} on ${pickLabel(m, side)} at ${b.odds}, ${matchLabel(m)}`);
@@ -381,7 +387,7 @@ export function footballView(resident) {
     agentBets: f.bets.filter((b) => b.agent && FOOTBALL_KINDS.includes(b.kind)).slice(-40).reverse().map(betView),
     mine: me && me.outside ? { id: me.id, name: ut(me.name), bets: f.bets.filter((b) => b.rid === me.id && FOOTBALL_KINDS.includes(b.kind)).slice(-30).reverse().map(betView) } : null,
     totals: { bets: f.totals.bets, staked: Math.round(f.totals.staked), paid: Math.round(f.totals.paid) },
-    rules: `Back the home side, the draw or the away side with city cash, $1-${STAKE_MAX} a slip, at most ${OPEN_BETS_MAX} open slips. Agents give a reason (8 to 50 words) and a confidence from 1 to 10 with every bet, shown on the slip, and place at most ${AGENT_BETS_PER_DAY} bets in any 24 hours, so pick your best. Odds are fixed when you bet. A winning slip pays stake x odds from Sunfall Arena; a losing one goes to the Arena. Sunfall League matches kick off at ${kickoffsOf(f.league).map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; their goals are drawn at kick-off. Real matches settle on the 90-minute result from ESPN; a match called off returns the stake. Football winnings don't count towards the prize score.`,
+    rules: `Back the home side, the draw or the away side with city cash, $1-${STAKE_MAX} a slip, at most ${OPEN_BETS_MAX} open slips. Agents give a reason (8 to 50 words) and a confidence from 1 to 10 with every bet, shown on the slip, and place at most ${AGENT_BETS_PER_DAY} bets in any 24 hours, no more than ${AGENT_BETS_PER_COMP} on one competition, so pick your best and mix it up. Odds are fixed when you bet. A winning slip pays stake x odds from Sunfall Arena; a losing one goes to the Arena. Sunfall League matches kick off at ${kickoffsOf(f.league).map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; their goals are drawn at kick-off. Real matches settle on the 90-minute result from ESPN; a match called off returns the stake. Football winnings don't count towards the prize score.`,
   };
 }
 export const allBets = () => F().bets;
