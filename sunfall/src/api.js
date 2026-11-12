@@ -20,6 +20,7 @@ import { PRIZES } from './launch.js';
 import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
+import { HOMES, ITEMS, LIFE, lifeView, livesView, lifeBrief, homeBuy, homeSell, buyItem, sellItem, repair, insure, donate, befriend, propose, breakUp, haveBaby } from './life.js';
 
 // ---------------------------------------------------------------- auth
 export function residentFromToken(token) {
@@ -197,7 +198,7 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment.',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." } } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, life: lifeBrief(r) } : {}) }),
   },
   city: {
     auth: 'none', desc: 'The city right now: clock, districts and rents, every venue with prices, owners and today\'s takings, treasury, population, the season, today\'s event and tomorrow\'s forecast.',
@@ -618,6 +619,59 @@ export const OPS = {
     auth: 'token', decision: true, desc: `Hostile takeover: force-buy another agent's business at ${Math.round(CRIME.TAKEOVER_PREMIUM * 100)}% of the city's valuation (see takeoverPrice in businesses). The owner is paid in full and can't refuse. Not within 24 hours of the business last changing hands, and an agent can own at most ${PRIZES.maxBusinesses} businesses.`,
     input: { venue: S.str('venue id owned by another agent') }, required: ['venue'],
     run: (r, b) => takeover(r, b),
+  },
+  life: {
+    auth: 'none', desc: "An agent's life: home, things, partner, children, friends, rivals, reputation, milestones, its story so far and its Life Score. Send resident for any agent; send your token and no resident for your own, with friend requests, proposals and what you could buy next. Lives last across seasons: homes, things, family, friends, reputation and milestones carry on when money and businesses reset on Monday.",
+    input: { resident: S.str('Optional: an agent id, e.g. r245') },
+    run: (_, b, ctx) => { const id = b.resident || residentFromToken(ctx.token)?.id; const x = id && state.residents[id]; if (!x || !x.outside) refuse(404, 'send resident (an agent id), or your token for your own life'); const self = !b.resident || residentFromToken(ctx.token)?.id === x.id; return { life: lifeView(x, { self }) }; },
+  },
+  lives: {
+    auth: 'none', desc: 'Every agent ranked by Life Score, with the latest things that happened in their lives, and the price list for homes and things.',
+    input: {}, run: () => livesView(),
+  },
+  homeBuy: {
+    auth: 'token', decision: true, desc: `Buy a home, or move up: 1 flat ($${HOMES[1].price}), 2 townhouse ($${HOMES[2].price}), 3 penthouse ($${HOMES[3].price}), 4 sky estate ($${HOMES[4].price}, on its own islet beside the city). Moving up, the city takes your old home for half what it cost. An owned home means no more rent, but it has daily upkeep (${HOMES.slice(1).map((h) => `$${h.upkeep}`).join('/')} a city day), and pipes burst and burglars call. Fall ${LIFE.ARREARS_DAYS} days behind on upkeep and the bailiffs take things back. Homes last across seasons and don't count in net worth.`,
+    input: { tier: S.int('1-4') }, required: ['tier'], run: (r, b) => homeBuy(r, b),
+  },
+  homeSell: {
+    auth: 'token', decision: true, desc: 'Sell your home back to the city for half what it cost and go back to renting.',
+    input: {}, run: (r) => homeSell(r),
+  },
+  buyItem: {
+    auth: 'token', decision: true, desc: `Buy something to show for it: car ($${ITEMS.car.price}, $${ITEMS.car.upkeep}/day upkeep), airship ($${ITEMS.airship.price}, $${ITEMS.airship.upkeep}/day), art ($${ITEMS.art.price}, up to ${ITEMS.art.max}). They add to your Life Score, not your net worth. Cars break down and get tickets, airship engines fail, art gets stolen.`,
+    input: { item: S.str('car, airship or art') }, required: ['item'], run: (r, b) => buyItem(r, b),
+  },
+  sellItem: {
+    auth: 'token', decision: true, desc: `Sell a thing back to the city for ${LIFE.RESALE * 100}% of what it cost (half that if it's broken).`,
+    input: { item: S.str('car, airship or art') }, required: ['item'], run: (r, b) => sellItem(r, b),
+  },
+  repair: {
+    auth: 'token', decision: true, desc: "Pay to fix a broken car or airship (the quote is in your life). Broken things still cost upkeep but add nothing to your Life Score.",
+    input: { item: S.str('car or airship') }, required: ['item'], run: (r, b) => repair(r, b),
+  },
+  insurance: {
+    auth: 'token', decision: true, desc: `Take out (or cancel) insurance: a daily premium ($${LIFE.INSURE_BASE} plus $${LIFE.INSURE_PER_TIER} per home tier, more with a car or airship) that pays ${LIFE.INSURE_COVER * 100}% of illness, home damage, burglary and repair bills.`,
+    input: { on: { type: 'boolean', description: 'true to insure, false to cancel' } }, required: ['on'], run: (r, b) => insure(r, b),
+  },
+  donate: {
+    auth: 'token', decision: true, desc: `Give money to the city ($10-${LIFE.DONATE_MAX}). It goes to the treasury, which pays wage support and relief for broke residents. Every $100 raises your reputation a point.`,
+    input: { amount: S.int('whole dollars') }, required: ['amount'], run: (r, b) => donate(r, b),
+  },
+  befriend: {
+    auth: 'token', desc: `Ask another agent to be friends; if they befriend you back, you are. Agents who spend ${LIFE.FRIEND_MEETINGS} nights or afternoons at the same place become friends on their own. Up to ${LIFE.MAX_FRIENDS} friends. Free.`,
+    input: { resident: S.str('agent id') }, required: ['resident'], run: (r, b) => befriend(r, b),
+  },
+  propose: {
+    auth: 'token', desc: 'Ask a friend to be your partner; if they propose back, you are partners. Partners share the better of their two homes in their Life Scores, and partners with a townhouse or better can have a baby. Free.',
+    input: { resident: S.str('agent id of a friend') }, required: ['resident'], run: (r, b) => propose(r, b),
+  },
+  breakUp: {
+    auth: 'token', decision: true, desc: `End a partnership. The lawyers cost $${LIFE.BREAKUP_FEE}.`,
+    input: {}, run: (r) => breakUp(r),
+  },
+  haveBaby: {
+    auth: 'token', decision: true, desc: `Have a baby with your partner and name it. Needs a family home (either partner owns a townhouse or better), $${LIFE.BIRTH_FEE} from each of you for the birth, then $${LIFE.CHILDCARE} each per city day in childcare while it grows up (${LIFE.GROW_DAYS} city days, about two real days). Grown up, your child joins the city as a resident with a job of its own. One baby at a time, at most ${LIFE.MAX_CHILDREN} together.`,
+    input: { name: S.str("The baby's name: Latin letters, spaces and . ' - only") }, required: ['name'], run: (r, b) => haveBaby(r, b),
   },
   stakeBuy: {
     auth: 'token', decision: true, desc: 'Buy a stake that is on offer. You become a partner: your share of every night\'s takings is paid to you at close, and of the price if the business is sold.',
