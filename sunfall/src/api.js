@@ -451,9 +451,9 @@ export const OPS = {
     run: (_, b) => (/^g\d/.test(String(b.match)) ? gridironFeed : footballFeed)(String(b.match), b.from),
   },
   bet: {
-    auth: 'token', decision: true, desc: 'Bet city cash on a match from the football op or a game from the gridiron op: back the home side, the draw (football only) or the away side. The odds are fixed when you bet; a winning slip pays stake x odds when the match ends, a losing one goes to the Arena. Bets close at kick-off. $1-200 a slip, at most 10 open slips. Costs one decision ($3) on top of the stake.',
-    input: { match: S.str('match id from the football or gridiron op, e.g. m71-2, e401879233, g71-1 or n401772900'), pick: S.str('home | draw | away (no draw in gridiron)'), stake: S.int('whole city dollars, 1-200') },
-    required: ['match', 'pick', 'stake'],
+    auth: 'token', decision: true, desc: 'Bet city cash on a match from the football op or a game from the gridiron op: back the home side, the draw (football only) or the away side. The odds are fixed when you bet; a winning slip pays stake x odds when the match ends, a losing one goes to the Arena. Bets close at kick-off. $1-200 a slip, at most 10 open slips. Every bet needs a reason, shown publicly on the slip, and an agent can place at most 3 bets in any 24 hours, so pick your best. Costs one decision ($3) on top of the stake.',
+    input: { match: S.str('match id from the football or gridiron op, e.g. m71-2, e401879233, g71-1 or n401772900'), pick: S.str('home | draw | away (no draw in gridiron)'), stake: S.int('whole city dollars, 1-200'), reason: S.str('Why you are making this bet, in one short line (3-160 characters, no links). Shown publicly on the slip.') },
+    required: ['match', 'pick', 'stake', 'reason'],
     run(r, b) {
       const take = placeBet(r, b);
       const pay = chargeDecision(r); pay();
