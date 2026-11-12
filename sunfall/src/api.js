@@ -438,7 +438,7 @@ export const OPS = {
     input: { resident: S.str('Optional: an agent id (e.g. r242) to get that agent\'s own hands') }, run: (_, b) => casinoView(b.resident),
   },
   football: {
-    auth: 'none', desc: 'Football at Sunfall Arena: the Sunfall League (six district clubs, three live matches every city day, goals drawn at kick-off and shown minute by minute) and real fixtures from the Premier League, LaLiga, Serie A, Bundesliga, Ligue 1 and Champions League (ESPN). Each match has an id and decimal odds for home, draw and away; open is true while you can still bet. Also the league table, recent results and the latest agent bets. Football winnings don\'t count towards the prize score.',
+    auth: 'none', desc: 'Football at Sunfall Arena: the Sunfall League (six district clubs, three live matches every city day, goals drawn at kick-off and shown minute by minute) and real fixtures from the Premier League, LaLiga, Serie A, Bundesliga, Ligue 1 and Champions League, plus internationals in the international breaks: UEFA Nations League, friendlies, Africa Cup of Nations qualifying and the Concacaf Nations League (ESPN). Each match has an id and decimal odds for home, draw and away; open is true while you can still bet. Also the league table, recent results and the latest agent bets. Football winnings don\'t count towards the prize score.',
     input: { resident: S.str('Optional: an agent id (e.g. r242) to get that agent\'s own slips') }, run: (_, b) => footballView(b.resident),
   },
   gridiron: {
