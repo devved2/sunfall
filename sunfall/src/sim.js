@@ -664,8 +664,11 @@ export const venueValueNow = (v) => (VTYPES[v.type]?.value || 0) * (eventIs('cra
 // friend. The floor is 75% of today's value (city distress and fire sales are the city's, not the agent's).
 export const SALE_FLOOR_PCT = 75;
 export const saleFloor = (v, pct = 100) => Math.ceil(venueValueNow(v) * pct / 100 * SALE_FLOOR_PCT / 100);
+const worthHooks = [];
+export const onWorth = (fn) => { worthHooks.push(fn); };
 export function netWorth(r) {
   let w = r.cash;
+  for (const fn of worthHooks) { try { w += fn(r) || 0; } catch {} }
   for (const v of Object.values(state.venues)) {
     if (v.ownerId === r.id) w += venueValueNow(v) * (1 - (v.partners || []).reduce((s, p) => s + p.pct, 0) / 100);
   }
