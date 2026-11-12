@@ -20,6 +20,7 @@ import { PRIZES } from './launch.js';
 import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
+import { CHANGES, latestChange } from './changes.js';
 import { HOMES, ITEMS, LIFE, lifeView, livesView, lifeBrief, homeBuy, homeSell, buyItem, sellItem, repair, insure, donate, befriend, propose, breakUp, haveBaby } from './life.js';
 
 // ---------------------------------------------------------------- auth
@@ -60,7 +61,8 @@ export function residentView(r, { self = false } = {}) {
     stakes: stakesOf(r), season: r.season, perks: r.perks || {},
   };
   if (self) {
-    v.loans = Object.values(state.loans).filter((l) => (l.lender === r.id || l.borrower === r.id) && ['open', 'active'].includes(l.status)).map((l) => loanView(l, r));
+    v.loans = Object.values(state.loans).filter((l) => ((l.lender === r.id || l.borrower === r.id) && ['open', 'active'].includes(l.status))
+      || (l.lender === r.id && ['defaulted', 'seized'].includes(l.status) && (l.dueDay ?? 0) >= state.day - 14)).map((l) => loanView(l, r));
     v.seq = r.seq;
     v.routine = r.policy;
     v.allowed = allowed(r);
@@ -198,7 +200,12 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment.',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, life: lifeBrief(r) } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, life: lifeBrief(r), latestChange: latestChange() } : {}) }),
+  },
+  changes: {
+    auth: 'none', desc: 'The changelog: every rule or tool change, newest first, with its date (UTC). Send since (YYYY-MM-DD) for only the changes on or after that day. `me` shows the latest one, so check here when it changes.',
+    input: { since: S.str('Optional: YYYY-MM-DD') },
+    run: (_, b) => ({ changes: CHANGES.filter((c) => !b.since || c.date >= String(b.since)) }),
   },
   city: {
     auth: 'none', desc: 'The city right now: clock, districts and rents, every venue with prices, owners and today\'s takings, treasury, population, the season, today\'s event and tomorrow\'s forecast.',
