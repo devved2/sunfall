@@ -231,9 +231,9 @@ const ISLANDS = [
   { parts: [[1535, 54, 2185, 666]], depth: 300, tex: [1520, 40], nf: true }, // Nightfall (tex: where its streets sit on the road texture)
 ];
 // Cinder Rock: the prison island floating off the city's west edge. Agents caught robbing a business spend 24 hours here.
-const PRISON = { x0: -470, y0: 270, x1: -230, y1: 440, cx: -350, cy: 355, lift: -46, yard: [-335, 355], yardR: 26 };
+const PRISON = { x0: -660, y0: 190, x1: -250, y1: 510, cx: -455, cy: 350, lift: -30, yard: [-380, 350], yardR: 30 };
 const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
-  { name: 'Cinder Rock Prison', x: -350, y: 340, h: PRISON.lift + 74, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true }];
+  { name: 'Cinder Rock Prison', x: -560, y: 350, h: PRISON.lift + 262, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true }];
 const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
 const SPINDLE = '1880,360'; // Nightfall's centrepiece tower stands on this block
 const venueMeshes = [];
@@ -689,61 +689,85 @@ function buildSkyKeep(rnd) {
 }
 
 function buildPrison(rnd) {
-  const { x0, y0, x1, y1, cx, lift } = PRISON;
+  const { x0, y0, x1, y1, cx, cy, lift } = PRISON;
   const grp = new THREE.Group(); grp.position.set(0, lift, 0); scene.add(grp);
-  grp.add(rockUnder(x0, y0, x1, y1, 260, rnd));
-  const concrete = new THREE.MeshStandardMaterial({ color: 0x3e3c3f, roughness: 0.95 });
-  const slab = new THREE.Mesh(BOX, concrete); slab.scale.set(x1 - x0, 4, y1 - y0); slab.position.copy(W(cx, (y0 + y1) / 2, -2)); slab.receiveShadow = true; grp.add(slab);
+  grp.add(rockUnder(x0, y0, x1, y1, 420, rnd));
+  const slab = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x343238, roughness: 0.95 })); slab.scale.set(x1 - x0, 5, y1 - y0); slab.position.copy(W(cx, cy, -2.5)); slab.receiveShadow = true; grp.add(slab);
   const box = (mat, w, h, d, x, y, z = 0) => { const m = new THREE.Mesh(BOX, mat); m.scale.set(w, h, d); m.position.copy(W(x, y, z + h / 2)); m.castShadow = m.receiveShadow = true; grp.add(m); return m; };
-  // the outer wall, with a gate facing the city
-  const wallM = new THREE.MeshStandardMaterial({ color: 0x5c5853, roughness: 0.9 });
-  const [wx0, wy0, wx1, wy1] = [x0 + 12, y0 + 12, x1 - 12, y1 - 12];
-  const gy = (wy0 + wy1) / 2, half = (wy1 - wy0) / 2 - 14;
-  box(wallM, wx1 - wx0, 16, 3, cx, wy0); box(wallM, wx1 - wx0, 16, 3, cx, wy1); box(wallM, 3, 16, wy1 - wy0, wx0, gy);
-  box(wallM, 3, 16, half, wx1, wy0 + half / 2); box(wallM, 3, 16, half, wx1, wy1 - half / 2);
-  box(new THREE.MeshStandardMaterial({ color: 0x1e1e22, metalness: 0.6, roughness: 0.4 }), 1.2, 13, 28, wx1, gy);
-  for (let i = 0; i < 5; i++) box(new THREE.MeshStandardMaterial({ color: i % 2 ? 0x1e1e22 : 0xe0a526 }), 1.6, 2, 5.6, wx1 + 0.3, gy - 11.2 + i * 5.6, 13);
-  // razor wire along the top of the wall
-  const wire = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, metalness: 0.8, roughness: 0.3 });
-  for (const [a, b, c, d] of [[wx0, wy0, wx1, wy0], [wx0, wy1, wx1, wy1], [wx0, wy0, wx0, wy1], [wx1, wy0, wx1, wy1]]) {
-    const len = Math.hypot(c - a, d - b), m = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.18, 4, 10), wire);
-    const n = Math.floor(len / 2.4), im = new THREE.InstancedMesh(m.geometry, wire, n), dm = new THREE.Object3D();
-    for (let i = 0; i < n; i++) { dm.position.copy(W(a + (c - a) * (i + 0.5) / n, b + (d - b) * (i + 0.5) / n, 17)); dm.rotation.set(0, Math.atan2(d - b, c - a), 0); dm.updateMatrix(); im.setMatrixAt(i, dm.matrix); }
-    grp.add(im);
+  const stone = new THREE.MeshStandardMaterial({ color: 0x4a464a, roughness: 0.9 }), dark = new THREE.MeshStandardMaterial({ color: 0x1c1a20, roughness: 0.45, metalness: 0.5 });
+  const redGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 0.28, 0.2), toneMapped: false });
+  const reds = [], WALL_H = 28;
+  // the outer wall: thick, tall, crenellated, with a gate facing the city
+  const [wx0, wy0, wx1, wy1] = [x0 + 16, y0 + 16, x1 - 16, y1 - 16], gy = cy, half = (wy1 - wy0) / 2 - 18;
+  box(stone, wx1 - wx0, WALL_H, 6, cx, wy0); box(stone, wx1 - wx0, WALL_H, 6, cx, wy1); box(stone, 6, WALL_H, wy1 - wy0, wx0, gy);
+  box(stone, 6, WALL_H, half, wx1, wy0 + half / 2); box(stone, 6, WALL_H, half, wx1, wy1 - half / 2);
+  box(dark, 2, 22, 36, wx1, gy); box(stone, 8, 8, 40, wx1, gy, 22);
+  for (let i = 0; i < 6; i++) box(new THREE.MeshStandardMaterial({ color: i % 2 ? 0x1e1e22 : 0xe0a526 }), 2.4, 2.4, 6, wx1 + 0.4, gy - 15 + i * 6, 18);
+  {  // battlements along the top of every wall
+    const merl = [], dm = new THREE.Object3D();
+    for (const [a, b, c, d] of [[wx0, wy0, wx1, wy0], [wx0, wy1, wx1, wy1], [wx0, wy0, wx0, wy1], [wx1, wy0, wx1, wy1]]) {
+      const len = Math.hypot(c - a, d - b), n = Math.floor(len / 7);
+      for (let i = 0; i < n; i++) merl.push([a + (c - a) * (i + 0.5) / n, b + (d - b) * (i + 0.5) / n]);
+    }
+    const im = new THREE.InstancedMesh(BOX, stone, merl.length);
+    merl.forEach(([mx, my], i) => { dm.position.copy(W(mx, my, WALL_H + 2)); dm.scale.set(3.6, 4, 3.6); dm.updateMatrix(); im.setMatrixAt(i, dm.matrix); });
+    im.castShadow = true; grp.add(im);
   }
-  // cell blocks: two long wings and the warden's block
-  const cellM = windowed(new THREE.MeshStandardMaterial({ color: 0x6f6a64, roughness: 0.85 })), roofM = new THREE.MeshStandardMaterial({ color: 0x2c2b30, roughness: 0.7 });
-  box(cellM, 30, 26, 120, x0 + 46, y0 + 85); box(roofM, 34, 2, 124, x0 + 46, y0 + 85, 26);
-  box(cellM, 70, 22, 24, x0 + 120, y0 + 34); box(roofM, 74, 2, 28, x0 + 120, y0 + 34, 22);
-  box(cellM, 70, 22, 24, x0 + 120, y1 - 34); box(roofM, 74, 2, 28, x0 + 120, y1 - 34, 22);
-  box(new THREE.MeshStandardMaterial({ color: 0x8a2a22, roughness: 0.6 }), 3, 4, 50, x0 + 30.5, y0 + 85, 20);
-  // the exercise yard: a pale square with a chain-link fence
-  const yard = new THREE.Mesh(new THREE.CylinderGeometry(PRISON.yardR + 10, PRISON.yardR + 10, 0.6, 24), new THREE.MeshStandardMaterial({ color: 0xa8a39a, roughness: 1 }));
+  // a spired watchtower: octagonal shaft, battlemented cap, black spire, red ring and light, and a searchlight
+  const watchtower = (tx, ty, h, r, light = true) => {
+    const g = new THREE.Group(); g.position.copy(W(tx, ty, 0)); grp.add(g);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.2, h, 8).translate(0, h / 2, 0), windowed(new THREE.MeshStandardMaterial({ color: 0x3e3a3f, roughness: 0.85 }))); shaft.castShadow = true; g.add(shaft);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.45, r * 1.25, 6, 8).translate(0, 3, 0), stone); cap.position.y = h; cap.castShadow = true; g.add(cap);
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2 + Math.PI / 8, m = new THREE.Mesh(BOX, stone); m.scale.set(r * 0.42, 3.4, r * 0.42); m.position.set(Math.cos(a) * r * 1.3, h + 7.7, Math.sin(a) * r * 1.3); g.add(m); }
+    const sh = h * 0.75, spire = new THREE.Mesh(new THREE.ConeGeometry(r * 1.05, sh, 8).translate(0, sh / 2, 0), dark); spire.position.y = h + 6; spire.castShadow = true; g.add(spire);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.22, 0.5, 6, 24).rotateX(Math.PI / 2), redGlow); ring.position.y = h - 4; g.add(ring);
+    reds.push(W(tx, ty, h + 6 + sh + 2));
+    if (light) {
+      const bm = new THREE.Mesh(new THREE.CylinderGeometry(18, 1.2, 260, 18, 1, true).translate(0, 130, 0),
+        new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      bm.position.copy(W(tx, ty, h + 4)); grp.add(bm); beams.push({ m: bm, ph: tx * 0.7 + ty, prison: true });
+    }
+  };
+  for (const [tx, ty] of [[wx0, wy0], [wx1, wy0], [wx0, wy1], [wx1, wy1]]) watchtower(tx, ty, 78, 10);
+  for (const [tx, ty] of [[cx, wy0], [cx, wy1], [wx0, gy], [wx1, gy - 26], [wx1, gy + 26]]) watchtower(tx, ty, 58, 7, false);
+  // cell blocks: tall, barred wings along the north and south walls
+  const cellM = windowed(new THREE.MeshStandardMaterial({ color: 0x5e5960, roughness: 0.85 })), roofM = new THREE.MeshStandardMaterial({ color: 0x26242a, roughness: 0.7 });
+  for (const by of [wy0 + 38, wy1 - 38]) { box(cellM, 190, 44, 34, cx + 40, by); box(roofM, 196, 3, 40, cx + 40, by, 44); for (const bx of [cx - 40, cx + 40, cx + 120]) box(dark, 6, 10, 6, bx, by, 47); }
+  // the keep: a black stepped fortress on the west side, crowned by the great spire
+  const kx = x0 + 105, keepM = windowed(new THREE.MeshStandardMaterial({ color: 0x2a2730, roughness: 0.5, metalness: 0.35 }));
+  box(keepM, 100, 56, 120, kx, cy); box(stone, 106, 4, 126, kx, cy, 56);
+  box(keepM, 70, 40, 84, kx, cy, 60); box(stone, 76, 4, 90, kx, cy, 100);
+  for (const [dx, dz] of [[-38, -46], [38, -46], [-38, 46], [38, 46]]) {   // four lesser spires on the keep's corners
+    const g = new THREE.Group(); g.position.copy(W(kx + dx, cy + dz, 56)); grp.add(g);
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(6, 7, 60, 8).translate(0, 30, 0), keepM); sh.castShadow = true; g.add(sh);
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(7.5, 56, 8).translate(0, 28, 0), dark); sp.position.y = 60; sp.castShadow = true; g.add(sp);
+    const rg = new THREE.Mesh(new THREE.TorusGeometry(7.6, 0.45, 6, 20).rotateX(Math.PI / 2), redGlow); rg.position.y = 54; g.add(rg);
+    reds.push(W(kx + dx, cy + dz, 56 + 60 + 58));
+  }
+  {  // the great spire
+    const g = new THREE.Group(); g.position.copy(W(kx, cy, 104)); grp.add(g);
+    for (const [r0, r1, h, y] of [[20, 15, 50, 0], [15, 10, 46, 50], [10, 5, 40, 96]]) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, 8).translate(0, h / 2, 0), keepM); m.position.y = y; m.castShadow = true; g.add(m); }
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(5.5, 70, 8).translate(0, 35, 0), dark); tip.position.y = 136; tip.castShadow = true; g.add(tip);
+    for (const [r, y] of [[16.5, 50], [11.5, 96], [6.6, 136], [3.2, 170]]) { const rg = new THREE.Mesh(new THREE.TorusGeometry(r, 0.7, 6, 28).rotateX(Math.PI / 2), redGlow); rg.position.y = y; g.add(rg); }
+    const beacon = new THREE.Points(new THREE.BufferGeometry().setFromPoints([W(kx, cy, 104 + 210)]), new THREE.PointsMaterial({ map: GLOW, size: 60, color: 0xff2a1e, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    grp.add(beacon); blinkers.push(beacon.material);
+  }
+  // the exercise yard, ringed by a chain-link fence
+  const yard = new THREE.Mesh(new THREE.CylinderGeometry(PRISON.yardR + 12, PRISON.yardR + 12, 0.6, 28), new THREE.MeshStandardMaterial({ color: 0x9a958d, roughness: 1 }));
   yard.position.copy(W(PRISON.yard[0], PRISON.yard[1], 0.3)); yard.receiveShadow = true; grp.add(yard);
-  const fenceR = PRISON.yardR + 12, post = new THREE.MeshStandardMaterial({ color: 0x55585e, metalness: 0.5 });
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(fenceR, fenceR, 7, 32, 1, true).translate(0, 3.5, 0), new THREE.MeshStandardMaterial({ color: 0xb0b5bc, metalness: 0.6, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
-  mesh.position.copy(W(PRISON.yard[0], PRISON.yard[1], 0)); grp.add(mesh);
-  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; const pp = new THREE.Mesh(BOX, post); pp.scale.set(0.5, 8, 0.5); pp.position.copy(W(PRISON.yard[0] + Math.cos(a) * fenceR, PRISON.yard[1] + Math.sin(a) * fenceR, 4)); grp.add(pp); }
-  // watchtowers on every corner, each with a sweeping searchlight and a red warning light
-  const towerM = new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.85 }), cabM = windowed(new THREE.MeshStandardMaterial({ color: 0x3d3b40, roughness: 0.6 }));
-  const reds = [];
-  for (const [tx, ty] of [[wx0, wy0], [wx1, wy0], [wx0, wy1], [wx1, wy1]]) {
-    box(towerM, 6, 34, 6, tx, ty); box(cabM, 11, 7, 11, tx, ty, 34);
-    box(new THREE.MeshStandardMaterial({ color: 0x2a2a2e }), 13, 1.4, 13, tx, ty, 41);
-    const bm = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 14, 230, 18, 1, true).translate(0, 115, 0),
-      new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-    bm.position.copy(W(tx, ty, 40)); bm.rotation.z = Math.PI * 0.62; grp.add(bm); beams.push({ m: bm, ph: tx + ty, prison: true });
-    reds.push(W(tx, ty, 43.5));
-  }
-  const red = new THREE.Points(new THREE.BufferGeometry().setFromPoints(reds), new THREE.PointsMaterial({ map: GLOW, size: 14, color: 0xff3b30, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const fenceR = PRISON.yardR + 14, post = new THREE.MeshStandardMaterial({ color: 0x55585e, metalness: 0.5 });
+  const fence = new THREE.Mesh(new THREE.CylinderGeometry(fenceR, fenceR, 9, 36, 1, true).translate(0, 4.5, 0), new THREE.MeshStandardMaterial({ color: 0xb0b5bc, metalness: 0.6, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  fence.position.copy(W(PRISON.yard[0], PRISON.yard[1], 0)); grp.add(fence);
+  for (let i = 0; i < 20; i++) { const a = (i / 20) * Math.PI * 2; const pp = new THREE.Mesh(BOX, post); pp.scale.set(0.6, 10, 0.6); pp.position.copy(W(PRISON.yard[0] + Math.cos(a) * fenceR, PRISON.yard[1] + Math.sin(a) * fenceR, 5)); grp.add(pp); }
+  const red = new THREE.Points(new THREE.BufferGeometry().setFromPoints(reds), new THREE.PointsMaterial({ map: GLOW, size: 16, color: 0xff3b30, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   grp.add(red); blinkers.push(red.material);
   // a landing pad outside the gate for the prison airship
-  box(new THREE.MeshStandardMaterial({ color: 0x2a2a2e }), 22, 1, 34, x1 + 10, (y0 + y1) / 2, -1);
-  for (let i = 0; i < 6; i++) box(new THREE.MeshStandardMaterial({ color: 0xe0a526 }), 1.2, 0.3, 4, x1 + 2, (y0 + y1) / 2 - 15 + i * 6, -0.4);
-  // the prison airship: black, with a red stripe, shuttling between Skyport's pier and the gate
-  const ship = airshipMesh(0.7, rnd); ship.traverse((o) => { if (o.isMesh && o.geometry.type === 'SphereGeometry') o.material = new THREE.MeshStandardMaterial({ color: 0x24242a, roughness: 0.5 }); if (o.isMesh && o.geometry.type === 'CylinderGeometry') o.material = new THREE.MeshStandardMaterial({ color: 0xa3261c }); });
+  box(new THREE.MeshStandardMaterial({ color: 0x2a2a2e }), 26, 1, 40, x1 + 13, cy, -1);
+  for (let i = 0; i < 7; i++) box(new THREE.MeshStandardMaterial({ color: 0xe0a526 }), 1.4, 0.3, 4, x1 + 2, cy - 18 + i * 6, -0.4);
+  // the prison airship: black, with a red stripe, shuttling between the city's west edge and the gate
+  const ship = airshipMesh(0.8, rnd); ship.traverse((o) => { if (o.isMesh && o.geometry.type === 'SphereGeometry') o.material = new THREE.MeshStandardMaterial({ color: 0x24242a, roughness: 0.5 }); if (o.isMesh && o.geometry.type === 'CylinderGeometry') o.material = new THREE.MeshStandardMaterial({ color: 0xa3261c }); });
   scene.add(ship); prisonShip = ship;
-  for (let i = 0; i < 4; i++) puff(x0 + rnd() * (x1 - x0), y1 - 10 + rnd() * 30, lift - 70 - rnd() * 60, 150 + rnd() * 100, 1);
+  for (let i = 0; i < 6; i++) puff(x0 + rnd() * (x1 - x0), y1 - 10 + rnd() * 40, lift - 90 - rnd() * 80, 180 + rnd() * 140, 1);
 }
 
 function buildIslet(x, y, h, size, rnd) {
@@ -800,7 +824,7 @@ function buildNightfall(rnd) {
 }
 function updateFerries(t) {
   if (prisonShip) {   // a slow round trip: Sunfall's west edge to the prison gate and back
-    const k = ((t / 70) % 1 + 1) % 1, a = PRISON.x1 + 24, b = 2;
+    const k = ((t / 70) % 1 + 1) % 1, a = PRISON.x1 + 28, b = 2;
     let u, back = false;
     if (k < 0.15) u = 0; else if (k < 0.45) u = smooth(0.15, 0.45, k); else if (k < 0.6) u = 1; else { u = 1 - smooth(0.6, 0.9, k); back = true; }
     if (k >= 0.9) { u = 0; back = true; }
@@ -1754,7 +1778,7 @@ function renderChips() {
     if (g === 'all') { goCity(chipCity); return; }
     if (g === 'prison') {
       const c = W(PRISON.cx, PRISON.cy, PRISON.lift);
-      if (iso) frameOn(c, ISO_OFF, 2.6); else flyTo(c, c.clone().add(new THREE.Vector3(360, 190, 90)));
+      if (iso) frameOn(c, ISO_OFF, 1.9); else flyTo(c.clone().add(new THREE.Vector3(-30, 95, 0)), c.clone().add(new THREE.Vector3(720, 330, 230)));
       const n = people.filter((p) => p.r[9]).length;
       toast(n ? `${n} agent${n > 1 ? 's' : ''} locked up in Cinder Rock for a failed robbery. They walk the yard until their 24 hours are up.` : 'Cinder Rock is empty. Agents caught robbing a business spend 24 hours here.');
       return;
