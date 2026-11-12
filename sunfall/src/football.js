@@ -45,6 +45,8 @@ const SQUAD = Object.fromEntries(CLUBS.map((c, i) => {
 
 export const REAL_LEAGUES = {
   'eng.1': 'Premier League', 'esp.1': 'LaLiga', 'ita.1': 'Serie A', 'ger.1': 'Bundesliga', 'fra.1': 'Ligue 1', 'uefa.champions': 'Champions League',
+  // internationals: on during the international breaks
+  'uefa.nations': 'UEFA Nations League', 'fifa.friendly': 'International Friendly', 'caf.nations_qual': 'Africa Cup of Nations Qualifying', 'concacaf.nations.league': 'Concacaf Nations League',
 };
 
 const F = () => {
@@ -355,7 +357,7 @@ export function footballView(resident) {
     real: {
       source: 'ESPN public scoreboard',
       live: real.filter((m) => m.state === 'in').map((m) => realMatchView(m, now)),
-      upcoming: real.filter((m) => m.state === 'pre' && m.ko > now - 3600_000).slice(0, 60).map((m) => realMatchView(m, now)),
+      upcoming: real.filter((m) => m.state === 'pre' && m.ko > now - 3600_000).slice(0, 160).map((m) => realMatchView(m, now)),
       results: real.filter((m) => m.completed).slice(-30).reverse().map((m) => realMatchView(m, now)),
     },
     agentBets: f.bets.filter((b) => b.agent && FOOTBALL_KINDS.includes(b.kind)).slice(-40).reverse().map(betView),
