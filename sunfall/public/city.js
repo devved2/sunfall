@@ -606,6 +606,7 @@ function puffTexture(seed = 11) {
 }
 const puffMats = [], puffClones = [];
 const mistMat = new THREE.SpriteMaterial({ transparent: true, depthWrite: false, color: 0xbff0ff, opacity: 0.8 });
+mistMat.onBeforeCompile = (sh) => seaFade(sh); mistMat.customProgramCacheKey = () => 'seafade';
 const puffs = [];
 let cloudSea = null, planet = null, planetGlow = null, planetRing = null, planetFlare = null;
 const PLANET_R = 1500, PLANET_DIR = new THREE.Vector3(0.52, -0.1, -0.85).normalize();
@@ -615,8 +616,8 @@ const falls = [], islets = [], airships = [], steam = [];
 function waterfall(x, y, top, width, height, facing) {
   const mat = new THREE.ShaderMaterial({
     uniforms: { uTime: timeU, uNight: nightU }, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform float uTime; uniform float uNight; varying vec2 vUv;
+    vertexShader: 'varying vec2 vUv; varying float vWorldY; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position,1.0); vWorldY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform float uTime; uniform float uNight; varying vec2 vUv; varying float vWorldY;
       float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
       float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
       void main(){
@@ -625,19 +626,29 @@ function waterfall(x, y, top, width, height, facing) {
         float fade = smoothstep(0.0, 0.45, vUv.y);
         float core = 1.0 - abs(vUv.x - 0.5) * 2.0;
         vec3 c = mix(vec3(0.20,0.62,0.85), vec3(0.80,0.97,1.0), streak * 0.7 + core * 0.4) * mix(0.75, 1.15, uNight);
-        float tail = smoothstep(0.0, 0.25, vUv.y);
+        float tail = smoothstep(0.0, 0.25, vUv.y) * smoothstep(${SEA_Y.toFixed(1)}, ${(SEA_Y + 70).toFixed(1)}, vWorldY);   // melt into the cloud sea, no hard line
         gl_FragColor = vec4(c * (0.16 + streak * 0.38) * edge * tail, 1.0);
       }`,
   });
   const m = new THREE.Mesh(new THREE.PlaneGeometry(width, height).translate(0, -height / 2, 0), mat);
   m.position.copy(W(x, y, top)); m.rotation.y = facing; scene.add(m); falls.push(m);
   // a lip of water at the top, and mist at the bottom
-  const mist = new THREE.Sprite(mistMat); mist.scale.set(width * 5, width * 3.2, 1); mist.position.copy(W(x, y, top - height + 10)); scene.add(mist);
+  const mist = new THREE.Sprite(mistMat); mist.scale.set(width * 5, width * 3.2, 1); mist.position.copy(W(x, y, Math.max(top - height + 10, SEA_Y + width * 1.3))); scene.add(mist);
 }
 
+// Puffs sit on the sea of clouds, whose flat surface would slice their bottoms off in a hard straight line;
+// instead each puff fades out softly over the last stretch above the sea.
+const SEA_Y = -330, SEA_FADE = 110;
+function seaFade(sh) {
+  sh.vertexShader = sh.vertexShader.replace('void main() {', 'varying float vWorldY;\nvoid main() {')
+    .replace('gl_Position = projectionMatrix * mvPosition;', 'gl_Position = projectionMatrix * mvPosition;\n\tvWorldY = ( inverse( viewMatrix ) * mvPosition ).y;');
+  sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying float vWorldY;\nvoid main() {')
+    .replace('#include <alphatest_fragment>', `diffuseColor.a *= smoothstep( ${SEA_Y.toFixed(1)}, ${(SEA_Y + SEA_FADE).toFixed(1)}, vWorldY );\n\t#include <alphatest_fragment>`);
+}
 function puff(x, y, h, size, mi = 0) {
   // each puff has its own material so it can fade out when the camera gets close (no grey veil over the view)
   const mat = puffMats[mi].clone(); puffClones.push({ mat, mi });
+  if (h - size * 0.31 < SEA_Y + SEA_FADE) { mat.onBeforeCompile = seaFade; mat.customProgramCacheKey = () => 'seafade'; }
   const sp = new THREE.Sprite(mat); sp.scale.set(size, size * 0.62, 1); sp.position.copy(W(x, y, h)); scene.add(sp);
   puffs.push({ sp, mat, size, base: sp.position.clone(), ph: Math.random() * 6.28, sp0: 2 + Math.random() * 4 });
   return sp;
@@ -877,7 +888,7 @@ function buildSkyWorld(rnd) {
         #include <colorspace_fragment>
       }`,
   }));
-  cloudSea.position.y = -330; scene.add(cloudSea);
+  cloudSea.position.y = SEA_Y; scene.add(cloudSea);
   // big soft puffs drifting around and below the islands
   // cumulus banks hugging the cloud sea, around the rock tips (as in the artwork), not hanging in the view
   for (let i = 0; i < (LITE ? 24 : 46); i++) {
