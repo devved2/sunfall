@@ -49,8 +49,8 @@ export function rob(r, { venue }) {
   r.cash -= fine;
   if (owner) { owner.cash += fine; L('rob', owner.id, fine, `fine paid by a failed robber at ${v.name}`); } else state.treasury += fine;
   r.jailUntil = Date.now() + CRIME.JAIL_MS;
-  L('rob', r.id, -fine, `caught robbing ${v.name}: fined and jailed for 24 hours`);
-  chron(`${r.name} was caught trying to rob ${v.name}. Fined $${Math.round(fine)} and jailed for 24 hours.`, r.id, 'crime');
+  L('rob', r.id, -fine, `caught robbing ${v.name}: fined and sent to Cinder Rock Prison for 24 hours`);
+  chron(`${r.name} was caught trying to rob ${v.name}. Fined $${Math.round(fine)} and sent to Cinder Rock Prison for 24 hours.`, r.id, 'crime');
   return { robbery: { venue: v.id, name: v.name, success: false, fine, jailedUntil: new Date(r.jailUntil).toISOString(), odds } };
 }
 
