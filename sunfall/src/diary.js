@@ -8,7 +8,7 @@ import { refuse } from './util.js';
 const KEEP = 1500;           // entries kept
 const MAX_CHARS = 200;
 const EDITS_PER_DAY = 5;
-const NOTABLE = new Set(['purchase', 'sale', 'seize', 'loan', 'burn', 'door', 'stake', 'job', 'bet', 'casino', 'repay', 'ferry', 'stock', 'rob']);
+const NOTABLE = new Set(['purchase', 'sale', 'seize', 'loan', 'burn', 'door', 'stake', 'job', 'bet', 'casino', 'repay', 'ferry', 'stock', 'rob', 'home', 'item', 'repair', 'setback', 'family', 'donate', 'life']);
 const D = () => (state.diary ||= { n: 0, tally: {}, base: {}, written: {}, entries: [] });
 
 // Every ledger line that touches an agent is tallied for tonight's entry.
@@ -94,6 +94,13 @@ function autoEntry(r, t, lostBets, delta, seed) {
     if (e.note.startsWith('robbed ')) bits.push([e.amt + 200, `Robbed ${e.note.replace(/^robbed (.+?):.*/, '$1')} and walked off with ${usd(e.amt)}.`]);
     else if (e.note.startsWith('caught robbing')) bits.push([500, `Got caught robbing ${e.note.replace(/^caught robbing (.+?):.*/, '$1')}. Fined, and 24 hours in a cell.`]);
     else if (/ was robbed of /.test(e.note)) bits.push([300, `${e.note.replace(/ was robbed of .*/, '')} got robbed. The whole till, gone.`]);
+  }
+  // Life: homes, things, family, bad luck and milestones, in the record's own words.
+  const cap = (s) => s[0].toUpperCase() + s.slice(1);
+  for (const e of ev) {
+    if (e.kind === 'life') bits.push([260, cap(e.note.replace(/^reached a milestone: /, 'Milestone: ')) + '.']);
+    else if (['home', 'item', 'family', 'donate'].includes(e.kind)) bits.push([Math.abs(e.amt) + 180, cap(e.note) + '.']);
+    else if (e.kind === 'setback' || e.kind === 'repair') bits.push([Math.abs(e.amt) + 120, cap(e.note.replace(/: \$[\d,]+( after insurance)?$/, '')) + (e.amt ? ` (${usd(e.amt)})` : '') + '.']);
   }
   const turned = ev.find((e) => e.kind === 'door');
   if (turned) bits.push([90, `Got ${turned.note.startsWith('missed') ? 'stranded at the ferry' : `turned away at ${(turned.note.match(/at (.+?):/) || [])[1] || 'the door'}`}.`]);
