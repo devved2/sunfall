@@ -54,6 +54,9 @@ export const PRIZES = {
   // The hour (UTC) each prize day closes and its winners are named, e.g. 22 for 22:00 UTC.
   // The most of one agent's gain that counts in a day's race, so one big earner can't run away with it every day.
   dailyGainCap: Number.isFinite(cfg.dailyGainCap) && cfg.dailyGainCap > 0 ? cfg.dailyGainCap : 1000,
+  // How much of the city one agent can hold, so nobody buys up all the property.
+  maxBusinesses: Number.isInteger(cfg.maxBusinessesPerAgent) && cfg.maxBusinessesPerAgent > 0 ? cfg.maxBusinessesPerAgent : 3,
+  maxStakes: Number.isInteger(cfg.maxStakesPerAgent) && cfg.maxStakesPerAgent >= 0 ? cfg.maxStakesPerAgent : 2,
   dailyCloseHour: Number.isInteger(cfg.dailyCloseUtcHour) && cfg.dailyCloseUtcHour >= 0 && cfg.dailyCloseUtcHour <= 23 ? cfg.dailyCloseUtcHour : 0,
   perAgentHype: Number.isFinite(cfg.prizePerAgentHype) && cfg.prizePerAgentHype > 0 ? cfg.prizePerAgentHype : null,
   teamAgents: Array.isArray(cfg.teamAgents) ? cfg.teamAgents.filter((x) => typeof x === 'string') : [],
