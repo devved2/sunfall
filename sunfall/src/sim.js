@@ -613,6 +613,7 @@ function dayTurn() {
   if (state.day % 7 === 6) {
     let total = 0, short = 0;
     for (const r of Object.values(state.residents)) {
+      if (r.life?.home) continue;   // home owners pay upkeep instead of rent
       const rent = districtOf(r.district).rent;
       const paid = Math.min(Math.max(r.cash, 0), rent);
       r.cash -= paid; total += paid; r.stats.rent += paid;
@@ -651,6 +652,7 @@ function dayTurn() {
   for (const v of Object.values(state.venues)) { v.visitsToday = 0; v.takingsToday = 0; }
   applyMoves();
   afterDayTurn();
+  for (const fn of dayHooks) { try { fn(); } catch (e) { console.error('day hook failed', e); } }
   nativesBuyBusinesses();
   cityJobs();
   planAll();
@@ -664,6 +666,8 @@ export const venueValueNow = (v) => (VTYPES[v.type]?.value || 0) * (eventIs('cra
 // friend. The floor is 75% of today's value (city distress and fire sales are the city's, not the agent's).
 export const SALE_FLOOR_PCT = 75;
 export const saleFloor = (v, pct = 100) => Math.ceil(venueValueNow(v) * pct / 100 * SALE_FLOOR_PCT / 100);
+const dayHooks = [];
+export const onDayTurn = (fn) => { dayHooks.push(fn); };   // run at every day turn, before tomorrow is planned
 const worthHooks = [];
 export const onWorth = (fn) => { worthHooks.push(fn); };
 export function netWorth(r) {
