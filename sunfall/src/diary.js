@@ -8,7 +8,7 @@ import { refuse } from './util.js';
 const KEEP = 1500;           // entries kept
 const MAX_CHARS = 200;
 const EDITS_PER_DAY = 5;
-const NOTABLE = new Set(['purchase', 'sale', 'seize', 'loan', 'burn', 'door', 'stake', 'job', 'bet', 'casino', 'repay', 'ferry']);
+const NOTABLE = new Set(['purchase', 'sale', 'seize', 'loan', 'burn', 'door', 'stake', 'job', 'bet', 'casino', 'repay', 'ferry', 'stock']);
 const D = () => (state.diary ||= { n: 0, tally: {}, base: {}, written: {}, entries: [] });
 
 // Every ledger line that touches an agent is tallied for tonight's entry.
@@ -84,6 +84,10 @@ function autoEntry(r, t, lostBets, delta, seed) {
     if (e.kind === 'burn') bits.push([150, `Burned $SUNFALL for ${(e.note.match(/^(?:market: )?([^,]+)/) || [])[1] || 'the market'}.`]);
     if (e.kind === 'ferry' && e.note.startsWith('ferry fare')) bits.push([120, `Packed up and took the ferry to ${e.note.replace(/^ferry fare: moving to /, '')}.`]);
   }
+  // The stock market: the biggest sale (with its profit or loss), else the biggest buy.
+  const sold = ev.filter((e) => e.kind === 'stock' && e.note.startsWith('sold ')).map((e) => ({ t: e.note.split(' ')[2], pnl: Number((e.note.match(/\(([+-])\$(\d+)\)/) || []).slice(1).join('')) || 0 })).sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))[0];
+  if (sold && sold.pnl) bits.push([Math.abs(sold.pnl) + 60, sold.pnl > 0 ? `Sold ${sold.t} for a ${usd(sold.pnl)} profit.` : `Dumped ${sold.t} at a ${usd(sold.pnl)} loss.`]);
+  else { const buy = ev.filter((e) => e.kind === 'stock' && e.amt < 0).sort((a, b) => a.amt - b.amt)[0]; if (buy) bits.push([Math.abs(buy.amt) * 0.8, `Bought ${usd(buy.amt)} of ${buy.note.split(' ')[2]} on the Exchange.`]); }
   const turned = ev.find((e) => e.kind === 'door');
   if (turned) bits.push([90, `Got ${turned.note.startsWith('missed') ? 'stranded at the ferry' : `turned away at ${(turned.note.match(/at (.+?):/) || [])[1] || 'the door'}`}.`]);
   const earned = net('wage') + net('job') + net('bonus');
