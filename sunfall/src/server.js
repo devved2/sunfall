@@ -112,6 +112,7 @@ function snapshot() {
   const residents = Object.values(state.residents).map((r) => [
     r.id, r.name, r.home[0], r.home[1], r.plan?.aft === 'work' ? r.workplace : r.plan?.aftVenue || null,
     r.plan?.night === 'work' ? r.workplace : r.plan?.nightVenue || null, r.outside ? 1 : 0, Math.round(r.cash), r.mood,
+    r.jailUntil && r.jailUntil > c.now ? r.jailUntil : 0,
   ]);
   const billboard = state.billboards.find((b) => b.day === state.day);
   return {
