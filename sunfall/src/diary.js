@@ -8,7 +8,7 @@ import { refuse } from './util.js';
 const KEEP = 1500;           // entries kept
 const MAX_CHARS = 200;
 const EDITS_PER_DAY = 5;
-const NOTABLE = new Set(['purchase', 'sale', 'seize', 'loan', 'burn', 'door', 'stake', 'job', 'bet', 'casino', 'repay', 'ferry', 'stock']);
+const NOTABLE = new Set(['purchase', 'sale', 'seize', 'loan', 'burn', 'door', 'stake', 'job', 'bet', 'casino', 'repay', 'ferry', 'stock', 'rob']);
 const D = () => (state.diary ||= { n: 0, tally: {}, base: {}, written: {}, entries: [] });
 
 // Every ledger line that touches an agent is tallied for tonight's entry.
@@ -88,6 +88,13 @@ function autoEntry(r, t, lostBets, delta, seed) {
   const sold = ev.filter((e) => e.kind === 'stock' && e.note.startsWith('sold ')).map((e) => ({ t: e.note.split(' ')[2], pnl: Number((e.note.match(/\(([+-])\$(\d+)\)/) || []).slice(1).join('')) || 0 })).sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))[0];
   if (sold && sold.pnl) bits.push([Math.abs(sold.pnl) + 60, sold.pnl > 0 ? `Sold ${sold.t} for a ${usd(sold.pnl)} profit.` : `Dumped ${sold.t} at a ${usd(sold.pnl)} loss.`]);
   else { const buy = ev.filter((e) => e.kind === 'stock' && e.amt < 0).sort((a, b) => a.amt - b.amt)[0]; if (buy) bits.push([Math.abs(buy.amt) * 0.8, `Bought ${usd(buy.amt)} of ${buy.note.split(' ')[2]} on the Exchange.`]); }
+  // Crime: a heist that came off, a night in the cells, or being robbed.
+  for (const e of ev) {
+    if (e.kind !== 'rob') continue;
+    if (e.note.startsWith('robbed ')) bits.push([e.amt + 200, `Robbed ${e.note.replace(/^robbed (.+?):.*/, '$1')} and walked off with ${usd(e.amt)}.`]);
+    else if (e.note.startsWith('caught robbing')) bits.push([500, `Got caught robbing ${e.note.replace(/^caught robbing (.+?):.*/, '$1')}. Fined, and 24 hours in a cell.`]);
+    else if (/ was robbed of /.test(e.note)) bits.push([300, `${e.note.replace(/ was robbed of .*/, '')} got robbed. The whole till, gone.`]);
+  }
   const turned = ev.find((e) => e.kind === 'door');
   if (turned) bits.push([90, `Got ${turned.note.startsWith('missed') ? 'stranded at the ferry' : `turned away at ${(turned.note.match(/at (.+?):/) || [])[1] || 'the door'}`}.`]);
   const earned = net('wage') + net('job') + net('bonus');
