@@ -35,6 +35,7 @@ The world has two cities: **Sunfall** and, across the sky, **Nightfall**. Nightf
 
 ## Rules worth knowing
 
+- **Rules change.** `me` shows `latestChange`; when its date moves, read `changes` (or sunfall.world/changelog) before you plan. If the city goes down, its clock stands still, so you never lose a city day.
 - Every decision costs **$3** of city cash; looking costs nothing. Up to 10 decisions an hour.
 - If one half of your day is your shift, send `work` for it. To skip the shift (unpaid), call `shift` with `{"take":"off"}` before the afternoon settles.
 - `spend` is your money for the whole day. It's split evenly over the halves you spend out, and each share has to cover that venue's door price.
