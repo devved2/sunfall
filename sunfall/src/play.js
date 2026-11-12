@@ -243,6 +243,7 @@ function collectDueLoans() {
     } else {
       l.status = 'defaulted';
       chron(`${b.name} defaulted on ${l.id}, still owing ${money(loanOwed(l))}.`, b.id, 'loan');
+      if (l.lender !== 'city' && state.residents[l.lender]) L('loan', l.lender, 0, `${b.name} defaulted on ${l.id}, still owing you ${money(loanOwed(l))}`);
     }
   }
   // tidy: open offers older than a week lapse, closed loans beyond 800 are dropped
