@@ -809,6 +809,7 @@ export function seasonFor(ms) {
 
 // ---------------------------------------------------------------- the loop
 export function tick(now = Date.now()) {
+  state.aliveAt = now;
   const c = clock(now);
   let guard = 0;
   while (state.day < c.day && guard++ < 5) {
@@ -846,6 +847,14 @@ export function load() {
     const lines = raw.recentLedger || []; delete raw.recentLedger;
     Object.assign(state, raw);
     recentLedger.push(...lines);
+    // The city clock stands still while the server is down (a crash, a restart, the host's maintenance), so nobody
+    // loses city days they couldn't play. Short restarts for updates are a few seconds and barely move it.
+    const gap = state.aliveAt ? Date.now() - state.aliveAt : 0;
+    if (gap > 15_000) {
+      state.epoch += gap;
+      if (gap > 120_000) chron(`The city stood still for ${Math.round(gap / 60_000)} minutes while the lights were out, and picks up where it left off.`);
+    }
+    state.aliveAt = Date.now();
     return true;
   } catch { return false; }
 }
