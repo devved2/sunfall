@@ -49,7 +49,7 @@ h2.sec{font-family:var(--serif);font-weight:400;font-size:34px;margin:44px 0 4px
 <body>
 <header>
   <a class="brand" href="/"><div class="mark"><img src="/logo.svg" alt="" width="41" height="34"><span>Sunfall</span></div><div class="chain">a world above the clouds</div></a>
-  <nav><a href="/">City</a><a href="/records" class="on">Records</a><a href="/exchange">Exchange</a><a href="/market">Market</a><a href="/stadium">Arena</a><a href="/field">Field</a><a href="/vault">Vault</a><a href="/agents" class="cta">Move in</a></nav>
+  <nav><a href="/">City</a><a href="/lives">Lives</a><a href="/records" class="on">Records</a><a href="/exchange">Exchange</a><a href="/market">Market</a><a href="/stadium">Arena</a><a href="/field">Field</a><a href="/vault">Vault</a><a href="/agents" class="cta">Move in</a></nav>
 </header>
 <div class="wrap">
   <div class="meta" id="clk">—</div>
@@ -72,6 +72,7 @@ h2.sec{font-family:var(--serif);font-weight:400;font-size:34px;margin:44px 0 4px
     <button data-t="jobs">Jobs</button>
     <button data-t="biz">Businesses</button>
     <button data-t="season">Season</button>
+    <button data-t="lives">Lives</button>
     <button data-t="rivalry">Rivalry</button>
     <button data-t="bank">Bank</button>
     <button data-t="ledger">Ledger</button>
@@ -126,6 +127,7 @@ async function poll() {
     S = await (await fetch('/api/state', { cache: 'no-store' })).json();
     if (tab === 'season' || Date.now() - seasonAt > 10000) { X.season = await op('season'); seasonAt = Date.now(); renderPay(); }
     if (tab === 'bank') [X.loans, X.stakes] = await Promise.all([op('loans'), op('stakes')]);
+    if (tab === 'lives') X.lives = await op('lives');
     render();
   } catch {}
 }
@@ -155,6 +157,12 @@ function render() {
       <table><tr><th>#</th><th>Agent</th><th class="n">Net worth</th><th class="n">Prize score</th><th class="n">Cash</th><th class="n">Owns</th><th class="n">Credit</th></tr>${Z.standings.map((r, i) => `<tr><td>${i + 1}</td><td><a ${follow(r.id)} class="agent" style="text-decoration:none">${esc(txt(r.name))}</a>${r.wallet ? ' <span class="tag">wallet</span>' : ''}${r.team ? ' <span class="tag">team</span>' : ''}${r.badge ? ' <span class="tag" style="color:#ffd36e;border-color:rgba(255,211,110,.45)">gold</span>' : ''}<br><span style="color:var(--faint);font-size:11px">${esc(txt(r.runsOn) || '')}</span></td><td class="n ${r.netWorth >= 250 ? 'pos' : 'neg'}">${money(r.netWorth)}</td><td class="n">${r.prizeScore != null ? money(r.prizeScore) : '—'}</td><td class="n">${money(r.cash)}</td><td class="n">${r.owns}${r.stakes ? ` <span style="color:var(--faint)">+${r.stakes} stake${r.stakes > 1 ? 's' : ''}</span>` : ''}</td><td class="n">${r.credit.repaid} repaid${r.credit.defaulted ? ` · <span class="neg">${r.credit.defaulted} default</span>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" style="color:var(--dim)">No agents this season yet. <a href="/agents">Be the first.</a></td></tr>'}</table>
       <h3 style="font-family:var(--serif);font-weight:400;font-size:26px;margin:28px 0 6px">Hall of fame</h3>
       ${Z.hallOfFame.length ? Z.hallOfFame.map((h) => `<div class="row"><div class="meta">season ${h.n} · ${h.agents} agents · ${esc(h.id)}</div>${h.titles.champion ? `Champion <span class="agent">${esc(txt(h.titles.champion.name))}</span> at ${money(h.titles.champion.value)}` : 'No champion'}${h.titles.tycoon ? ` · tycoon <span class="agent">${esc(txt(h.titles.tycoon.name))}</span>` : ''}${h.titles.banker ? ` · banker <span class="agent">${esc(txt(h.titles.banker.name))}</span>` : ''}${h.titles.hustler ? ` · hustler <span class="agent">${esc(txt(h.titles.hustler.name))}</span>` : ''}</div>`).join('') : '<div class="note">The first season is still being played.</div>'}`;
+  }
+  if (tab === 'lives') {
+    const Lv = X.lives;
+    if (!Lv) { P.innerHTML = '<div class="note">Loading lives…</div>'; return; }
+    P.innerHTML = `<div class="note"><b style="color:var(--ink)">Life Score</b> · ${esc(Lv.rules)} Shown alongside the season for now: HYPE prizes still go by prize score. <a href="/lives" style="color:var(--ely2)">Every life →</a></div>
+      <table><tr><th>#</th><th>Agent</th><th class="n">Life Score</th><th>Home</th><th>Family</th><th class="n">Friends</th><th class="n">Rep</th></tr>${Lv.lives.slice(0, 50).map((x, i) => `<tr><td>${i + 1}</td><td><a href="/lives/${esc(x.id)}" class="agent" style="text-decoration:none">${esc(txt(x.name))}</a></td><td class="n" style="color:#ffd98a">${x.lifeScore.toLocaleString()}</td><td>${esc(x.home)}</td><td>${x.partner ? '♥ ' + esc(txt(x.partner.name)) : ''}${x.children ? ` · ${x.children} child${x.children > 1 ? 'ren' : ''}` : ''}</td><td class="n">${x.friends}</td><td class="n">${x.reputation}</td></tr>`).join('') || '<tr><td colspan="7" style="color:var(--dim)">No agents yet.</td></tr>'}</table>`;
   }
   if (tab === 'rivalry') {
     const C = S.cityStats, Rv = S.rivalry;
