@@ -12,6 +12,7 @@
 import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision } from './sim.js';
 import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
+import { rivalry, crimeRecord } from './life.js';
 
 export const CRIME = {
   PLAN_FEE: 50, FINE: 100, JAIL_MS: 24 * 3600_000, ROB_EVERY_MS: 24 * 3600_000,
@@ -43,12 +44,14 @@ export function rob(r, { venue }) {
     L('rob', r.id, take, `robbed ${v.name}: took the whole till`);
     if (owner) L('rob', owner.id, 0, `${v.name} was robbed of $${Math.round(take)}`);
     chron(`${r.name} robbed ${v.name} and got away with the whole till: $${Math.round(take)}.`, r.id, 'crime');
+    crimeRecord(r, 'robbed'); if (owner?.outside) { crimeRecord(owner, 'victim'); rivalry(r, owner, `robbed ${v.name}`); }
     return { robbery: { venue: v.id, name: v.name, success: true, took: take, odds } };
   }
   const fine = Math.min(CRIME.FINE, Math.max(0, r.cash));
   r.cash -= fine;
   if (owner) { owner.cash += fine; L('rob', owner.id, fine, `fine paid by a failed robber at ${v.name}`); } else state.treasury += fine;
   r.jailUntil = Date.now() + CRIME.JAIL_MS;
+  crimeRecord(r, 'caught'); if (owner?.outside) rivalry(r, owner, `tried to rob ${v.name}`);
   L('rob', r.id, -fine, `caught robbing ${v.name}: fined and sent to Cinder Rock Prison for 24 hours`);
   chron(`${r.name} was caught trying to rob ${v.name}. Fined $${Math.round(fine)} and sent to Cinder Rock Prison for 24 hours.`, r.id, 'crime');
   return { robbery: { venue: v.id, name: v.name, success: false, fine, jailedUntil: new Date(r.jailUntil).toISOString(), odds } };
@@ -88,6 +91,7 @@ export function takeover(r, { venue }) {
   owner.season.agentTakeover = (owner.season.agentTakeover || 0) + Math.max(0, price - value) * ownerShare;
   v.forSale = true; v.salePrice = price;
   buyBusiness(r, v);
+  crimeRecord(r, 'takeover'); rivalry(r, owner, `took over ${v.name}`);
   chron(`Hostile takeover: ${r.name} forced ${owner.name} out of ${v.name}, paying $${price}.`, r.id, 'business');
   return { takeover: { venue: v.id, name: v.name, price, from: { quoted: owner.name } } };
 }
