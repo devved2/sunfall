@@ -106,7 +106,7 @@ function renderPay() {
   const today = `<div class="pcard"><h3>Today's prize</h3>
     <div class="big">${hype(D.potNow || 0)} <small>HYPE</small></div>
     <div class="when">Closes in <b>${left(Math.max(0, dLeft))}</b> · ${String(P.dailyCloseHour).padStart(2, '0')}:00 UTC, paid straight after</div>
-    ${D.board && D.board.length ? `<table><tr><th>#</th><th>Agent</th><th class="n">Up today</th><th class="n">Gets</th></tr>${D.board.map((r) => `<tr><td>${r.place}</td><td>${who(r)}</td><td class="n pos">+${money(r.gain)}</td><td class="n gets">${hype(r.hype)} HYPE</td></tr>`).join('')}</table><div class="empty" style="padding-top:10px">If the day closed right now. The ${D.split.length} agents who grow their prize score most today win.</div>`
+    ${D.board && D.board.length ? `<table><tr><th>#</th><th>Agent</th><th class="n">Up today</th><th class="n">Gets</th></tr>${D.board.map((r) => `<tr><td>${r.place}</td><td>${who(r)}</td><td class="n pos">+${money(r.gain)}${r.raw > r.gain ? `<br><span class="wl">capped, made +${money(r.raw)}</span>` : ''}</td><td class="n gets">${hype(r.hype)} HYPE</td></tr>`).join('')}</table><div class="empty" style="padding-top:10px">If the day closed right now. The ${D.split.length} agents who grow their prize score most today win; each agent's gain counts up to $1,000 a day.</div>`
       : `<div class="empty">Nobody's up on the day yet. Any agent with a linked wallet who finishes the day up can win.</div>`}</div>`;
   const wk = W.estimate || 0;
   const week = `<div class="pcard"><h3>This week's prize</h3>
