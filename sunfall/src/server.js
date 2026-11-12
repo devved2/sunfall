@@ -16,7 +16,8 @@ import { pollNfl, fieldNow } from './gridiron.js';
 import { initDiary, diaryOf, diaryEntry } from './diary.js';
 import { initExchange, exchangeTick } from './exchange.js';
 import { initLife, mapLives, lifeView, lifeOf, HOMES } from './life.js';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import os from 'node:os';
 import { DISTRICTS, TRADES, CITIES, FERRY } from './world.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -243,20 +244,63 @@ const server = http.createServer(async (req, res) => {
     return send(res, 500, { ok: false, reason: 'internal error' });
   }
 });
-// Self-update: when the server runs from a git checkout, it checks for new commits every few minutes,
-// pulls them, saves the city and exits so the process manager starts the new version. AUTO_UPDATE=0 turns it off.
+// Self-update: when the server runs from a git checkout, it checks for new commits every few minutes and pulls
+// them. Before switching, it test-boots the new version on a spare port against a copy of the city: every file
+// must parse and the copy must answer /healthz. Only then does it save the city and exit so the process manager
+// starts the new version. A version that fails is rolled back and skipped until a newer commit arrives, so a bad
+// commit can't take the site down. AUTO_UPDATE=0 turns this off.
 const REPO_ROOT = path.resolve(ROOT, '..');
 const gitDir = [ROOT, REPO_ROOT].find((d) => fs.existsSync(path.join(d, '.git')));
 const git = (args) => new Promise((resolve) => execFile('git', ['-C', gitDir, ...args], { timeout: 60_000 }, (err, out) => resolve(err ? null : String(out).trim())));
+const nodeOk = (file) => new Promise((resolve) => execFile(process.execPath, ['--check', file], { timeout: 30_000 }, (err, _o, se) => resolve(err ? String(se || err.message).slice(0, 400) : null)));
+async function preflight() {
+  const src = path.join(ROOT, 'src');
+  for (const f of fs.readdirSync(src).filter((x) => x.endsWith('.js'))) {
+    const bad = await nodeOk(path.join(src, f));
+    if (bad) return `${f} doesn't parse: ${bad}`;
+  }
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunfall-preflight-'));
+  const port = 18000 + Math.floor(Math.random() * 1000);
+  let child = null, err = '';
+  try {
+    save();
+    for (const f of fs.readdirSync(CFG.DATA_DIR)) { const s = path.join(CFG.DATA_DIR, f); if (fs.statSync(s).isFile()) fs.copyFileSync(s, path.join(tmp, f)); }
+    child = spawn(process.execPath, [path.join(src, 'server.js')], { cwd: ROOT, stdio: ['ignore', 'ignore', 'pipe'],
+      env: { ...process.env, PORT: String(port), DATA_DIR: tmp, AUTO_UPDATE: '0', FEE_SCAN: 'off', REAL_FOOTBALL: '0', PREFLIGHT: '1' } });
+    child.stderr.on('data', (d) => { err = (err + d).slice(-600); });
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (child.exitCode !== null) return `the new version exited on boot: ${err.trim().slice(-400)}`;
+      try { const r = await fetch(`http://127.0.0.1:${port}/healthz`); if (r.ok) return null; } catch {}
+    }
+    return 'the new version did not answer /healthz within 30 seconds';
+  } catch (e) {
+    return `preflight could not run: ${e.message}`;
+  } finally {
+    if (child && child.exitCode === null) child.kill('SIGKILL');
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
 if (gitDir && process.env.AUTO_UPDATE !== '0') {
   const every = Math.max(0.1, Number(process.env.AUTO_UPDATE_MIN) || 5) * 60_000;
+  let skip = null, busy = false;   // skip: an upstream commit that failed its test boot
   setInterval(async () => {
-    if (await git(['fetch', '--quiet']) === null) return;
-    const [here, there] = await Promise.all([git(['rev-parse', 'HEAD']), git(['rev-parse', '@{u}'])]);
-    if (!here || !there || here === there) return;
-    if (await git(['pull', '--ff-only', '--quiet']) === null) { console.error('auto-update: pull failed'); return; }
-    console.log(`auto-update: ${here.slice(0, 7)} -> ${there.slice(0, 7)}, restarting`);
-    try { save(); } finally { process.exit(0); }
+    if (busy) return; busy = true;
+    try {
+      if (await git(['fetch', '--quiet']) === null) return;
+      const [here, there] = await Promise.all([git(['rev-parse', 'HEAD']), git(['rev-parse', '@{u}'])]);
+      if (!here || !there || here === there || there === skip) return;
+      if (await git(['pull', '--ff-only', '--quiet']) === null) { console.error('auto-update: pull failed'); return; }
+      const bad = await preflight();
+      if (bad) {
+        console.error(`auto-update: ${there.slice(0, 7)} failed its test boot, staying on ${here.slice(0, 7)}: ${bad}`);
+        await git(['reset', '--hard', here]);
+        skip = there;
+        return;
+      }
+      console.log(`auto-update: ${here.slice(0, 7)} -> ${there.slice(0, 7)} passed its test boot, restarting`);
+      try { save(); } finally { process.exit(0); }
+    } finally { busy = false; }
   }, every);
   console.log(`auto-update on: checking ${gitDir} every ${every / 60000} min`);
 }
