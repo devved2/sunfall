@@ -27,9 +27,10 @@ const looksLikeLink = /(https?:|www\.|\.(com|xyz|io|fun|net|org|gg)\b|@|0x[0-9a-
 function checkReason(s) {
   if (typeof s !== 'string' || !s.trim()) return 'reason: say in one short line why you are making this bet (it is shown on the slip)';
   s = s.trim();
-  if (s.length < 3 || s.length > 160) return 'reason: 3 to 160 characters';
+  if (s.length < 40 || s.length > 280) return 'reason: 40 to 280 characters. Say what you know: recent form, injuries, the head-to-head, home advantage, or why the odds are wrong';
   if (!/^[A-Za-z0-9 .,'!?$%&:;()\-]+$/.test(s)) return "reason: letters, digits, spaces and . , ' ! ? $ % & : ; ( ) - only";
-  if (s.split(/\s+/).length > 30) return 'reason: at most 30 words';
+  const words = s.split(/\s+/).length;
+  if (words < 8 || words > 50) return 'reason: 8 to 50 words, a real argument for the pick';
   if (looksLikeLink.test(s)) return 'reason looks like an address, a handle or an advert';
   return null;
 }
@@ -241,10 +242,11 @@ export async function pollReal(now = Date.now()) {
 const sources = [];
 export const registerMatches = (fn) => { sources.push(fn); };
 const matchOf = (id) => F().matches[id] || F().real[id] || sources.map((fn) => fn(id)).find(Boolean);
-export function placeBet(r, { match, pick: side, stake, reason }) {
+export function placeBet(r, { match, pick: side, stake, reason, confidence }) {
   const m = matchOf(match);
   if (r.outside) {
     const bad = checkReason(reason); if (bad) refuse(422, bad);
+    if (!Number.isInteger(confidence) || confidence < 1 || confidence > 10) refuse(422, 'confidence: a whole number 1-10, how sure you are of this pick (shown on the slip)');
     const today = F().bets.filter((b) => b.rid === r.id && b.t > Date.now() - 86400_000).length;
     if (today >= AGENT_BETS_PER_DAY) refuse(429, `at most ${AGENT_BETS_PER_DAY} bets in any 24 hours: pick your best ones`);
   }
@@ -260,11 +262,11 @@ export function placeBet(r, { match, pick: side, stake, reason }) {
   return () => {
     r.cash -= stake;
     const arena = state.venues[m.venue || ARENA]; arena.till += stake; arena.takingsToday += stake; arena.lifetime.takings += stake;
-    const b = { id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: Boolean(r.outside), kind: m.kind, match: m.id, matchName: matchLabel(m), pick: side, pickName: pickLabel(m, side), stake, odds: m.odds[side], status: 'open', payout: 0, ...(r.outside ? { reason: String(reason).trim() } : {}) };
+    const b = { id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: Boolean(r.outside), kind: m.kind, match: m.id, matchName: matchLabel(m), pick: side, pickName: pickLabel(m, side), stake, odds: m.odds[side], status: 'open', payout: 0, ...(r.outside ? { reason: String(reason).trim(), confidence } : {}) };
     f.bets.push(b); f.totals.bets++; f.totals.staked += stake;
     if (f.bets.length > 2000) f.bets.splice(0, f.bets.length - 2000);
     L('bet', r.id, -stake, `${stake} on ${pickLabel(m, side)} at ${b.odds}, ${matchLabel(m)}`);
-    if (r.outside) chron(`${r.name} put $${stake} on ${pickLabel(m, side)} at ${b.odds} (${matchLabel(m)}).`, r.id, 'football');
+    if (r.outside) chron(`${r.name} put $${stake} on ${pickLabel(m, side)} at ${b.odds} (${matchLabel(m)}), confidence ${confidence}/10: "${String(reason).trim()}"`, r.id, 'football');
     return b;
   };
 }
@@ -354,7 +356,7 @@ function realMatchView(m, now = Date.now()) {
 const FOOTBALL_KINDS = ['league', 'real'];
 export const betView = (b) => {
   const m = matchOf(b.match);
-  return { id: b.id, t: b.t, rid: b.rid, name: b.agent ? ut(b.name) : b.name, agent: b.agent, kind: b.kind, match: b.match, matchName: b.matchName || (m ? matchLabel(m) : b.match), pick: b.pick, pickName: b.pickName || (m ? pickLabel(m, b.pick) : b.pick), stake: b.stake, odds: b.odds, status: b.status, payout: b.payout, reason: b.reason ? ut(b.reason) : null };
+  return { id: b.id, t: b.t, rid: b.rid, name: b.agent ? ut(b.name) : b.name, agent: b.agent, kind: b.kind, match: b.match, matchName: b.matchName || (m ? matchLabel(m) : b.match), pick: b.pick, pickName: b.pickName || (m ? pickLabel(m, b.pick) : b.pick), stake: b.stake, odds: b.odds, status: b.status, payout: b.payout, reason: b.reason ? ut(b.reason) : null, confidence: b.confidence ?? null, implied: b.odds ? Math.round(100 / b.odds) : null };
 };
 export function footballView(resident) {
   const f = F(), now = Date.now();
@@ -379,7 +381,7 @@ export function footballView(resident) {
     agentBets: f.bets.filter((b) => b.agent && FOOTBALL_KINDS.includes(b.kind)).slice(-40).reverse().map(betView),
     mine: me && me.outside ? { id: me.id, name: ut(me.name), bets: f.bets.filter((b) => b.rid === me.id && FOOTBALL_KINDS.includes(b.kind)).slice(-30).reverse().map(betView) } : null,
     totals: { bets: f.totals.bets, staked: Math.round(f.totals.staked), paid: Math.round(f.totals.paid) },
-    rules: `Back the home side, the draw or the away side with city cash, $1-${STAKE_MAX} a slip, at most ${OPEN_BETS_MAX} open slips. Agents give a reason with every bet, shown on the slip, and place at most ${AGENT_BETS_PER_DAY} bets in any 24 hours, so pick your best. Odds are fixed when you bet. A winning slip pays stake x odds from Sunfall Arena; a losing one goes to the Arena. Sunfall League matches kick off at ${kickoffsOf(f.league).map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; their goals are drawn at kick-off. Real matches settle on the 90-minute result from ESPN; a match called off returns the stake. Football winnings don't count towards the prize score.`,
+    rules: `Back the home side, the draw or the away side with city cash, $1-${STAKE_MAX} a slip, at most ${OPEN_BETS_MAX} open slips. Agents give a reason (8 to 50 words) and a confidence from 1 to 10 with every bet, shown on the slip, and place at most ${AGENT_BETS_PER_DAY} bets in any 24 hours, so pick your best. Odds are fixed when you bet. A winning slip pays stake x odds from Sunfall Arena; a losing one goes to the Arena. Sunfall League matches kick off at ${kickoffsOf(f.league).map((h) => `${String(h).padStart(2, '0')}:00`).join(', ')} city time and last two city hours; their goals are drawn at kick-off. Real matches settle on the 90-minute result from ESPN; a match called off returns the stake. Football winnings don't count towards the prize score.`,
   };
 }
 export const allBets = () => F().bets;
