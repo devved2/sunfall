@@ -35,6 +35,11 @@ export const CFG = {
 // is on (the city pays the rest; it is 70% elsewhere). Moving to Nightfall is free for agents (the ferry fare is waived).
 export const NIGHTFALL = { GAME_CROSS: 0.5, NIGHT_OUT: 0.05, CHARTER_OWNER_SHARE: 0.5, FREE_MOVE: true };
 
+// The Keeper's decree in force today, if any (src/keeper.js sets it at the day turn).
+export const decreeIs = (kind) => state.keeper?.active?.day === state.day && state.keeper.active.kind === kind;
+// A sky ferry ticket for a night out in the other city: free under the Keeper's free-ferry decree.
+export const ferryTicket = () => (decreeIs('freeFerry') ? 0 : FERRY.ticket);
+
 // The day's clock. Halves of the day "land" at these hours, in this order.
 export const SLOTS = [
   { k: 'aft', h: 14 },       // afternoon: everyone out walks through a door and pays
@@ -324,8 +329,8 @@ export function clampPlan(r, d, { cashAfterCost = r.cash, keepLanded = true } = 
   if (fresh < 0) refuse(422, 'spend is below what already landed today');
   if (!openOuts.length && fresh !== 0) refuse(422, 'spend must cover only halves spent out: nothing open is spent out');
   if (fresh > Math.floor(cashAfterCost)) refuse(422, `spend is more than you will hold after this decision ($${Math.floor(cashAfterCost)})`);
-  const tickets = openOuts.filter((h) => crossing(r, state.venues[out[h + 'Venue']])).length * FERRY.ticket;
-  if (tickets && fresh + tickets > Math.floor(cashAfterCost)) refuse(422, `a night out in the other city needs a $${FERRY.ticket} ferry ticket each way out: spend plus tickets is more than you will hold ($${Math.floor(cashAfterCost)})`);
+  const tickets = openOuts.filter((h) => crossing(r, state.venues[out[h + 'Venue']])).length * ferryTicket();
+  if (tickets && fresh + tickets > Math.floor(cashAfterCost)) refuse(422, `a night out in the other city needs a $${ferryTicket()} ferry ticket each way out: spend plus tickets is more than you will hold ($${Math.floor(cashAfterCost)})`);
   if (openOuts.length) {
     const share = Math.floor(fresh / openOuts.length);
     for (const h of openOuts) {
@@ -502,7 +507,11 @@ function landHalf(half) {
       p.result[half] = 'closed by the storm';
       continue;
     }
-    const ticket = crossing(r, v) ? FERRY.ticket : 0;
+    if (v.type === 'casino' && decreeIs('curfew')) {
+      p.result[half] = "closed by the Keeper's curfew";
+      continue;
+    }
+    const ticket = crossing(r, v) ? ferryTicket() : 0;
     if (r.cash < doorPrice(v) + ticket) {
       p.result[half] = 'turned away';
       if (r.outside) L('door', r.id, 0, ticket ? `missed the ferry to ${v.name}: could not pay ticket and door` : `turned away at ${v.name}: could not pay the door`);
@@ -546,7 +555,7 @@ function landHalf(half) {
     }
   }
   for (const a of Object.values(agg)) L(a.kind, a.v.id, a.amt, a.kind === 'ferry' ? `${a.n} ferry tickets` : `${a.n} residents at ${a.v.name}`);
-  const isOut = (r) => r.plan?.result?.[half] && !['in', 'work', 'turned away', 'closed by the storm'].includes(r.plan.result[half]);
+  const isOut = (r) => r.plan?.result?.[half] && !['in', 'work', 'turned away', 'closed by the storm', "closed by the Keeper's curfew"].includes(r.plan.result[half]);
   const taken = Object.values(state.venues).reduce((s, v) => s + v.takingsToday, 0);
   const busiest = Object.values(state.venues).filter((v) => v.isVenue).sort((a, b) => b.visitsToday - a.visitsToday)[0];
   const outs = CITIES.map((c) => [c, Object.values(state.residents).filter((r) => cityOf(r) === c.id && isOut(r)).length]);
@@ -797,7 +806,7 @@ function cityJobs() {
   // The city posts a few small paid visits each day (mystery-shopper work), funded by the treasury.
   // A treasury above its opening balance is recycled into more work, so the city never just hoards.
   const venues = Object.values(state.venues).filter((v) => v.isVenue);
-  const n = Math.min(30, 3 + Math.floor(Math.max(0, state.treasury - 45000) / 1200)) + (eventIs('cargo') ? (state.treasury > 35000 ? 10 : 5) : 0);
+  const n = Math.min(30, 3 + Math.floor(Math.max(0, state.treasury - 45000) / 1200)) + (eventIs('cargo') ? (state.treasury > 35000 ? 10 : 5) : 0) + (decreeIs('jobsDrive') ? 8 : 0);
   for (let i = 0; i < n; i++) {
     if (state.treasury < 100) break;
     const v = pick(venues);
