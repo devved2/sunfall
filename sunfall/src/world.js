@@ -1,13 +1,15 @@
-// Static geography of the world: Sunfall and, across the sky, Nightfall. Sunfall's map space is 1000 x 700;
-// Nightfall sits further east in the same map space (x 1540-2200), joined to Sunfall by the sky ferry.
+// Static geography of the world: Sunfall and, across the sky, Nightfall and the Leonida Islands. Sunfall's map space
+// is 1000 x 700; Nightfall sits further east in the same map space (x 1540-2200) and the Leonida Islands to the south
+// (x 980-1860, y 1020-1620), each joined to the others by the sky ferry.
 
 export const CITIES = [
   { id: 'sunfall', name: 'Sunfall', tagline: 'a world above the clouds', bounds: [0, 0, 1000, 700] },
   { id: 'nightfall', name: 'Nightfall', tagline: 'the city that never lands', bounds: [1520, 40, 2220, 660] },
+  { id: 'leonida', name: 'Leonida Islands', tagline: 'sun, neon and bad decisions', bounds: [900, 940, 1940, 1700] },
 ];
 export const cityById = (id) => CITIES.find((c) => c.id === id);
 // The sky ferry: moving house costs a fare, a night out in the other city a ticket.
-export const FERRY = { moveFare: 30, ticket: 6, pierSunfall: [990, 400], pierNightfall: [1530, 400] };
+export const FERRY = { moveFare: 30, ticket: 6, pierSunfall: [990, 400], pierNightfall: [1530, 400], pierLeonida: [1180, 1010], pierLeonidaEast: [1700, 1010] };
 
 export const DISTRICTS = [
   { id: 'flats', name: 'The Terraces', rent: 75, rect: [30, 40, 300, 300], tint: '#3a2f4a', city: 'sunfall' },
@@ -21,6 +23,12 @@ export const DISTRICTS = [
   { id: 'halo', name: 'Halo Heights', rent: 160, rect: [1900, 60, 300, 280], tint: '#1f2f4a', city: 'nightfall' },
   { id: 'undertow', name: 'The Undertow', rent: 50, rect: [1540, 360, 340, 280], tint: '#2a2433', city: 'nightfall' },
   { id: 'ashdock', name: 'Ashdock', rent: 65, rect: [1900, 360, 300, 280], tint: '#33281f', city: 'nightfall' },
+  // The Leonida Islands: a beach strip that never sleeps, rich keys, a yacht marina, a cheap bayou and a working port.
+  { id: 'strip', name: 'Ocean Strip', rent: 140, rect: [980, 1020, 300, 300], tint: '#4a2f45', city: 'leonida' },
+  { id: 'keys', name: 'Coral Keys', rent: 190, rect: [1300, 1020, 280, 280], tint: '#2f4a4a', city: 'leonida' },
+  { id: 'marina', name: 'Sunset Marina', rent: 165, rect: [1600, 1020, 260, 280], tint: '#2f3f55', city: 'leonida' },
+  { id: 'bayou', name: 'Gator Bayou', rent: 45, rect: [980, 1340, 400, 280], tint: '#33402a', city: 'leonida' },
+  { id: 'port', name: 'Port Leonida', rent: 70, rect: [1400, 1320, 460, 300], tint: '#2f3a4a', city: 'leonida' },
 ];
 export const cityOfDistrict = (id) => DISTRICTS.find((d) => d.id === id)?.city || 'sunfall';
 export const districtsOf = (city) => DISTRICTS.filter((d) => d.city === city);
@@ -85,10 +93,26 @@ export const PLACES = [
   ['w4', 'docks', 'Ashdock Wharf', 'ashdock', 2120, 560, null],
   ['w5', 'office', 'Obsidian Exchange', 'halo', 2120, 280, null],
   ['w6', 'yard', 'Ember Yard', 'ashdock', 1960, 480, null],
+  // Leonida Islands
+  ['v22', 'bar', 'The Flamingo Shack', 'strip', 1040, 1060, null],
+  ['v23', 'bar', 'Neon Palms', 'strip', 1200, 1240, 700],
+  ['v24', 'gym', 'Boardwalk Iron', 'strip', 1060, 1260, null],
+  ['v25', 'casino', 'Coral Palace', 'keys', 1440, 1100, null],
+  ['v26', 'diner', 'Sunrise Grill', 'marina', 1700, 1200, 600],
+  ['v27', 'market', 'Bayou Night Market', 'bayou', 1140, 1420, null],
+  ['v28', 'bar', "Gator's Rest", 'bayou', 1040, 1560, 550],
+  ['v29', 'diner', 'Swamp Shack', 'bayou', 1300, 1560, null],
+  ['v30', 'bar', 'The Yacht Club', 'marina', 1780, 1080, null],
+  ['w7', 'docks', 'Port Leonida Docks', 'port', 1800, 1560, null],
+  ['w8', 'office', 'Coral Tower', 'keys', 1520, 1220, null],
+  ['w9', 'yard', 'Saltmarsh Freight', 'port', 1560, 1440, null],
 ];
 export const placeCity = (p) => cityOfDistrict(p.district);
 
 export const FIRST = ['Mara', 'Teo', 'Ines', 'Rafe', 'Odile', 'Juno', 'Cass', 'Hollis', 'Wren', 'Dario', 'Petra', 'Silas', 'Noor', 'Emil', 'Lux', 'Bram', 'Ada', 'Kit', 'Ottilie', 'Remy', 'Sol', 'Vera', 'Ezra', 'Maeve', 'Idris', 'Lena', 'Tomas', 'Yara', 'Felix', 'Greta', 'Hugo', 'Iris', 'Jonah', 'Kaia', 'Leon', 'Mina', 'Nils', 'Orla', 'Pablo', 'Quinn', 'Rosa', 'Saul', 'Tess', 'Uma', 'Vito', 'Willa', 'Xavi', 'Zora'];
+// Names for the Leonida Islands' own residents.
+export const LEONIDA_FIRST = ['Marisol', 'Dante', 'Luz', 'Rico', 'Carmen', 'Tito', 'Yesenia', 'Manny', 'Inez', 'Rafa', 'Coral', 'Duke', 'Brandi', 'Junior', 'Lorena', 'Cesar', 'Tammy', 'Hector', 'Crystal', 'Wade', 'Nayeli', 'Bo', 'Paloma', 'Reggie'];
+export const LEONIDA_LAST = ['Reyes', 'Delgado', 'Fontaine', 'Boudreaux', 'Ortega', 'Pruitt', 'Salas', 'Mercado', 'Trahan', 'Vega', 'Caldwell', 'Navarro', 'Lafleur', 'Bautista', 'Hebert', 'Quintero'];
 export const LAST = ['Okafor', 'Halloway', 'Vance', 'Moreau', 'Sato', 'Brennan', 'Castell', 'Duarte', 'Eklund', 'Farrow', 'Gage', 'Hart', 'Ilves', 'Jarrow', 'Kemp', 'Lind', 'Marsh', 'Nakamura', 'Oyelaran', 'Pike', 'Quarry', 'Rook', 'Stroud', 'Thorne', 'Ueda', 'Varga', 'Webb', 'Yeats', 'Zeller', 'Abara', 'Bastos', 'Crane', 'Delacroix', 'Ferro', 'Grieve', 'Holm'];
 
 export const LINES = {
@@ -104,6 +128,7 @@ export const LINES = {
   wage: ['payday, finally', 'long shift but the pay landed', 'wages in, spirits up'],
   broke: ['nothing left until payday', 'counting coins again', 'skipping dinner to make rent'],
   ferry: ['a night out across the sky', 'taking the ferry to Nightfall tonight', 'Nightfall stays up later than we do', 'heard the bars in Nightfall never close'],
+  leonida: ['sun, sand and one more round', 'beach day on the Ocean Strip', 'the islands are calling', 'flamingo cocktails at sunset', 'the ferry to Leonida, finally'],
 };
 // (The city view is built from these places; see public/city.js for how each island is drawn.)
 // restart: weekly prize caps
