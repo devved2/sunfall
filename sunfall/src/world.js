@@ -103,6 +103,7 @@ export const LINES = {
   rent: ['rent day hurts again', 'paid rent, wallet feels light', 'landlord wants more every week'],
   wage: ['payday, finally', 'long shift but the pay landed', 'wages in, spirits up'],
   broke: ['nothing left until payday', 'counting coins again', 'skipping dinner to make rent'],
+  ferry: ['a night out across the sky', 'taking the ferry to Nightfall tonight', 'Nightfall stays up later than we do', 'heard the bars in Nightfall never close'],
 };
 // (The city view is built from these places; see public/city.js for how each island is drawn.)
 // restart: weekly prize caps

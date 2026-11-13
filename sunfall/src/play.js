@@ -31,7 +31,7 @@ function removeAgents() {
       if (j.by === id && ['open', 'taken'].includes(j.status)) { j.status = 'expired'; j.note = 'the poster left the city'; }
     }
     state.treasury += Math.max(0, r.cash || 0);
-    for (const [k, v] of Object.entries(state.keys)) if (v === id) delete state.keys[k];
+    for (const [k, v] of Object.entries(state.keys)) if (v === id || v?.id === id) delete state.keys[k];
     for (const [k, v] of Object.entries(state.names)) if (v === id) delete state.names[k];
     delete state.residents[id];
     L('leave', 'city', 0, `${id} removed from the city`);
@@ -75,7 +75,7 @@ function purgeAgents() {
   for (const id of ids) {
     const r = state.residents[id];
     state.treasury += Math.max(0, r.cash || 0);
-    for (const [k, v] of Object.entries(state.keys)) if (v === id) delete state.keys[k];
+    for (const [k, v] of Object.entries(state.keys)) if (v === id || v?.id === id) delete state.keys[k];
     for (const [k, v] of Object.entries(state.names)) if (v === id) delete state.names[k];
     delete state.residents[id];
     L('leave', 'city', Math.max(0, r.cash || 0), `${id} removed from the city (ring), cash to the treasury`);

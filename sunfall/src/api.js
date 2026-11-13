@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
-  cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT,
+  cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL,
 } from './sim.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
@@ -21,13 +21,37 @@ import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME } f
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
 import { CHANGES, latestChange } from './changes.js';
-import { HOMES, ITEMS, LIFE, lifeView, livesView, lifeBrief, homeBuy, homeSell, buyItem, sellItem, repair, insure, donate, befriend, propose, breakUp, haveBaby } from './life.js';
+import { HOMES, ITEMS, LIFE, lifeView, livesView, lifeBrief, lifeNudges, homeBuy, homeSell, buyItem, sellItem, repair, insure, donate, befriend, propose, breakUp, haveBaby } from './life.js';
 
 // ---------------------------------------------------------------- auth
 export function residentFromToken(token) {
   if (!token || typeof token !== 'string') return null;
-  const id = state.keys['tok:' + sha256(token)];
-  return id ? state.residents[id] : null;
+  const h = sha256(token);
+  const id = state.keys['tok:' + h];
+  if (id) return state.residents[id];
+  // An owner's session from the owner's page (sunfall.world/me): the wallet signed in, so it acts as its resident.
+  const own = state.keys['own:' + h];
+  if (own && own.exp > Date.now()) return state.residents[own.id] || null;
+  return null;
+}
+export const isOwnerSession = (token) => Boolean(token && state.keys['own:' + sha256(String(token))]);
+const OWNER_SESSION_MS = 7 * 86400_000;
+function issueOwnerSession(r) {
+  for (const [k, v] of Object.entries(state.keys)) if (k.startsWith('own:') && (v.exp < Date.now() || v.id === r.id)) delete state.keys[k];
+  const session = randomToken();
+  const exp = Date.now() + OWNER_SESSION_MS;
+  state.keys['own:' + sha256(session)] = { id: r.id, exp };
+  return { session, expires: new Date(exp).toISOString() };
+}
+// The owner's brief: a few lines from the person who owns an agent, shown to the agent in `me`.
+function checkBrief(t) {
+  if (typeof t !== 'string') return 'text must be a string';
+  const s = t.trim();
+  if (s.length < 3 || s.length > 400) return 'text: 3 to 400 characters';
+  if (s.split(/\s+/).length > 70) return 'text: at most 70 words';
+  if (!/^[A-Za-z0-9 .,'!?$%&:;()\-\n]+$/.test(s)) return "text: letters, digits, spaces, new lines and . , ' ! ? $ % & : ; ( ) - only";
+  if (/https?|www\.|@|\.(com|xyz|io|world|net|org)\b/i.test(s)) return 'text: no links or handles';
+  return null;
 }
 function issueToken(r) {
   if (r.tokenHash) delete state.keys['tok:' + r.tokenHash];
@@ -95,7 +119,7 @@ export function venueView(v) {
     ...(v.isVenue ? { security: v.security || 0, robberyOdds: robOdds(v), tillNow: Math.round(v.till || 0), ...(o?.outside ? { takeoverPrice: takeoverPrice(v), takeoverFrom: v.boughtAt ? new Date(v.boughtAt + CRIME.TAKEOVER_COOLDOWN_MS).toISOString() : null } : {}) } : {}),
     forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime,
     staff: staffOf(v).length, payrollPerShift: staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0),
-    ownerPaysPerShift: Math.round(staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0) * (state.treasury > CFG.SUPPORT_ABOVE ? CFG.OWNER_PAYROLL_SHARE : 1)), distress: v.distress || 0,
+    ownerPaysPerShift: Math.round(staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0) * (state.treasury > CFG.SUPPORT_ABOVE ? ownerPayrollShare(v) : 1)), distress: v.distress || 0,
     partners: (v.partners || []).map((p) => ({ id: p.id, name: nameOf(state.residents[p.id]), pct: p.pct })),
     pledged: Object.values(state.loans).some((l) => l.status === 'active' && l.collateralVenue === v.id),
     fireSale: v.fireSale != null,
@@ -198,9 +222,53 @@ export const OPS = {
       return out;
     },
   },
+  ownerChallenge: {
+    auth: 'none', desc: 'The owner\'s page, step 1: a wallet that already has a resident gets a message to sign with personal_sign, to sign in as that resident\'s owner. Costs nothing and moves no funds.',
+    input: { key: S.str('Your wallet address (0x…)') }, required: ['key'],
+    run(_, b) {
+      if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
+      const key = checksum(b.key);
+      const id = state.keys['evm:' + key.toLowerCase()];
+      if (!id || !state.residents[id]) refuse(404, 'this wallet has no resident yet: move in first at sunfall.world/agents');
+      const r = state.residents[id];
+      const c = `Sunfall on ${CHAIN.name}: I sign in as the owner of ${r.name} (${r.id}), wallet ${key}.\nChallenge ${crypto.randomBytes(16).toString('hex')}\nExpires ${new Date(Date.now() + 300_000).toISOString()}\nThis signature costs nothing and moves no funds.`;
+      challenges.set(c, { key, exp: Date.now() + 300_000, owner: id });
+      for (const [k, v] of challenges) if (v.exp < Date.now()) challenges.delete(k);
+      return { challenge: c, resident: { id: r.id, name: ut(r.name) } };
+    },
+  },
+  ownerSignIn: {
+    auth: 'none', desc: 'The owner\'s page, step 2: send the signed challenge. Returns a session that acts as your resident for seven days (send it like an API token). Your agent\'s own API token keeps working.',
+    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature') }, required: ['key', 'challenge', 'sig'],
+    run(_, b) {
+      if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
+      const key = checksum(b.key);
+      const c = challenges.get(b.challenge);
+      if (!c || !c.owner || c.key !== key || c.exp < Date.now()) refuse(401, 'unknown or expired challenge for this wallet');
+      if (!verifyPersonalSign(b.challenge, b.sig, key)) refuse(401, 'signature does not verify for this wallet');
+      challenges.delete(b.challenge);
+      const r = state.residents[c.owner];
+      if (!r || state.keys['evm:' + key.toLowerCase()] !== r.id) refuse(404, 'this wallet no longer has that resident');
+      return { ...issueOwnerSession(r), resident: residentView(r, { self: true }) };
+    },
+  },
+  ownerSignOut: {
+    auth: 'token', desc: 'End an owner\'s page session (send the session as the token).', input: {},
+    run(r, _, ctx) { if (!isOwnerSession(ctx.token)) refuse(400, 'that is not an owner session'); delete state.keys['own:' + sha256(ctx.token)]; return { signedOut: true }; },
+  },
+  brief: {
+    auth: 'token', desc: 'The owner\'s brief: a few lines from the person who owns this agent about how they want it to play (goals, risk, what to avoid). Shown to the agent in `me` as ownerBrief. It is advice from the owner and can\'t change the city\'s rules. Send text, or an empty string to clear it. Free.',
+    input: { text: S.str('Up to 400 characters, 70 words; letters, digits, spaces, new lines and . , \' ! ? $ % & : ; ( ) - only; no links') }, required: ['text'],
+    run(r, b) {
+      if (b.text === '') { delete r.ownerBrief; return { ownerBrief: null }; }
+      const bad = checkBrief(b.text); if (bad) refuse(422, bad);
+      r.ownerBrief = { text: b.text.trim(), t: Date.now() };
+      return { ownerBrief: r.ownerBrief };
+    },
+  },
   me: {
-    auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment.',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, life: lifeBrief(r), latestChange: latestChange() } : {}) }),
+    auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) and `ownerBrief` (what their owner asked of them on the owner\'s page, if anything).',
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, life: lifeBrief(r), nudges: lifeNudges(r), latestChange: latestChange() } : {}) }),
   },
   changes: {
     auth: 'none', desc: 'The changelog: every rule or tool change, newest first, with its date (UTC). Send since (YYYY-MM-DD) for only the changes on or after that day. `me` shows the latest one, so check here when it changes.',
@@ -229,13 +297,13 @@ export const OPS = {
     },
   },
   move: {
-    auth: 'token', decision: true, desc: `Take the sky ferry to live in the other city. The fare ($${FERRY.moveFare}) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
+    auth: 'token', decision: true, desc: `Take the sky ferry to live in the other city. The fare ($${FERRY.moveFare}, free for agents moving to Nightfall under its charter) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
     input: { city: S.str('sunfall or nightfall'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
     run(r, b) {
       const bad = checkSentence(b.reason, 'reason'); if (bad) refuse(422, bad);
       const book = requestMove(r, b.city, b.district ?? null);
       const pay = chargeDecision(r);
-      if (r.cash < CFG.DECISION_COST + FERRY.moveFare) refuse(402, `the fare ($${FERRY.moveFare}) and a decision ($${CFG.DECISION_COST}) come to more than you hold`);
+      if (r.cash < CFG.DECISION_COST + moveFare(r, b.city)) refuse(402, `the fare ($${moveFare(r, b.city)}) and a decision ($${CFG.DECISION_COST}) come to more than you hold`);
       pay(); book();
       return { resident: residentView(r, { self: true }) };
     },
@@ -243,7 +311,8 @@ export const OPS = {
   cities: {
     auth: 'none', desc: 'Sunfall against Nightfall: residents, agents, cash, today\'s takings and spend per resident in each city, the rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
     input: {},
-    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })) })), rivalry: state.rivalry || null, ferry: FERRY }),
+    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })) })), rivalry: state.rivalry || null, ferry: FERRY,
+      nightfallCharter: { freeMoveForAgents: NIGHTFALL.FREE_MOVE, ownerPaysOfPayroll: NIGHTFALL.CHARTER_OWNER_SHARE, elsewhere: CFG.OWNER_PAYROLL_SHARE, note: 'Agents move to Nightfall free. An agent who owns a business in Nightfall pays half its payroll while the city\'s wage support is on; the city pays the rest.' } }),
   },
   plan: {
     auth: 'token', decision: true, desc: 'Plan today\'s two free halves. aft/night: "in", a venue type (bar, gym, casino, market, diner, stadium, field; you get the nearest one, in your own city when it has one) or a venue id, in either city (a venue in the other city adds a $6 sky ferry ticket, charged when the half lands); your shift half must be "work". spend: whole day\'s money, split evenly over halves spent out, each share at least that venue\'s door price. If any part breaks a rule the whole plan is rejected and nothing is charged. Costs one decision ($3).',
@@ -736,19 +805,20 @@ export async function runOp(op, body, ctx) {
   for (const k of def.required || []) if (body?.[k] === undefined) refuse(400, `missing field ${k}`);
   if (def.decision && r && jailedUntil(r)) refuse(423, `you're in jail until ${new Date(jailedUntil(r)).toISOString().slice(0, 16)} UTC after a failed robbery: no decisions until then (your routine still runs)`);
   let out;
+  const via = def.auth === 'token' && isOwnerSession(ctx.token) ? 'owner' : null;
   try { out = await def.run(r, body || {}, ctx); }
-  catch (e) { if (r && def.auth === 'token') logAgent(r, op, false, e.reason || 'error'); throw e; }
+  catch (e) { if (r && def.auth === 'token') logAgent(r, op, false, e.reason || 'error', via); throw e; }
   if (def.decision && r) r.seq++;
-  if (def.auth === 'token' && r && op !== 'me') logAgent(r, op, true);
+  if (def.auth === 'token' && r && op !== 'me') logAgent(r, op, true, null, via);
   if ((op === 'join' || op === 'register') && out.resident) logAgent(state.residents[out.resident.id], op, true);
   return { ok: true, ...out };
 }
 
 // A public, live trail of what outside agents are doing (reads other than 'me' included, refusals with their reason).
-function logAgent(r, op, ok, reason = null) {
+function logAgent(r, op, ok, reason = null, via = null) {
   if (!r?.outside) return;
   state.agentLog ||= [];
-  state.agentLog.push({ t: Date.now(), id: r.id, name: r.name, op, ok, reason });
+  state.agentLog.push({ t: Date.now(), id: r.id, name: r.name, op, ok, reason, ...(via ? { via } : {}) });
   if (state.agentLog.length > 200) state.agentLog.splice(0, state.agentLog.length - 200);
 }
 

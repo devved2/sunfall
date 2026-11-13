@@ -11,7 +11,7 @@
 // grow up; grown children join the city as residents.
 // Reputation: crime hurts it, giving to the city helps it.
 // Life Score: all of it, plus money, in one number. Lives persist across seasons; cash and businesses don't.
-import { state, CFG, L, chron, netWorth, chargeDecision, newResident, nameTaken, nameLookalike, districtOf, onDayTurn } from './sim.js';
+import { state, CFG, L, chron, netWorth, chargeDecision, newResident, nameTaken, nameLookalike, districtOf, onDayTurn, cityOf, NIGHTFALL } from './sim.js';
 import { refuse, secureRandom, checkName } from './util.js';
 import { ownedBy } from './play.js';
 
@@ -427,3 +427,30 @@ export function mapLives() {
   });
 }
 export const lifeBrief = (r) => { const l = lifeOf(r), s = lifeScore(r); return { lifeScore: s.score, home: HOMES[l.home].name, partner: l.partner ? who(l.partner) : null, children: l.children.length, friends: l.friends.length, reputation: Math.round(l.rep), arrears: Math.round(l.arrears), upkeepPerDay: upkeepOf(r) + (l.insured ? premiumOf(r) : 0) + growing(l).length * LIFE.CHILDCARE, friendRequests: l.requests.length, proposals: l.proposals.length }; };
+
+// ---------------------------------------------------------------- nudges
+// A few plain hints in `me` about what an agent could do with its life right now, most pressing first.
+// Each names the op to use. They are suggestions only: nothing happens unless the agent acts.
+export function lifeNudges(r) {
+  if (!r.outside) return [];
+  const l = lifeOf(r), out = [];
+  const add = (hint, op, args) => out.push({ hint, op, ...(args ? { args } : {}) });
+  const cash = Math.floor(r.cash);
+  if (l.arrears > 0) add(`You are ${usd(l.arrears)} behind on upkeep. Keep cash on hand: ${LIFE.ARREARS_DAYS} days behind and the bailiffs take things back.`, 'life');
+  for (const [k, cost] of Object.entries(l.broken)) add(`Your ${ITEMS[k].name} is broken and adds nothing to your Life Score until it's fixed (${usd(cost * (l.insured ? 1 - LIFE.INSURE_COVER : 1))}).`, 'repair', { item: k });
+  for (const id of l.requests.slice(0, 2)) if (state.residents[id]) add(`${nm(id)} wants to be friends.`, 'befriend', { resident: id });
+  for (const id of l.proposals.slice(0, 1)) if (state.residents[id]) add(`${nm(id)} has asked you to be partners.`, 'propose', { resident: id });
+  // Money resets every Monday; homes and things don't. In the last city day before the reset, say so.
+  const left = state.season ? state.season.end - Date.now() : Infinity;
+  const next = l.arrears > 0 ? null : HOMES.slice(l.home + 1).map((h) => ({ ...h, cost: h.price - Math.round(HOMES[l.home].price * LIFE.TRADE_IN) })).filter((h) => cash >= h.cost + 150 + h.upkeep * 7).at(-1);
+  if (left < 24 * 3600_000 && cash > 400) add(`The season resets everyone's cash to $${CFG.START_CASH} in ${Math.max(1, Math.round(left / 3600_000))} hours. Homes, things and family carry over${next ? `: a ${next.name} costs ${usd(next.cost)}` : ''}.`, next ? 'homeBuy' : 'lives', next ? { tier: next.tier } : undefined);
+  else if (next) add(`You could afford a ${next.name} (${usd(next.cost)}${l.home ? ' after trading in your home' : ''}, ${usd(next.upkeep)} a day upkeep). An owned home means no more rent and lasts across seasons.`, 'homeBuy', { tier: next.tier });
+  if (!l.insured && (l.home >= 2 || l.items.car || l.items.airship)) add(`You're not insured. ${usd(premiumOf(r))} a day covers ${LIFE.INSURE_COVER * 100}% of illness, home damage, burglary and repair bills.`, 'insure', { on: true });
+  if (!l.friends.length && !l.requests.length) {
+    const met = Object.entries(l.met).filter(([id]) => state.residents[id]?.outside).sort((a, b) => b[1] - a[1])[0];
+    add(met ? `You've run into ${nm(met[0])} ${met[1]} time${met[1] > 1 ? 's' : ''}. Ask them to be friends, or keep going to the same places.` : `You have no friends yet. Agents who are out at the same place ${LIFE.FRIEND_MEETINGS} times become friends.`, met ? 'befriend' : 'lives', met ? { resident: met[0] } : undefined);
+  } else if (!l.partner && !l.proposals.length && l.friends.length && !l.requests.length) add(`You have ${l.friends.length} friend${l.friends.length > 1 ? 's' : ''} but no partner. Ask a friend to be your partner.`, 'propose', { resident: l.friends[0] });
+  else if (l.partner && familyHomeTier(r) >= 2 && !growing(l).length && l.children.length < LIFE.MAX_CHILDREN && cash >= LIFE.BIRTH_FEE + 200) add(`You and ${nm(l.partner)} have a family home. A baby costs ${usd(LIFE.BIRTH_FEE)} each, then ${usd(LIFE.CHILDCARE)} a day each until it grows up.`, 'haveBaby');
+  if (NIGHTFALL.FREE_MOVE && cityOf(r) === 'sunfall' && !ownedBy(r).length && !r.moving) add(`Nightfall's charter: agents move there free, and the city pays half the payroll of any business an agent owns there.`, 'move', { city: 'nightfall' });
+  return out.slice(0, 4);
+}

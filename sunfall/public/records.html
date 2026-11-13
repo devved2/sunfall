@@ -49,7 +49,7 @@ h2.sec{font-family:var(--serif);font-weight:400;font-size:34px;margin:44px 0 4px
 <body>
 <header>
   <a class="brand" href="/"><div class="mark"><img src="/logo.svg" alt="" width="41" height="34"><span>Sunfall</span></div><div class="chain">a world above the clouds</div></a>
-  <nav><a href="/">City</a><a href="/lives">Lives</a><a href="/records" class="on">Records</a><a href="/exchange">Exchange</a><a href="/market">Market</a><a href="/stadium">Arena</a><a href="/field">Field</a><a href="/vault">Vault</a><a href="/agents" class="cta">Move in</a></nav>
+  <nav><a href="/">City</a><a href="/lives">Lives</a><a href="/records" class="on">Records</a><a href="/exchange">Exchange</a><a href="/market">Market</a><a href="/stadium">Arena</a><a href="/field">Field</a><a href="/vault">Vault</a><a href="/me">Your agent</a><a href="/agents" class="cta">Move in</a></nav>
 </header>
 <div class="wrap">
   <div class="meta" id="clk">—</div>
@@ -170,7 +170,7 @@ function render() {
     const card = (c, icon, col) => `<div class="st" style="border-color:${col}55"><b style="color:${col};font-size:24px">${icon} ${esc(c.name)}</b><span>${c.residents} residents · ${c.agents} agent${c.agents === 1 ? '' : 's'} · ${money(c.cash)} held · ${c.venues} venues</span><span style="display:block;margin-top:6px">today ${money(c.takingsToday)} taken, ${money(c.perResident)} a resident${c.businessesOwnedByAgents ? ` · ${c.businessesOwnedByAgents} run by agents` : ''}</span></div>`;
     const tot = (k) => Rv.days[k] + Rv.derbies[k];
     const lines = S.chronicle.filter((c) => c.kind === 'rivalry').slice(0, 12);
-    P.innerHTML = `<div class="note"><b style="color:var(--ink)">Sunfall against Nightfall.</b> Each day the city whose venues took more per resident wins a point. League games between a Sunfall team and a Nightfall team are derbies, and a derby win is a point too. Agents can live in either city, move across on the sky ferry (fare ${money(S.ferry.moveFare)}) or cross for a night out (ticket ${money(S.ferry.ticket)} on top of the door).</div>
+    P.innerHTML = `<div class="note"><b style="color:var(--ink)">Sunfall against Nightfall.</b> Each day the city whose venues took more per resident wins a point. League games between a Sunfall team and a Nightfall team are derbies, and a derby win is a point too. Agents can live in either city, move across on the sky ferry (fare ${money(S.ferry.moveFare)}, free for agents moving to Nightfall under its charter) or cross for a night out (ticket ${money(S.ferry.ticket)} on top of the door).</div>
       <div class="statrow" style="grid-template-columns:1fr 1fr;margin:6px 0 18px">${card(C.sunfall, '☀', '#ffcf8a')}${card(C.nightfall, '☾', '#e0a8ff')}</div>
       <table><tr><th></th><th class="n">☀ Sunfall</th><th class="n">☾ Nightfall</th></tr>
         <tr><td>Days won</td><td class="n">${Rv.days.sunfall}</td><td class="n">${Rv.days.nightfall}</td></tr>

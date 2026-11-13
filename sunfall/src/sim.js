@@ -29,6 +29,12 @@ export const CFG = {
   SEED: Number(process.env.SEED) || 20261026,
 };
 
+// Nightfall's pull. GAME_CROSS: how often a Nightfall resident considers Sunfall's stadium or field when going
+// out. NIGHT_OUT: the chance a sociable Sunfall resident with money spends the night in Nightfall instead.
+// CHARTER: an agent who owns a business in Nightfall pays this share of its payroll while the city's wage support
+// is on (the city pays the rest; it is 70% elsewhere). Moving to Nightfall is free for agents (the ferry fare is waived).
+export const NIGHTFALL = { GAME_CROSS: 0.5, NIGHT_OUT: 0.05, CHARTER_OWNER_SHARE: 0.5, FREE_MOVE: true };
+
 // The day's clock. Halves of the day "land" at these hours, in this order.
 export const SLOTS = [
   { k: 'aft', h: 14 },       // afternoon: everyone out walks through a door and pays
@@ -197,16 +203,19 @@ export function foundNightfall() {
 // ---------------------------------------------------------------- the sky ferry
 // Moving to the other city: the fare is paid now, the move happens at the next day turn (new home, same trade,
 // a workplace of the same kind in the new city).
+// Agents move to Nightfall free under its charter; every other move pays the fare.
+export const moveFare = (r, city) => (r.outside && city === 'nightfall' && NIGHTFALL.FREE_MOVE ? 0 : FERRY.moveFare);
 export function requestMove(r, city, district = null) {
   if (!cityById(city)) refuse(422, `city must be one of ${CITIES.map((c) => c.id).join(', ')}`);
   if (city === cityOf(r)) refuse(409, `you already live in ${cityById(city).name}`);
   if (district != null && !districtsOf(city).some((d) => d.id === district)) refuse(422, `district must be one of ${districtsOf(city).map((d) => d.id).join(', ')}`);
   if (r.moving) refuse(409, `you're already booked on the ferry to ${cityById(r.moving.city).name}`);
-  if (r.cash < FERRY.moveFare) refuse(402, `the ferry fare to move is $${FERRY.moveFare} and you hold $${r.cash.toFixed(2)}`);
+  const fare = moveFare(r, city);
+  if (r.cash < fare) refuse(402, `the ferry fare to move is $${fare} and you hold $${r.cash.toFixed(2)}`);
   return () => {
-    r.cash -= FERRY.moveFare; state.treasury += FERRY.moveFare;
+    r.cash -= fare; state.treasury += fare;
     r.moving = { city, district, booked: state.day };
-    L('ferry', r.id, -FERRY.moveFare, `ferry fare: moving to ${cityById(city).name}`);
+    L('ferry', r.id, -fare, fare ? `ferry fare: moving to ${cityById(city).name}` : `free passage to ${cityById(city).name} under the Nightfall charter`);
     chron(`${r.name} books the sky ferry to ${cityById(city).name}.`, r.id, 'arrival');
     return r.moving;
   };
@@ -343,17 +352,33 @@ function rulesPlan(r) {
   const shift = shiftFor(r);
   const t = r.traits;
   const choice = {};
+  const why = {};
   let wantSpend = 0;
+  const home = cityOf(r);
   for (const half of HALVES) {
     if (shift === half) { choice[half] = 'work'; continue; }
-    const nightOwl = half === 'night' && cityOf(r) === 'nightfall'; // Nightfall goes out at night
+    const nightOwl = half === 'night' && home === 'nightfall'; // Nightfall goes out at night
     if (r.cash < 25 || secureRandom() < (nightOwl ? 0.05 + t.thrift * 0.12 : 0.15 + t.thrift * 0.25)) { choice[half] = 'in'; continue; }
-    let options = half === 'aft' ? ['gym', 'diner', 'bar', 'gym', 'diner', 'bar', ...(state.venues.v12 ? ['stadium'] : [])] : ['bar', 'market', 'diner', 'bar', 'market', 'diner', ...(state.venues.v13 ? ['field'] : [])];
+    // Nightfall has no stadium or field of its own: its residents only cross the sky for a game now and then.
+    const games = home === 'sunfall' || secureRandom() < NIGHTFALL.GAME_CROSS;
+    let options = half === 'aft' ? ['gym', 'diner', 'bar', 'gym', 'diner', 'bar', ...(state.venues.v12 && games ? ['stadium'] : [])] : ['bar', 'market', 'diner', 'bar', 'market', 'diner', ...(state.venues.v13 && games ? ['field'] : [])];
     if (half === 'night' && t.risk > 0.6 && r.cash > 160) options = ['casino', 'casino', 'bar'];
     choice[half] = pick(options);
+    // Nightfall's crowds bar-hop: they pick any place of that kind in Nightfall, not only the nearest.
+    if (home === 'nightfall' && !VTYPES[choice[half]].cityOnly) {
+      const here = Object.values(state.venues).filter((v) => v.isVenue && v.type === choice[half] && cityOfDistrict(v.district) === 'nightfall');
+      if (here.length > 1) choice[half] = pick(here).id;
+    }
+    // A night across the sky: some of Sunfall's livelier residents take the ferry to Nightfall's bars, market and casinos.
+    if (half === 'night' && home === 'sunfall' && t.social > 0.55 && r.cash > 90 && secureRandom() < NIGHTFALL.NIGHT_OUT) {
+      const kinds = t.risk > 0.6 ? ['bar', 'market', 'casino'] : ['bar', 'market'];
+      const there = Object.values(state.venues).filter((v) => v.isVenue && kinds.includes(v.type) && cityOfDistrict(v.district) === 'nightfall');
+      if (there.length) { choice[half] = pick(there).id; why[half] = pick(LINES.ferry); }
+    }
     if (state.event?.kind === 'festival' && state.event.day === state.day && secureRandom() < 0.35) {
-      const fest = Object.values(state.venues).filter((v) => v.isVenue && v.district === state.event.district && v.type === choice[half]);
-      if (fest.length) choice[half] = pick(fest).id;
+      const type = state.venues[choice[half]]?.type || choice[half];
+      const fest = Object.values(state.venues).filter((v) => v.isVenue && v.district === state.event.district && v.type === type);
+      if (fest.length) { choice[half] = pick(fest).id; why[half] = 'off to the lantern festival'; }
     }
   }
   const outs = HALVES.filter((h) => choice[h] !== 'in' && choice[h] !== 'work');
@@ -368,7 +393,8 @@ function rulesPlan(r) {
   const d = { ...choice, spend: wantSpend };
   for (const h of HALVES) {
     const key = h === 'aft' ? 'whyAft' : 'whyNight';
-    d[key] = state.venues[choice[h]] ? 'off to the lantern festival' : pick(LINES[choice[h] === 'work' ? 'in' : choice[h]] || LINES.in);
+    const type = state.venues[choice[h]]?.type || choice[h];
+    d[key] = why[h] || pick(LINES[type === 'work' ? 'in' : type] || LINES.in);
   }
   try { return clampPlan(r, d, { keepLanded: false }); } catch { return clampPlan(r, { aft: shift === 'aft' ? 'work' : 'in', night: shift === 'night' ? 'work' : 'in', spend: 0, whyAft: 'a quiet day', whyNight: 'a quiet night in' }, { keepLanded: false }); }
 }
@@ -531,6 +557,8 @@ function landHalf(half) {
 }
 
 export const wageSupportOn = () => state.treasury > CFG.SUPPORT_ABOVE;
+// What an owner pays of a venue's payroll while wage support is on: less under the Nightfall charter.
+export const ownerPayrollShare = (v) => (v.ownerId && state.residents[v.ownerId]?.outside && cityOfDistrict(v.district) === 'nightfall' ? NIGHTFALL.CHARTER_OWNER_SHARE : CFG.OWNER_PAYROLL_SHARE);
 function payWages(half) {
   const agg = {}, short = {};
   let support = 0;
@@ -538,7 +566,7 @@ function payWages(half) {
     if (shiftFor(r) !== half) continue;
     const wage = TRADES[r.trade].wage;
     const place = state.venues[r.workplace];
-    const ownerPart = place.ownerId && wageSupportOn() ? Math.round(wage * CFG.OWNER_PAYROLL_SHARE * 100) / 100 : wage;
+    const ownerPart = place.ownerId && wageSupportOn() ? Math.round(wage * ownerPayrollShare(place) * 100) / 100 : wage;
     const fromOwner = payFromVenue(place, ownerPart);
     const fromCity = place.ownerId ? Math.min(wage - ownerPart, Math.max(state.treasury, 0)) : 0; // 0 when support is off
     state.treasury -= fromCity; support += fromCity;
