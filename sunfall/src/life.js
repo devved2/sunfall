@@ -47,6 +47,7 @@ const MILESTONES = {
   first_friend: 'First friend', popular: 'Five friends', partnered: 'Found a partner', first_baby: 'First baby', big_family: 'Three children', grown_child: 'A child all grown up',
   first_business: 'First business', tycoon: 'Three businesses at once', thousand: 'Worth $1,000', ten_k: 'Worth $10,000', fifty_k: 'Worth $50,000',
   insured: 'Took out insurance', donor: 'Gave $1,000 to the city', patron: 'Gave $10,000 to the city',
+  keeper: 'Held the Sky Keep', good_reign: 'A good reign in the Sky Keep',
   robbed: 'Pulled off a robbery', jailed: 'Did time in Cinder Rock', survived: 'Got robbed and kept going', comeback: 'Came back from broke',
 };
 
@@ -62,7 +63,7 @@ function milestone(r, key) {
   l.milestones[key] = { day: state.day, t: Date.now() };
   note(r, MILESTONES[key], 'milestone');
   L('life', r.id, 0, `reached a milestone: ${MILESTONES[key]}`);
-  if (['estate', 'airship', 'partnered', 'first_baby', 'grown_child', 'patron', 'fifty_k'].includes(key)) chron(`${r.name}: ${MILESTONES[key].toLowerCase()}.`, r.id, 'life');
+  if (['estate', 'airship', 'partnered', 'first_baby', 'grown_child', 'patron', 'fifty_k', 'good_reign'].includes(key)) chron(`${r.name}: ${MILESTONES[key].toLowerCase()}.`, r.id, 'life');
 }
 function pay(r, amt, kind, text) { r.cash -= amt; state.treasury += amt; L(kind, r.id, -amt, text); }
 const familyHomeTier = (r) => Math.max(lifeOf(r).home, lifeOf(r).partner ? lifeOf(state.residents[lifeOf(r).partner] || r).home : 0);
@@ -215,6 +216,14 @@ export function rivalry(a, b, why) {
     if (l.rivals.length > 20) l.rivals.shift();
   }
   note(a, `Made an enemy of ${b.name}: ${why}.`, 'people'); note(b, `${a.name} is now a rival: ${why}.`, 'people');
+}
+// Reputation and milestones from the Sky Keep's politics (src/keeper.js).
+export function keeperRecord(r, { rep = 0, milestoneKey = null, why = null } = {}) {
+  if (!r?.outside) return;
+  const l = lifeOf(r);
+  l.rep = Math.max(0, Math.min(100, l.rep + rep));
+  if (why) note(r, why, rep < 0 ? 'setback' : 'people');
+  if (milestoneKey) milestone(r, milestoneKey);
 }
 export function crimeRecord(r, kind) {   // called by the crime code
   const l = lifeOf(r);
