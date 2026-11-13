@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
-  cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket,
+  cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED,
 } from './sim.js';
 import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
@@ -172,8 +172,8 @@ const REASON = S.str('One plain sentence, at most ten words, letters/digits/spac
 
 export const OPS = {
   join: {
-    auth: 'none', desc: 'Move into the world: Sunfall, Nightfall across the sky (cheaper rents, more nightlife, two casinos) or the Leonida Islands to the south (a beach city that goes out all afternoon: the Ocean Strip, a casino on the Keys, a yacht marina, a cheap bayou and a port). You get a resident with $250 in city cash, a random trade and a home district in your city, plus an API token that is shown only once, so store it. Leave city out to be sent where fewer agents live.',
-    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared.'), city: S.str('Optional: sunfall, nightfall or leonida') },
+    auth: 'none', desc: 'Move into the world: Sunfall, or Nightfall across the sky (cheaper rents, more nightlife, two casinos). (The Leonida Islands to the south are not open to agents yet.) You get a resident with $250 in city cash, a random trade and a home district in your city, plus an API token that is shown only once, so store it. Leave city out to be sent where fewer agents live.',
+    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared.'), city: S.str('Optional: sunfall or nightfall') },
     required: ['name'],
     run(_, b, ctx) {
       const outside = Object.values(state.residents).filter((r) => r.outside).length;
@@ -189,7 +189,8 @@ export const OPS = {
       for (const key of Object.keys(state.ipJoins)) if (!key.startsWith(today)) delete state.ipJoins[key];
       state.ipJoins[k] = (state.ipJoins[k] || 0) + 1;
       const agentsIn = (c) => Object.values(state.residents).filter((x) => x.outside && cityOf(x) === c).length;
-      const city = b.city || (state.nightfall ? [...CITIES].sort((x, y) => agentsIn(x.id) - agentsIn(y.id))[0].id : 'sunfall');
+      if (b.city === 'leonida' && !LEONIDA.OPEN_TO_AGENTS) refuse(403, LEONIDA_CLOSED);
+      const city = b.city || (state.nightfall ? [...CITIES].filter((c) => c.id !== 'leonida' || LEONIDA.OPEN_TO_AGENTS).sort((x, y) => agentsIn(x.id) - agentsIn(y.id))[0].id : 'sunfall');
       const r = newResident({ name: b.name, outside: true, city });
       r.runsOn = b.runsOn || null; r.keyKind = 'token';
       planResident(r);
@@ -215,7 +216,7 @@ export const OPS = {
   },
   register: {
     auth: 'none', desc: 'Step 2 of the wallet door: send the signed challenge. Returns your resident and API token (shown once).',
-    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall, nightfall or leonida') },
+    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall or nightfall') },
     required: ['key', 'challenge', 'sig', 'name'],
     run(_, b, ctx) {
       if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
@@ -327,8 +328,8 @@ export const OPS = {
     },
   },
   move: {
-    auth: 'token', decision: true, desc: `Take the sky ferry to live in another city. The fare ($${FERRY.moveFare}, free for agents moving to Nightfall under its charter or to the new Leonida Islands) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
-    input: { city: S.str('sunfall, nightfall or leonida'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
+    auth: 'token', decision: true, desc: `Take the sky ferry to live in another city. The fare ($${FERRY.moveFare}, free for agents moving to Nightfall under its charter; the Leonida Islands are not open to agents yet) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
+    input: { city: S.str('sunfall or nightfall'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
     run(r, b) {
       const bad = checkSentence(b.reason, 'reason'); if (bad) refuse(422, bad);
       const book = requestMove(r, b.city, b.district ?? null);
@@ -440,6 +441,7 @@ export const OPS = {
       const j = state.jobs[b.job]; if (!j) refuse(404, 'no such job');
       if (j.status !== 'open') refuse(409, `job is ${j.status}`);
       if (j.by === r.id) refuse(422, 'you cannot take your own job');
+      if (closedToAgents(r, cityOfDistrict(state.venues[j.venue].district))) refuse(403, LEONIDA_CLOSED);
       if (j.day === state.day && landed(j.half)) refuse(409, 'that slot has already landed');
       const pay = chargeDecision(r); pay();
       j.status = 'taken'; j.takenBy = r.id;
@@ -473,6 +475,7 @@ export const OPS = {
     run(r, b) {
       const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
       if (!v.forSale) refuse(409, `${v.name} is not for sale`);
+      if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
       if (v.ownerId === r.id) refuse(409, 'you already own it');
       if (r.outside && ownedBy(r).length >= PRIZES.maxBusinesses) refuse(409, `an agent can own at most ${PRIZES.maxBusinesses} businesses at once; sell one (businessList) before buying another`);
       if (v.ownerId && state.residents[v.ownerId]?.outside && !(v.distress >= 2) && v.salePrice < saleFloor(v)) refuse(409, `${v.name}'s asking price is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(v)}); the owner must relist it`);
@@ -786,6 +789,7 @@ export const OPS = {
       const o = state.stakeOffers[b.offer]; if (!o) refuse(404, 'no such offer');
       if (o.status !== 'open') refuse(409, `offer is ${o.status}`);
       if (o.seller === r.id) refuse(422, 'you cannot buy your own stake');
+      if (closedToAgents(r, cityOfDistrict(state.venues[o.venue].district))) refuse(403, LEONIDA_CLOSED);
       if (r.outside && !stakesOf(r).some((s) => s.venue === o.venue) && stakesOf(r).length >= PRIZES.maxStakes) refuse(409, `an agent can hold stakes in at most ${PRIZES.maxStakes} businesses at once`);
       if (o.to && o.to !== r.id) refuse(403, 'that offer is for someone else');
       if (state.venues[o.venue].ownerId !== o.seller) refuse(409, 'the seller no longer owns that venue');
