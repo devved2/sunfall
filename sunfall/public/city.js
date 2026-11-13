@@ -688,6 +688,32 @@ function buildSkyKeep(rnd) {
   for (const [tx, tz, r, h] of [[-27, -22, 6, 72], [27, -22, 6, 80], [-27, 22, 6.5, 64], [27, 22, 6, 70], [-44, 0, 4.5, 50], [44, 0, 4.5, 56], [0, -36, 5, 92], [14, 36, 4, 48]]) tower(keep, tx, tz, r, h, r * 4.2, [0x6b7fc0, 0x7a5ea8, 0x4f8f8a][Math.floor(rnd() * 3)], rnd);
   for (const [wx, wz, ww, wd] of [[0, -30, 54, 3], [0, 30, 54, 3], [-30, 0, 3, 54], [30, 0, 3, 54]]) { const wall = new THREE.Mesh(BOX, wallM); wall.scale.set(ww, 16, wd); wall.position.set(wx, 0, wz); wall.castShadow = true; keep.add(wall); }
   for (let i = 0; i < 12; i++) { const a = rnd() * 6.28, r = 60 + rnd() * 40; cottage(keep, Math.cos(a) * r, Math.sin(a) * r * 0.85, 7 + rnd() * 3, 6 + rnd() * 3, rnd); }
+  // The Keeper's court: royal banners down the hall and the gate towers, lantern posts round the island's rim,
+  // and a crown of light on the great spire that burns bright while someone holds the Keep (dim when it stands empty).
+  const bannerM = new THREE.MeshStandardMaterial({ color: 0x8e1f3a, roughness: 0.7, emissive: 0x3a0812, emissiveIntensity: 0.35 });
+  const trimM = new THREE.MeshStandardMaterial({ color: 0xffd36e, emissive: 0xffb02e, emissiveIntensity: 0.5, metalness: 0.4, roughness: 0.4 });
+  for (const [bx, bz, ry, bh] of [[-13, -19.8, 0, 24], [13, -19.8, 0, 24], [-13, 19.8, 0, 24], [13, 19.8, 0, 24], [0, 19.8, 0, 28], [0, -19.8, 0, 28], [-23.8, -9, Math.PI / 2, 22], [-23.8, 9, Math.PI / 2, 22], [23.8, -9, Math.PI / 2, 22], [23.8, 9, Math.PI / 2, 22]]) {
+    const ban = new THREE.Mesh(BOX, bannerM); ban.scale.set(8, bh, 0.8); ban.position.set(bx, 32 - bh, bz); ban.rotation.y = ry; keep.add(ban);
+    const cap = new THREE.Mesh(BOX, trimM); cap.scale.set(7, 1.2, 0.9); cap.position.set(bx, 32.4, bz); cap.rotation.y = ry; keep.add(cap);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(3, 4, 3).rotateX(Math.PI), bannerM); tip.position.set(bx, 32 - bh - 1.6, bz); tip.rotation.y = ry; keep.add(tip);
+  }
+  for (const [px, pz] of [[-27, -22], [27, -22], [-27, 22], [27, 22]]) {   // pennants flying from the corner towers
+    const pole = new THREE.Mesh(BOX, trimM); pole.scale.set(0.5, 14, 0.5); pole.position.set(px, 98, pz); keep.add(pole);
+    const pen = new THREE.Mesh(BOX, bannerM); pen.scale.set(9, 4, 0.3); pen.position.set(px + 4.5, 102, pz); keep.add(pen);
+  }
+  const lanternM = new THREE.MeshBasicMaterial({ color: 0xffd38a, transparent: true, opacity: 0.4, toneMapped: false }); nightGlows.push(lanternM);
+  for (let i = 0; i < 22; i++) {
+    const a = (i / 22) * Math.PI * 2, rx = Math.cos(a) * 108, rz = Math.sin(a) * 92;
+    const post = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x2b2a33 })); post.scale.set(0.8, 9, 0.8); post.position.set(rx, 4.5, rz); keep.add(post);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), lanternM); lamp.position.set(rx, 10, rz); keep.add(lamp);
+  }
+  const crownY = 120 + 0.8 + 46 + 10;
+  const crownM = new THREE.MeshBasicMaterial({ color: 0xffd36e, transparent: true, opacity: 0.25, toneMapped: false, blending: THREE.AdditiveBlending, depthWrite: false });
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(11, 1.4, 8, 40), crownM); crown.rotation.x = Math.PI / 2; crown.position.y = crownY; keep.add(crown);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const sp = new THREE.Mesh(new THREE.ConeGeometry(1.6, 7, 4).translate(0, 3.5, 0), crownM); sp.position.set(Math.cos(a) * 11, crownY, Math.sin(a) * 11); keep.add(sp); }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture("rgba(255,220,140,1)", "rgba(255,170,60,0)"), color: 0xffc860, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  halo.scale.set(90, 90, 1); halo.position.y = crownY; keep.add(halo);
+  keepCrown = { crown, crownM, halo };
   // thin orbit rings of light circling Sky Keep
   for (const [rad, tilt, rot, op] of [[175, 0.32, 0.4, 0.75], [205, -0.22, -0.9, 0.4]]) {
     const pts = []; for (let i = 0; i <= 180; i++) { const a = (i / 180) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * rad, 0, Math.sin(a) * rad * 0.8)); }
@@ -1186,10 +1212,11 @@ function buildLandmarkLabels() {
     const el = document.createElement('div'); el.className = 'lm' + (l.big ? ' big' : ''); el.textContent = l.name;
     $('#labels').appendChild(el); landmarkEls.push({ el, at: W(l.x, l.y, l.h ?? 4) });
     if (l.prison) prisonLabel = el;
+    if (l.name === 'Sky Keep') keepLabel = el;
   }
 }
 const landmarkEls = [];
-let prisonLabel = null;
+let prisonLabel = null, keepLabel = null, keepCrown = null;
 let pondMat = null;
 
 // Kenney City Kit models (MIT): one mesh each, baked so the tile sits on y=0, centred
@@ -1798,6 +1825,7 @@ function updateSky(h) {
   if (lampPoints) lampPoints.material.opacity = night * 0.9;
   stars.material.opacity = 0.15 + 0.85 * smooth(0.25, 0.8, night);
   for (const g of glowLines) g.mat.opacity = g.op * (0.3 + night * 0.7);
+  if (keepCrown) { const held = Boolean(S?.keeper?.name), t = performance.now() / 1000; keepCrown.crownM.opacity = held ? 0.55 + night * 0.4 : 0.12; keepCrown.halo.material.opacity = held ? 0.25 + night * 0.5 + Math.sin(t * 1.6) * 0.06 : 0.04; keepCrown.crown.rotation.z = t * 0.25; }
   moon.visible = false; // the planet is the night sky's centrepiece now
   for (const m of nightGlows) m.opacity = 0.2 + night * 0.8;
   for (const m of neonMats) m.color.setScalar(0.85 + night * 1.5);
@@ -1816,6 +1844,7 @@ function updateSky(h) {
 const PHASE = (h) => (h < 6 ? 'The city sleeps' : h < 9 ? 'Morning: everyone heads out' : h < 14 ? 'The afternoon shift' : h < 17 ? 'Afternoon spending lands' : h < 19 ? 'Wages in, heading out' : h < 21 ? 'Sunset: bars filling up' : h < 23 ? 'Night: the tables are dealing' : 'Last orders, heading home');
 function renderHUD() {
   $('#pop').textContent = S.residents.length;
+  if (keepLabel) { const k = S.keeper; keepLabel.textContent = k?.name ? `Sky Keep · held by ${k.name}${k.inForce ? ` · ${k.inForce}` : ''}` : 'Sky Keep'; }
   if (prisonLabel) { const n = S.residents.filter((r) => r[9]).length; prisonLabel.textContent = `Cinder Rock Prison${n ? ` · ${n} inmate${n > 1 ? 's' : ''}` : ''}`; }
   $('#agents').textContent = S.residents.filter((r) => r[6]).length;
   $('#cash').textContent = money(S.cashInCity);
@@ -1895,7 +1924,7 @@ function renderChips() {
   const two = (S.cities || []).length > 1 && S.districts.some((d) => d.city === 'nightfall');
   const ds = S.districts.filter((d) => (d.city || 'sunfall') === chipCity);
   el.innerHTML = `<button data-go="clean" class="cl">${cleanOn ? '◳ Show panels' : '◱ City only'}</button><button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">${chipCity === 'nightfall' ? 'Nightfall' : 'Overview'}</button>` + ds.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('')
-    + (two ? `<button data-go="city" class="cty">${chipCity === 'nightfall' ? '☀ Back to Sunfall' : '☾ Fly to Nightfall'}</button>` : '') + `<button data-go="prison">⛓ Cinder Rock</button><button data-go="agent" class="ag">☼ Follow an agent</button>`;
+    + (two ? `<button data-go="city" class="cty">${chipCity === 'nightfall' ? '☀ Back to Sunfall' : '☾ Fly to Nightfall'}</button>` : '') + `<button data-go="keep">♛ Sky Keep</button><button data-go="prison">⛓ Cinder Rock</button><button data-go="agent" class="ag">☼ Follow an agent</button>`;
   el.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const g = b.dataset.go;
@@ -1903,6 +1932,13 @@ function renderChips() {
     if (g === 'view') { setView(!iso); return; }
     if (g === 'city') { chipCity = chipCity === 'nightfall' ? 'sunfall' : 'nightfall'; renderChips(); goCity(chipCity); return; }
     if (g === 'all') { goCity(chipCity); return; }
+    if (g === 'keep') {
+      const c = W(530, -345, 70);
+      if (iso) frameOn(c, ISO_OFF, 1.9); else flyTo(c.clone().add(new THREE.Vector3(0, 90, 0)), c.clone().add(new THREE.Vector3(260, 230, 420)));
+      const k = S?.keeper;
+      toast(k?.name ? `${k.name} holds the Sky Keep as last season's winner${k.inForce ? `. Today's decree: ${k.inForce}` : ''}. The Keeper issues one decree a day; agents can overturn it.` : (k?.ousted ? 'The Sky Keep stands empty: its Keeper was thrown out by the city. A new Keeper takes it when the season closes.' : 'The Sky Keep stands empty. The winner of the weekly HYPE prize takes it when the season closes.'));
+      return;
+    }
     if (g === 'prison') {
       const c = W(PRISON.cx, PRISON.cy, PRISON.lift);
       if (iso) frameOn(c, ISO_OFF, 1.9); else flyTo(c.clone().add(new THREE.Vector3(-30, 95, 0)), c.clone().add(new THREE.Vector3(720, 330, 230)));
