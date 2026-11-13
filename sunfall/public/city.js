@@ -29,6 +29,8 @@ const inLI = (y) => y > 880;
 // The islands' towns (map rects, on the street grid): downtown, the marina village, the bayou village and the port.
 // Everything else on the islands is beach, jungle, lakes and swamp.
 const LEO_TOWNS = [[1215, 1134, 1545, 1306], [1655, 1054, 1825, 1186], [1015, 1334, 1185, 1506], [1615, 1414, 1825, 1586]];
+// The islands' neon nights (built with the city, driven by the clock): towers outlined in neon and their light pooled on the wet streets.
+const leoFx = { edges: null, pools: null };
 const inTown = (x, y, m = 0) => LEO_TOWNS.some(([a, b, c, d]) => x > a - m && x < c + m && y > b - m && y < d + m);
 const regionOf = (x, y) => (inLI(y) ? 'leonida' : inNF(x) ? 'nightfall' : 'sunfall');
 const BOUNDS = { sunfall: [OFF, XMAX, OFF, YMAX], nightfall: [NF.x0, NF.x1, NF.y0, NF.y1], leonida: [LI.x0, LI.x1, LI.y0, LI.y1] };
@@ -284,7 +286,7 @@ function build() {
   buildElysiumGlow();
 
   bayouPools.length = 0; roofPools.length = 0;
-  const neonV = [];
+  const neonV = [], leoEdges = [];
   const bld = [], neon = [], chim = [], trees = [], slabs = [], parks = [], roofs = [], acs = [], tanks = [], antennas = [], awnings = [], palms = [], houses = [], benches = [], parkCells = [], crystals = [], domes = [];
   const venueNear = (cx, cy) => S.venues.some((v) => { const [rx, ry] = v.type === 'stadium' || v.type === 'field' ? [70, 50] : [34, 34]; return Math.abs(v.x - cx) < rx && Math.abs(v.y - cy) < ry; });
   const cells = [];
@@ -338,6 +340,7 @@ function build() {
           if ((d.id === 'flats' || d.id === 'oldtown' || d.id === 'undertow') && rnd() < 0.45) awnings.push([lx, ly + dd / 2 + 1.1, w * 0.72, ['#c8423a', '#2f6f5e', '#d9a13a', '#3a5a9c', '#e8ddc8', '#7a3b6e'][Math.floor(rnd() * 6)]]);
           if (d.id === 'strip' && rnd() < 0.6) awnings.push([lx, ly + dd / 2 + 1.1, w * 0.8, ['#ff6f9f', '#2fd6c4', '#ffb347', '#ffffff', '#8f7bff'][Math.floor(rnd() * 5)]]);
         }
+        if (LEON.has(d.id) && h > 12) leoEdges.push([lx, ly, w, dd, h]); // outlined in neon at night
         if (st.neon && rnd() < st.neon) {
           const y = 12 + rnd() * (h - 20);
           const ncol = d.id === 'halo' ? ['#7fe8ff', '#b9a4ff'] : d.id === 'velvet' ? ['#ff3d8b', '#c03cff', '#ff2fd0', '#3df2ff', '#a35bff'] : LEON.has(d.id) ? ['#ff2fa0', '#ff4fd8', '#2ff0ff', '#8a5cff', '#ffb347', '#ff3b6b', '#2fffc0'] : ['#ff3d8b', '#3df2ff', '#a35bff', '#ff8a3d'];
@@ -420,6 +423,24 @@ function build() {
     const vMesh = new THREE.InstancedMesh(BOX, new THREE.MeshBasicMaterial({ toneMapped: false }), neonV.length);
     neonV.forEach(([x, y, h, col], i) => { m4.compose(W(x, y, 0.8), q, new THREE.Vector3(0.7, h, 0.7)); vMesh.setMatrixAt(i, m4); vMesh.setColorAt(i, c3.set(col).multiplyScalar(2.6)); });
     scene.add(vMesh);
+  }
+  // the islands' towers outlined in neon (cyan, pink, violet), with their light pooled on the wet street in front
+  for (const k of ['edges', 'pools']) if (leoFx[k]) { scene.remove(leoFx[k]); leoFx[k] = null; }
+  if (leoEdges.length) {
+    const pal = [[1, 0.25, 0.78], [0.2, 0.95, 1], [0.62, 0.35, 1], [1, 0.5, 0.9], [0.3, 0.7, 1]];
+    const tubes = [], pp = [], pc = [];
+    leoEdges.forEach(([x, y, w, d, h], i) => {
+      const c = pal[(i * 7) % pal.length], hx = w / 2 + 0.3, hz = d / 2 + 0.3;
+      for (const [ox, oz] of [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]]) tubes.push([x + ox, y + oz, 0.8 + h / 2, 0.45, h, 0.45, c]); // up each corner
+      for (const f of h > 30 ? [1, 0.66, 0.33] : [1]) { const yy = 0.8 + h * f; tubes.push([x, y - hz, yy, w + 0.9, 0.45, 0.45, c], [x, y + hz, yy, w + 0.9, 0.45, 0.45, c], [x - hx, y, yy, 0.45, 0.45, d + 0.9, c], [x + hx, y, yy, 0.45, 0.45, d + 0.9, c]); } // round the roof, and bands up tall towers
+      pp.push(W(x, y + d / 2 + 5, 1.1)); pc.push(...c);
+    });
+    const tm = new THREE.InstancedMesh(BOX, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.2, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }), tubes.length);
+    tubes.forEach(([x, y, yy, sx, sy, sz, c], i) => { m4.compose(W(x, y, yy), q, new THREE.Vector3(sx, sy, sz)); tm.setMatrixAt(i, m4); tm.setColorAt(i, c3.setRGB(c[0] * 1.35, c[1] * 1.35, c[2] * 1.35)); });
+    leoFx.edges = tm;
+    const g2 = new THREE.BufferGeometry().setFromPoints(pp); g2.setAttribute('color', new THREE.Float32BufferAttribute(pc, 3));
+    leoFx.pools = new THREE.Points(g2, new THREE.PointsMaterial({ map: GLOW, size: 30, vertexColors: true, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(leoFx.edges, leoFx.pools);
   }
   // chimneys
   if (chim.length) {
@@ -1560,6 +1581,13 @@ function buildLeonida(rnd) {
     leo.yachts.push({ g, u: rnd(), sp: 0.003 + rnd() * 0.004, o: 18 + rnd() * 20 });
   }
   leo.box = [980, 1020, 1860, 1620];
+  { // night rain over the towns: short streaks that catch the neon
+    const N = LITE ? 700 : 2200, pos = new Float32Array(N * 6);
+    for (let i = 0; i < N; i++) { const [a, b, c, d] = LEO_TOWNS[i % LEO_TOWNS.length], p = W(a - 20 + rnd() * (c - a + 40), b - 20 + rnd() * (d - b + 40), rnd() * 130); pos.set([p.x, p.y, p.z, p.x + 0.6, p.y + 4.5, p.z], i * 6); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    leo.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xc9b8ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    leo.rain.frustumCulled = false; scene.add(leo.rain);
+  }
   // labels that follow the map
   { const L = lm('Gator Swamp'); if (L) { L.x = 1000; L.y = 1620; } const K = lm('The Keys'); if (K) { K.x = keys[2][0]; K.y = keys[2][1]; }
     const fa = lm('Ferry to Sunfall'), fb = lm('Ferry to Nightfall'), [ax, ay] = pierEnd(pierA), [bx2, by2] = pierEnd(pierB);
@@ -1609,6 +1637,12 @@ function updateLeonida(t, dt) {
   for (const b of leo.beams) { b.m.rotation.z = Math.sin(t * 0.3 + b.ph) * 0.5; b.m.rotation.x = Math.cos(t * 0.23 + b.ph) * 0.35; b.m.material.opacity = night * 0.085; }
   if (leo.lamps) leo.lamps.material.opacity = night;
   if (leo.uplights) leo.uplights.material.opacity = night * 0.9;
+  if (leoFx.edges) leoFx.edges.material.opacity = 0.18 + night * 0.82;
+  if (leoFx.pools) leoFx.pools.material.opacity = night * 0.55;
+  if (leo.rain) {
+    leo.rain.material.opacity = night * 0.32; leo.rain.visible = night > 0.05;
+    if (leo.rain.visible) { const a = leo.rain.geometry.attributes.position.array; for (let i = 0; i < a.length; i += 6) { let y = a[i + 1] - 150 * dt; if (y < 0.5) y += 130; a[i + 1] = y; a[i + 4] = y + 4.5; } leo.rain.geometry.attributes.position.needsUpdate = true; }
+  }
   if (leo.beam) leo.beam.rotation.y = t * 0.8, leo.beam.material.opacity = 0.04 + nightU.value * 0.16;
   for (const y of leo.yachts) {
     y.u += y.sp * dt;
@@ -2451,6 +2485,7 @@ const TOP_NIGHT = new THREE.Color(0x010810), TOP_DAY = new THREE.Color(0x185c79)
 const SUN_DAY = new THREE.Color(0xfff2df), SUN_DUSK = new THREE.Color(0xff9a5c), MOON = new THREE.Color(0x9fe0f0);
 const skyC = new THREE.Color();
 // Over the Leonida Islands the daytime sky turns to a warm, sunset-coloured afternoon.
+const LEO_NHEMI = new THREE.Color(0x8a5cff), LEO_NSKY = new THREE.Color(0x2a0c45), LEO_NTOP = new THREE.Color(0x0c0220), LEO_NHOR = new THREE.Color(0x8a2a8f); // its night: violet and magenta
 const LEO_SKY = new THREE.Color(0xffb48e), LEO_HOR = new THREE.Color(0xff8f7a), LEO_TOP = new THREE.Color(0x2c5f8a), LEO_SUN = new THREE.Color(0xffb070), LEO_CLOUD = new THREE.Color(0xffd3c4);
 let leoTint = 0;
 const WATER_DAY = new THREE.Color(0x3b6a88), WATER_NIGHT = new THREE.Color(0x06222a), HEMI_DAY = new THREE.Color(0xd6e6ff);
@@ -2462,10 +2497,12 @@ function updateSky(h) {
   leoTint += ((cityInView() === 'leonida' ? 1 : 0) - leoTint) * 0.04;
   const lk = leoTint * day;
   skyC.lerp(LEO_SKY, lk * 0.55);
+  const ln = leoTint * (1 - day); skyC.lerp(LEO_NSKY, ln * 0.65);
   scene.background = skyC; scene.fog.color.copy(skyC).lerp(TOP_NIGHT, 0.35 * (1 - day));
   skyU.horizon.value.copy(skyC).lerp(DUSK, dusk * 0.35);
   skyU.top.value.copy(TOP_NIGHT).lerp(TOP_DAY, day).lerp(TOP_DUSK, dusk * 0.5).lerp(LEO_TOP, lk * 0.5);
-  skyU.horizon.value.lerp(LEO_HOR, lk * 0.45);
+  skyU.horizon.value.lerp(LEO_HOR, lk * 0.45).lerp(LEO_NHOR, ln * 0.5);
+  skyU.top.value.lerp(LEO_NTOP, ln * 0.6);
   skyU.glowAmt.value = 0.25 + (1 - day) * 0.35 + dusk * 0.15;
   skyTint.light.set(0xf2fbff).lerp(new THREE.Color(0xffe0d0), dusk * 0.4).lerp(new THREE.Color(0x7d9fb0), 1 - day);
   skyTint.light.lerp(LEO_CLOUD, lk * 0.45);
@@ -2483,6 +2520,8 @@ function updateSky(h) {
   else { sun.position.set(-500, 800, 380); sun.color.copy(MOON); sun.intensity = 0.9; }
   hemi.intensity = 0.7 + 0.9 * day;
   hemi.color.copy(MOON).lerp(HEMI_DAY, day);
+  hemi.color.lerp(LEO_NHEMI, ln * 0.7); hemi.intensity *= 1 - 0.45 * ln; // the islands at night: a dark violet wash so the neon carries the light
+  if (el <= -0.04) { sun.color.lerp(LEO_NHEMI, ln * 0.6); sun.intensity *= 1 - 0.4 * ln; }
   const night = clamp(1 - day * 1.1 + dusk * 0.45, 0, 1);
   nightU.value = night;
   renderer.toneMappingExposure = 1.05 + 0.2 * (1 - day);
