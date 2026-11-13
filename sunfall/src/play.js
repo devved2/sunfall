@@ -1,6 +1,6 @@
 // The game layer: seasons and their win condition, loans, business stakes (partnerships) and city events.
 // Everything here moves money through the same ledger as the rest of the city.
-import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
+import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
 import { PRIZES, LAUNCH } from './launch.js';
@@ -109,6 +109,7 @@ export function migrate() {
   }
   ensurePlaces();
   if (foundNightfall()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // Nightfall's first natives get today's plan
+  if (foundLeonida()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // and the Leonida Islands'
   for (const v of Object.values(state.venues)) v.partners ||= [];
   removeAgents();
   purgeAgents();
