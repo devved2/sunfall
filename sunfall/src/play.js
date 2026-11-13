@@ -364,11 +364,21 @@ export function standings() {
   }).sort((a, b) => b.netWorth - a.netWorth);
 }
 /** The prize places this season, from wallet-linked agents that aren't the team's, ranked by prize score. */
-export function prizePlaces(rows = standings()) {
+export function prizePlaces(rows = standings(), n = state.season?.n || 1) {
+  const split = PRIZES.splitFor(n);
   return rows.filter((r) => r.prizeEligible && r.prizeScore > CFG.START_CASH)
     .sort((a, b) => b.prizeScore - a.prizeScore)
-    .slice(0, PRIZES.split.length)
-    .map((r, i) => ({ place: i + 1, sharePct: PRIZES.split[i], id: r.id, name: r.name, wallet: r.wallet, prizeScore: r.prizeScore }));
+    .slice(0, split.length)
+    .map((r, i) => ({ place: i + 1, sharePct: split[i], id: r.id, name: r.name, wallet: r.wallet, prizeScore: r.prizeScore }));
+}
+/** The best newcomer this season: the eligible agent with the highest prize score among those who moved in after the
+ * season started (whether or not they also hold a top place). Null when the season has no newcomer prize or nobody qualifies. */
+export function rookiePlace(rows = standings(), s = state.season) {
+  const pct = PRIZES.rookiePctFor(s?.n || 1);
+  if (!pct || !s) return null;
+  const r = rows.filter((x) => x.prizeEligible && x.prizeScore > CFG.START_CASH && (state.residents[x.id]?.joinedAt || 0) >= s.start)
+    .sort((a, b) => b.prizeScore - a.prizeScore)[0];
+  return r ? { place: 'rookie', sharePct: pct, id: r.id, name: r.name, wallet: r.wallet, prizeScore: r.prizeScore } : null;
 }
 // Daily prizes: each UTC day, the five eligible agents whose prize score grew the most that day share that
 // day's slice (40/25/15/12/8). Winners build up over the week and are paid with the weekly prizes.
@@ -453,11 +463,12 @@ export function seasonView() {
     season: { n: s.n, id: s.id, start: s.start, end: s.end, endsInMs: Math.max(0, s.end - Date.now()) },
     rule: `Every agent starts the season with $${CFG.START_CASH}. The highest net worth (cash + businesses + stakes + money owed to you, minus your debts) when the season closes wins.`,
     titles: titles(rows), standings: rows.slice(0, 100),
-    prizes: { enabled: PRIZES.enabled, from: PRIZES.fromMs ? new Date(PRIZES.fromMs).toISOString() : null, asset: PRIZES.asset, split: PRIZES.split, places: prizePlaces(rows),
+    prizes: { enabled: PRIZES.enabled, from: PRIZES.fromMs ? new Date(PRIZES.fromMs).toISOString() : null, asset: PRIZES.asset, split: PRIZES.splitFor(s.n), places: prizePlaces(rows, s.n), rookie: rookiePlace(rows, s), rookiePct: PRIZES.rookiePctFor(s.n),
+      next: PRIZES.next && s.n < PRIZES.next.fromSeason ? PRIZES.next : null,
       daily: dailyView(rows),
       weekly: { pct: PRIZES.weeklyPct, capHype: PRIZES.weeklyCapHype, capNow: fieldCap(PRIZES.weeklyCapHype, rows), estimate: weeklyPot(rows), closes: new Date(s.end).toISOString() },
       awards: recentAwards(30), perAgentHype: PRIZES.perAgentHype, eligible: eligibleCount(rows), dailyCapNow: dailyCapNow(rows), dailyCloseHour: PRIZES.dailyCloseHour,
-      rule: `The prize pot pays out every day: when each prize day closes at ${String(PRIZES.dailyCloseHour).padStart(2, '0')}:00 UTC, the ${DAILY_SPLIT.length} agents whose prize score grew most that day (each agent's gain counts up to $${PRIZES.dailyGainCap.toLocaleString('en-US')}; level agents are split by growth in percent) share it (${DAILY_SPLIT.join('/')}%; if fewer finish the day up, they split the whole pot in the same proportions), paid straight after${PRIZES.dailyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE for every agent who can win, at most ` : ''}${PRIZES.dailyCapHype} HYPE a day` : ''}. When the season closes on Monday, its top ${PRIZES.split.length} share ${PRIZES.weeklyPct < 100 ? `${PRIZES.weeklyPct}% of the prize pot` : 'the prize pot'}${PRIZES.weeklyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE per agent who can win, at most ` : ''}${PRIZES.weeklyCapHype} HYPE` : ''} (${PRIZES.split.join('/')}%)${PRIZES.weeklyPct < 100 || PRIZES.weeklyCapHype ? '; the rest rolls over to the next week' : ''}. Prize score = net worth minus casino, football and stock-market winnings this season, minus money that came from other agents (their jobs, loan interest, takeover premiums and robberies of their businesses) and minus the discount on any business bought below the city's valuation, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win, and agents found funnelling value through other agents are kept out. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.${!PRIZES.enabled && PRIZES.fromMs ? ` Prizes switch on at ${new Date(PRIZES.fromMs).toISOString().slice(11, 16)} UTC on ${new Date(PRIZES.fromMs).toUTCString().slice(5, 16)}.` : ''}` },
+      rule: `The prize pot pays out every day: when each prize day closes at ${String(PRIZES.dailyCloseHour).padStart(2, '0')}:00 UTC, the ${DAILY_SPLIT.length} agents whose prize score grew most that day (each agent's gain counts up to $${PRIZES.dailyGainCap.toLocaleString('en-US')}; level agents are split by growth in percent) share it (${DAILY_SPLIT.join('/')}%; if fewer finish the day up, they split the whole pot in the same proportions), paid straight after${PRIZES.dailyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE for every agent who can win, at most ` : ''}${PRIZES.dailyCapHype} HYPE a day` : ''}. When the season closes on Monday, its top ${PRIZES.splitFor(s.n).length} share ${PRIZES.weeklyPct < 100 ? `${PRIZES.weeklyPct}% of the prize pot` : 'the prize pot'}${PRIZES.weeklyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE per agent who can win, at most ` : ''}${PRIZES.weeklyCapHype} HYPE` : ''} (${PRIZES.splitFor(s.n).join('/')}%${PRIZES.rookiePctFor(s.n) ? `, plus ${PRIZES.rookiePctFor(s.n)}% to the best newcomer: the highest prize score among agents who moved in during the season, even if they also place` : ''})${PRIZES.weeklyPct < 100 || PRIZES.weeklyCapHype ? '; the rest rolls over to the next week' : ''}. Prize score = net worth minus casino, football and stock-market winnings this season, minus money that came from other agents (their jobs, loan interest, takeover premiums and robberies of their businesses) and minus the discount on any business bought below the city's valuation, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win, and agents found funnelling value through other agents are kept out. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.${PRIZES.next && s.n < PRIZES.next.fromSeason ? ` From season ${PRIZES.next.fromSeason} the weekly split becomes ${PRIZES.next.split.join('/')}%${PRIZES.next.rookiePct ? `, plus ${PRIZES.next.rookiePct}% to the season's best newcomer` : ''}.` : ''}${!PRIZES.enabled && PRIZES.fromMs ? ` Prizes switch on at ${new Date(PRIZES.fromMs).toISOString().slice(11, 16)} UTC on ${new Date(PRIZES.fromMs).toUTCString().slice(5, 16)}.` : ''}` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
 }
@@ -465,13 +476,13 @@ function closeSeason() {
   const s = state.season;
   const rows = standings();
   const t = titles(rows);
-  const places = prizePlaces(rows);
-  state.hallOfFame.push({ n: s.n, id: s.id, start: s.start, end: s.end, agents: rows.length, titles: t, top: rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth, prizeScore: r.prizeScore, wallet: r.wallet })), prizes: PRIZES.enabled ? places : [], dailyWinners: (state.daily?.winners || []).filter((w) => w.date >= new Date(s.start).toISOString().slice(0, 10)) });
+  const places = prizePlaces(rows, s.n), rookie = rookiePlace(rows, s);
+  state.hallOfFame.push({ n: s.n, id: s.id, start: s.start, end: s.end, agents: rows.length, titles: t, top: rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth, prizeScore: r.prizeScore, wallet: r.wallet })), prizes: PRIZES.enabled ? [...places, ...(rookie ? [rookie] : [])] : [], dailyWinners: (state.daily?.winners || []).filter((w) => w.date >= new Date(s.start).toISOString().slice(0, 10)) });
   if (PRIZES.enabled && places.length) {
-    L('season', 'city', 0, `season ${s.n} prize places: ${places.map((p) => `${p.place}. ${p.id} (${p.sharePct}%)`).join(', ')}`);
+    L('season', 'city', 0, `season ${s.n} prize places: ${places.map((p) => `${p.place}. ${p.id} (${p.sharePct}%)`).join(', ')}${rookie ? `; best newcomer ${rookie.id} (${rookie.sharePct}%)` : ''}`);
     // The weekly places share part of the prize pot not already promised to daily winners; the rest rolls over.
     const pot = weeklyPot(rows);
-    if (pot > 0) grantAwards('weekly', s.id, pot, places, (p) => `season ${s.n} #${p.place} ${p.id}`);
+    if (pot > 0) grantAwards('weekly', s.id, pot, [...places, ...(rookie ? [rookie] : [])], (p) => (p.place === 'rookie' ? `season ${s.n} best newcomer ${p.id}` : `season ${s.n} #${p.place} ${p.id}`));
   }
   if (state.hallOfFame.length > 200) state.hallOfFame.shift();
   L('season', 'city', 0, `season ${s.n} closed: ${rows.length} agents${t.champion ? `, champion ${t.champion.id} at ${money(t.champion.value)}` : ''}`);
