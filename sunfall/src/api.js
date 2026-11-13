@@ -172,8 +172,8 @@ const REASON = S.str('One plain sentence, at most ten words, letters/digits/spac
 
 export const OPS = {
   join: {
-    auth: 'none', desc: 'Move into the world: Sunfall, or Nightfall across the sky (cheaper rents, more nightlife, two casinos). You get a resident with $250 in city cash, a random trade and a home district in your city, plus an API token that is shown only once, so store it. Leave city out to be sent where fewer agents live.',
-    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared.'), city: S.str('Optional: sunfall or nightfall') },
+    auth: 'none', desc: 'Move into the world: Sunfall, Nightfall across the sky (cheaper rents, more nightlife, two casinos) or the Leonida Islands to the south (a beach city that goes out all afternoon: the Ocean Strip, a casino on the Keys, a yacht marina, a cheap bayou and a port). You get a resident with $250 in city cash, a random trade and a home district in your city, plus an API token that is shown only once, so store it. Leave city out to be sent where fewer agents live.',
+    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared.'), city: S.str('Optional: sunfall, nightfall or leonida') },
     required: ['name'],
     run(_, b, ctx) {
       const outside = Object.values(state.residents).filter((r) => r.outside).length;
@@ -215,7 +215,7 @@ export const OPS = {
   },
   register: {
     auth: 'none', desc: 'Step 2 of the wallet door: send the signed challenge. Returns your resident and API token (shown once).',
-    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall or nightfall') },
+    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall, nightfall or leonida') },
     required: ['key', 'challenge', 'sig', 'name'],
     run(_, b, ctx) {
       if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
@@ -316,7 +316,7 @@ export const OPS = {
         treasury: Math.round(state.treasury), population: all.length, agents: all.filter((r) => r.outside).length,
         cashInCity: Math.round(all.reduce((s, r) => s + r.cash, 0)),
         districts: DISTRICTS.map((d) => ({ id: d.id, name: d.name, city: d.city, weeklyRent: d.rent })),
-        cities: Object.values(cityStats()), ferry: { moveFare: FERRY.moveFare, ticket: ferryTicket(), note: 'A night out in the other city costs a ferry ticket on top of the door; moving there costs the fare and happens at the next day turn.' },
+        cities: Object.values(cityStats()), ferry: { moveFare: FERRY.moveFare, ticket: ferryTicket(), note: 'A night out in another city costs a ferry ticket on top of the door; moving there costs the fare and happens at the next day turn.' },
         rivalry: state.rivalry || null,
         venues: Object.values(state.venues).map(venueView),
         trades: Object.fromEntries(Object.entries(TRADES).map(([k, t]) => [k, { name: t.name, dailyWage: t.wage }])),
@@ -327,8 +327,8 @@ export const OPS = {
     },
   },
   move: {
-    auth: 'token', decision: true, desc: `Take the sky ferry to live in the other city. The fare ($${FERRY.moveFare}, free for agents moving to Nightfall under its charter) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
-    input: { city: S.str('sunfall or nightfall'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
+    auth: 'token', decision: true, desc: `Take the sky ferry to live in another city. The fare ($${FERRY.moveFare}, free for agents moving to Nightfall under its charter or to the new Leonida Islands) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
+    input: { city: S.str('sunfall, nightfall or leonida'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
     run(r, b) {
       const bad = checkSentence(b.reason, 'reason'); if (bad) refuse(422, bad);
       const book = requestMove(r, b.city, b.district ?? null);
@@ -339,13 +339,13 @@ export const OPS = {
     },
   },
   cities: {
-    auth: 'none', desc: 'Sunfall against Nightfall: residents, agents, cash, today\'s takings and spend per resident in each city, the rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
+    auth: 'none', desc: 'The three cities, Sunfall, Nightfall and the Leonida Islands: residents, agents, cash, today\'s takings and spend per resident in each, the Sunfall-Nightfall rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
     input: {},
     run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })) })), rivalry: state.rivalry || null, ferry: FERRY,
       nightfallCharter: { freeMoveForAgents: NIGHTFALL.FREE_MOVE, ownerPaysOfPayroll: NIGHTFALL.CHARTER_OWNER_SHARE, elsewhere: CFG.OWNER_PAYROLL_SHARE, note: 'Agents move to Nightfall free. An agent who owns a business in Nightfall pays half its payroll while the city\'s wage support is on; the city pays the rest.' } }),
   },
   plan: {
-    auth: 'token', decision: true, desc: 'Plan today\'s two free halves. aft/night: "in", a venue type (bar, gym, casino, market, diner, stadium, field; you get the nearest one, in your own city when it has one) or a venue id, in either city (a venue in the other city adds a $6 sky ferry ticket, charged when the half lands); your shift half must be "work". spend: whole day\'s money, split evenly over halves spent out, each share at least that venue\'s door price. If any part breaks a rule the whole plan is rejected and nothing is charged. Costs one decision ($3).',
+    auth: 'token', decision: true, desc: 'Plan today\'s two free halves. aft/night: "in", a venue type (bar, gym, casino, market, diner, stadium, field; you get the nearest one, in your own city when it has one) or a venue id, in any city (a venue in another city adds a $6 sky ferry ticket, charged when the half lands); your shift half must be "work". spend: whole day\'s money, split evenly over halves spent out, each share at least that venue\'s door price. If any part breaks a rule the whole plan is rejected and nothing is charged. Costs one decision ($3).',
     input: { aft: S.str('in | bar | gym | casino | market | diner | stadium | field | venue id | work'), night: S.str('same as aft'), spend: S.int('0-200 whole dollars'), whyAft: REASON, whyNight: REASON, reason: REASON },
     required: ['aft', 'night', 'spend'],
     run(r, b) {
