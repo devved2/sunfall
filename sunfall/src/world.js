@@ -23,12 +23,13 @@ export const DISTRICTS = [
   { id: 'halo', name: 'Halo Heights', rent: 160, rect: [1900, 60, 300, 280], tint: '#1f2f4a', city: 'nightfall' },
   { id: 'undertow', name: 'The Undertow', rent: 50, rect: [1540, 360, 340, 280], tint: '#2a2433', city: 'nightfall' },
   { id: 'ashdock', name: 'Ashdock', rent: 65, rect: [1900, 360, 300, 280], tint: '#33281f', city: 'nightfall' },
-  // The Leonida Islands: a beach strip that never sleeps, rich keys, a yacht marina, a cheap bayou and a working port.
-  { id: 'strip', name: 'Ocean Strip', rent: 140, rect: [980, 1020, 300, 300], tint: '#4a2f45', city: 'leonida' },
-  { id: 'keys', name: 'Coral Keys', rent: 190, rect: [1300, 1020, 280, 280], tint: '#2f4a4a', city: 'leonida' },
-  { id: 'marina', name: 'Sunset Marina', rent: 165, rect: [1600, 1020, 260, 280], tint: '#2f3f55', city: 'leonida' },
-  { id: 'bayou', name: 'Gator Bayou', rent: 45, rect: [980, 1340, 400, 280], tint: '#33402a', city: 'leonida' },
-  { id: 'port', name: 'Port Leonida', rent: 70, rect: [1400, 1320, 460, 300], tint: '#2f3a4a', city: 'leonida' },
+  // The Leonida Islands: mostly beach, jungle, lakes and swamp. A small downtown (the Ocean Strip and the Coral Keys)
+  // in the middle, and roads out to a yacht marina, a bayou village and a working port.
+  { id: 'strip', name: 'Ocean Strip', rent: 140, rect: [1220, 1140, 160, 160], tint: '#4a2f45', city: 'leonida' },
+  { id: 'keys', name: 'Coral Keys', rent: 190, rect: [1380, 1140, 160, 160], tint: '#2f4a4a', city: 'leonida' },
+  { id: 'marina', name: 'Sunset Marina', rent: 165, rect: [1660, 1060, 160, 120], tint: '#2f3f55', city: 'leonida' },
+  { id: 'bayou', name: 'Gator Bayou', rent: 45, rect: [1020, 1340, 160, 160], tint: '#33402a', city: 'leonida' },
+  { id: 'port', name: 'Port Leonida', rent: 70, rect: [1620, 1420, 200, 160], tint: '#2f3a4a', city: 'leonida' },
 ];
 export const cityOfDistrict = (id) => DISTRICTS.find((d) => d.id === id)?.city || 'sunfall';
 export const districtsOf = (city) => DISTRICTS.filter((d) => d.city === city);
@@ -94,18 +95,18 @@ export const PLACES = [
   ['w5', 'office', 'Obsidian Exchange', 'halo', 2120, 280, null],
   ['w6', 'yard', 'Ember Yard', 'ashdock', 1960, 480, null],
   // Leonida Islands
-  ['v22', 'bar', 'The Flamingo Shack', 'strip', 1040, 1060, null],
-  ['v23', 'bar', 'Neon Palms', 'strip', 1200, 1240, 700],
-  ['v24', 'gym', 'Boardwalk Iron', 'strip', 1060, 1260, null],
-  ['v25', 'casino', 'Coral Palace', 'keys', 1440, 1100, null],
-  ['v26', 'diner', 'Sunrise Grill', 'marina', 1700, 1200, 600],
-  ['v27', 'market', 'Bayou Night Market', 'bayou', 1140, 1420, null],
-  ['v28', 'bar', "Gator's Rest", 'bayou', 1040, 1560, 550],
-  ['v29', 'diner', 'Swamp Shack', 'bayou', 1300, 1560, null],
-  ['v30', 'bar', 'The Yacht Club', 'marina', 1780, 1080, null],
-  ['w7', 'docks', 'Port Leonida Docks', 'port', 1800, 1560, null],
-  ['w8', 'office', 'Coral Tower', 'keys', 1520, 1220, null],
-  ['w9', 'yard', 'Saltmarsh Freight', 'port', 1560, 1440, null],
+  ['v22', 'bar', 'The Flamingo Shack', 'strip', 1260, 1180, null],
+  ['v23', 'bar', 'Neon Palms', 'strip', 1340, 1260, 700],
+  ['v24', 'gym', 'Boardwalk Iron', 'strip', 1260, 1270, null],
+  ['v25', 'casino', 'Coral Palace', 'keys', 1470, 1180, null],
+  ['v26', 'diner', 'Sunrise Grill', 'marina', 1700, 1150, 600],
+  ['v27', 'market', 'Bayou Night Market', 'bayou', 1080, 1380, null],
+  ['v28', 'bar', "Gator's Rest", 'bayou', 1050, 1470, 550],
+  ['v29', 'diner', 'Swamp Shack', 'bayou', 1150, 1460, null],
+  ['v30', 'bar', 'The Yacht Club', 'marina', 1780, 1090, null],
+  ['w7', 'docks', 'Port Leonida Docks', 'port', 1780, 1540, null],
+  ['w8', 'office', 'Coral Tower', 'keys', 1500, 1270, null],
+  ['w9', 'yard', 'Saltmarsh Freight', 'port', 1660, 1460, null],
 ];
 export const placeCity = (p) => cityOfDistrict(p.district);
 
