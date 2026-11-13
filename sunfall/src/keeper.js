@@ -142,4 +142,4 @@ export function keeperView() {
   };
 }
 // Compact view for the map.
-export const mapKeeper = () => { const h = keeperOf(), k = K(); return { name: h ? h.name : null, id: h?.id || null, inForce: k?.active && k.active.day === state.day ? DECREES[k.active.kind].title(k.active.district) : null, ousted: Boolean(k?.ousted) }; };
+export const mapKeeper = () => { const h = keeperOf(), k = K(); return { name: h ? h.name : null, id: h?.id || null, inForce: k?.active && k.active.day === state.day ? DECREES[k.active.kind].title(k.active.district) : null, ousted: Boolean(k?.ousted), keepers: (k?.history || []).length + (k?.id ? 1 : 0) }; };
