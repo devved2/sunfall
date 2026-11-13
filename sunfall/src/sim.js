@@ -234,6 +234,17 @@ export function foundLeonida() {
   return true;
 }
 
+// The islands' map can be redrawn: their venues follow world.js, and residents whose home now falls outside their
+// district get a new one inside it. Nothing else changes (owners, takings, plans).
+export function relayoutLeonida() {
+  for (const [id, , , district, x, y] of PLACES) { const v = state.venues[id]; if (v && cityOfDistrict(district) === 'leonida' && (v.x !== x || v.y !== y)) { v.x = x; v.y = y; } }
+  for (const r of Object.values(state.residents)) {
+    if (cityOfDistrict(r.district) !== 'leonida' || !r.home) continue;
+    const [x, y, w, h] = districtOf(r.district).rect;
+    if (r.home[0] < x || r.home[0] > x + w || r.home[1] < y || r.home[1] > y + h) r.home = randomHome(r.district, secureRandom);
+  }
+}
+
 // ---------------------------------------------------------------- the sky ferry
 // Moving to the other city: the fare is paid now, the move happens at the next day turn (new home, same trade,
 // a workplace of the same kind in the new city).
