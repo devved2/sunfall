@@ -251,7 +251,7 @@ const PRISON = { x0: -660, y0: 190, x1: -250, y1: 510, cx: -455, cy: 350, lift: 
 const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
   { name: 'Cinder Rock Prison', x: -560, y: 350, h: PRISON.lift + 262, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true },
   { name: 'LEONIDA ISLANDS', x: 1420, y: 1320, h: 250, big: true }, { name: 'Ferry to Leonida', x: 960, y: 735, h: 14 }, { name: 'Ferry to Leonida', x: 1700, y: 700, h: 14 },
-  { name: 'Ferry to Sunfall', x: 1180, y: 955, h: 14 }, { name: 'Ferry to Nightfall', x: 1700, y: 955, h: 14 }, { name: 'Ocean Strip Beach', x: 930, y: 1300, h: 10 }, { name: 'Leonida Wheel', x: 1420, y: 985, h: 84 }, { name: 'Sunset Marina', x: 1900, y: 1160, h: 10 }];
+  { name: 'Ferry to Sunfall', x: 1180, y: 955, h: 14 }, { name: 'Ferry to Nightfall', x: 1700, y: 955, h: 14 }, { name: 'Leonida Beach', x: 1300, y: 1690, h: 10 }, { name: 'Gator Swamp', x: 860, y: 1720, h: 10 }, { name: 'The Keys', x: 640, y: 1950, h: 10 }, { name: 'Leonida Wheel', x: 1420, y: 985, h: 84 }, { name: 'Sunset Marina', x: 1900, y: 1160, h: 10 }];
 const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', strip: '#e9b6d2', keys: '#bfe4e6', marina: '#ddd2ef', bayou: '#5e6a4a', port: '#857f92', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
 const SPINDLE = '1880,360'; // Nightfall's centrepiece tower stands on this block
 const venueMeshes = [];
@@ -274,8 +274,8 @@ function build() {
     land.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -2)); land.receiveShadow = true; scene.add(land);
     land.userData.city = isl.nf ? 'nightfall' : isl.li ? 'leonida' : 'sunfall'; land.userData.top = true; islandMeshes.push(land);
     const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: isl.li ? 0xe9d3a8 : 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
-    const e = isl.li ? SHORE.sand + SHORE.lagoon + SHORE.lip : 0; // the islands' rock carries their beach and lagoon too
-    const rock = rockUnder(x0 - e, y0 - e, x1 + e, y1 + e, isl.depth, rnd); rock.userData.city = land.userData.city; islandMeshes.push(rock); scene.add(rock);
+    if (isl.li) continue; // the islands' rock follows their coastline (buildLeonida)
+    const rock = rockUnder(x0, y0, x1, y1, isl.depth, rnd); rock.userData.city = land.userData.city; islandMeshes.push(rock); scene.add(rock);
   }
   buildElysiumGlow();
 
@@ -579,7 +579,11 @@ function rockUnder(x0, y0, x1, y1, depth, rnd) {
   for (let y = y0; y < y1; y += step) per.push([x1, y]);
   for (let x = x1; x > x0; x -= step) per.push([x, y1]);
   for (let y = y1; y > y0; y -= step) per.push([x0, y]);
-  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, L = 8, N = per.length;
+  return rockFromPerimeter(per, depth, rnd);
+}
+// The same, hanging from any closed outline (the Leonida Islands' coast, the keys).
+function rockFromPerimeter(per, depth, rnd) {
+  const cx = per.reduce((s, p) => s + p[0], 0) / per.length, cy = per.reduce((s, p) => s + p[1], 0) / per.length, L = 8, N = per.length;
   const pos = [], col = [], idx = [];
   const cTop = new THREE.Color(0x4a4f5c), cMid = new THREE.Color(0x3a4a5e), cLow = new THREE.Color(0x52677e), tmpc = new THREE.Color();
   for (let k = 0; k <= L; k++) {
@@ -632,8 +636,8 @@ function buildElysiumGlow() {
   const seg = (arr, ax, ay, bx, by, h) => { const a = W(ax, ay, h), b = W(bx, by, h); arr.push(a.x, a.y, a.z, b.x, b.y, b.z); };
   for (const isl of ISLANDS) for (const [x0, y0, x1, y1] of isl.parts) {
     const rim = isl.li ? rimLI : rimS, streets = isl.li ? streetsLI : streetsS;
-    const o = 1.6 + (isl.li ? SHORE.sand + SHORE.lagoon + SHORE.lip : 0); // the islands glow round their coral lip
-    for (const h of [0.6, -5.5]) { seg(rim, x0 - o, y0 - o, x1 + o, y0 - o, h); seg(rim, x1 + o, y0 - o, x1 + o, y1 + o, h); seg(rim, x1 + o, y1 + o, x0 - o, y1 + o, h); seg(rim, x0 - o, y1 + o, x0 - o, y0 - o, h); }
+    const o = 1.6;
+    if (!isl.li) for (const h of [0.6, -5.5]) { seg(rim, x0 - o, y0 - o, x1 + o, y0 - o, h); seg(rim, x1 + o, y0 - o, x1 + o, y1 + o, h); seg(rim, x1 + o, y1 + o, x0 - o, y1 + o, h); seg(rim, x0 - o, y1 + o, x0 - o, y0 - o, h); }
     const [gx0, gx1, gy0, gy1] = isl.nf ? [NF.x0, NF.x1, NF.y0, NF.y1] : isl.li ? [LI.x0, LI.x1, LI.y0, LI.y1] : [OFF, XMAX, OFF, YMAX];
     for (let x = gx0; x <= gx1; x += GRID) if (x > x0 && x < x1) seg(streets, x, y0 + 2, x, y1 - 2, 0.35);
     for (let y = gy0; y <= gy1; y += GRID) if (y > y0 && y < y1) seg(streets, x0 + 2, y, x1 - 2, y, 0.35);
@@ -1152,7 +1156,7 @@ function updateFerries(t) {
 // A beach city south of the gap: sand and a turquoise lagoon all round, palms everywhere, pastel art-deco on the Strip,
 // the pink Leonida Grand, a Ferris wheel on the boardwalk by the ferry pier, a lighthouse and cranes at the port,
 // yachts circling the lagoon, flamingos in the bayou, and a neon LEONIDA sign over the south beach.
-const leo = { wheel: null, gondolas: [], beam: null, yachts: [], routes: [], beams: [], lamps: null, uplights: null };
+const leo = { coast: null, wheel: null, gondolas: [], beam: null, yachts: [], routes: [], beams: [], lamps: null, uplights: null };
 function leonidaSign(text) {
   const c = document.createElement('canvas'); c.width = 2048; c.height = 512; const g = c.getContext('2d');
   g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -1160,6 +1164,36 @@ function leonidaSign(text) {
   for (const [col, blur, lw] of [['#2ff0e0', 60, 26], ['#2ff0e0', 20, 14]]) { g.shadowColor = col; g.shadowBlur = blur; g.strokeStyle = col; g.lineWidth = lw; g.strokeText(text, 1024, 270); }
   for (const [col, blur] of [['#ff4fa3', 70], ['#ff4fa3', 24], ['#fff0f6', 0]]) { g.shadowColor = '#ff4fa3'; g.shadowBlur = blur; g.fillStyle = col; g.fillText(text, 1024, 270); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+function pointInPoly(x, y, P) {
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside; }
+  return inside;
+}
+// The islands' coastline: a rounded outline round the city (narrow on the east, where the marina and port meet the
+// water; wide sand on the south; green land on the west), wobbled with gentle noise, with a big lobe of swamp
+// pushing out in the south-west towards the keys. coast is the waterline, land the edge of the green, outer the reef.
+function leoCoastline(x0, y0, x1, y1, rnd) {
+  const M = { n: 50, e: 42, s: 92, w: 112 }, R = 64;
+  const X0 = x0 - M.w, X1 = x1 + M.e, Y0 = y0 - M.n, Y1 = y1 + M.s;
+  const base = [];
+  const edge = (ax, ay, bx, by, nx, ny) => { const L = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(L / 7)); for (let i = 0; i < n; i++) base.push([ax + (bx - ax) * i / n, ay + (by - ay) * i / n, nx, ny]); };
+  const arc = (cx, cy, a0) => { for (let i = 0; i < 12; i++) { const a = a0 + (i / 12) * Math.PI / 2; base.push([cx + Math.cos(a) * R, cy + Math.sin(a) * R, Math.cos(a), Math.sin(a)]); } };
+  edge(X0 + R, Y0, X1 - R, Y0, 0, -1); arc(X1 - R, Y0 + R, -Math.PI / 2);
+  edge(X1, Y0 + R, X1, Y1 - R, 1, 0); arc(X1 - R, Y1 - R, 0);
+  edge(X1 - R, Y1, X0 + R, Y1, 0, 1); arc(X0 + R, Y1 - R, Math.PI / 2);
+  edge(X0, Y1 - R, X0, Y0 + R, -1, 0); arc(X0 + R, Y0 + R, Math.PI);
+  const ph = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
+  const coast = [], land = [], outer = [], normal = [];
+  base.forEach(([x, y, nx, ny], i) => {
+    const s = i * 7, east = nx > 0.7 ? 0.3 : 1;
+    let d = (11 * Math.sin(s * 0.011 + ph[0]) + 6 * Math.sin(s * 0.029 + ph[1]) + 3 * Math.sin(s * 0.071 + ph[2])) * east;
+    d += 175 * Math.exp(-(((x - (x0 - 70)) ** 2 + (y - (y1 + 70)) ** 2) / (150 * 150)));   // the swamp lobe
+    d += 22 * Math.exp(-(((x - (x1 + 30)) ** 2 + (y - (y0 - 30)) ** 2) / (70 * 70)));     // a little cape by the marina
+    d = Math.max(d, -12);
+    coast.push([x + nx * d, y + ny * d]); land.push([x + nx * (d - 14), y + ny * (d - 14)]); outer.push([x + nx * (d + 48), y + ny * (d + 48)]); normal.push([nx, ny]);
+  });
+  return { coast, land, outer, normal };
 }
 function buildLeonida(rnd) {
   const [x0, y0, x1, y1] = [975, 1014, 1865, 1626];
@@ -1171,61 +1205,145 @@ function buildLeonida(rnd) {
     box(cx, y0 - o / 2, x1 - x0 + 2 * o, o, h, yb, mat); box(cx, y1 + o / 2, x1 - x0 + 2 * o, o, h, yb, mat);
     box(x0 - o / 2, cy, o, y1 - y0, h, yb, mat); box(x1 + o / 2, cy, o, y1 - y0, h, yb, mat);
   };
-  // the coral lip, the lagoon floor and the beach
-  const lipM = new THREE.MeshStandardMaterial({ color: 0xd8c3a5, roughness: 0.95 });
-  for (const [xa, ya, xb, yb] of [[x0 - lOut, y0 - lOut, x1 + lOut, y0 - wOut], [x0 - lOut, y1 + wOut, x1 + lOut, y1 + lOut], [x0 - lOut, y0 - wOut, x0 - wOut, y1 + wOut], [x1 + wOut, y0 - wOut, x1 + lOut, y1 + wOut]])
-    box((xa + xb) / 2, (ya + yb) / 2, xb - xa, yb - ya, 3.2, -5, lipM);
-  box(cx, cy, x1 - x0 + 2 * wOut, y1 - y0 + 2 * wOut, 1, -9, new THREE.MeshStandardMaterial({ color: 0xe8d6b0, roughness: 1 }));
-  ring(sOut, 3.6, -4.4, new THREE.MeshStandardMaterial({ color: 0xf3dfb0, roughness: 1 }));        // dry sand, just below the street
-  ring(sOut + 7, 1, -5, new THREE.MeshStandardMaterial({ color: 0xd9c08e, roughness: 0.6 }));        // wet sand at the waterline
-  // pink coral heads along the lip
-  const coral = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true }), 90);
-  for (let i = 0; i < 90; i++) {
-    const t = rnd(), side = Math.floor(rnd() * 4), o = wOut + 1 + rnd() * (SHORE.lip - 2);
-    const [x, y] = side === 0 ? [x0 - lOut + t * (x1 - x0 + 2 * lOut), y0 - o] : side === 1 ? [x0 - lOut + t * (x1 - x0 + 2 * lOut), y1 + o] : side === 2 ? [x0 - o, y0 - wOut + t * (y1 - y0 + 2 * wOut)] : [x1 + o, y0 - wOut + t * (y1 - y0 + 2 * wOut)];
-    const s = 1.4 + rnd() * 2.4; m4.compose(W(x, y, -1.8), q.setFromEuler(e.set(rnd() * 3, rnd() * 3, 0)), v3.set(s, s * 0.8, s));
-    coral.setMatrixAt(i, m4); coral.setColorAt(i, c3.set(['#ff7fa8', '#ff9a7a', '#f7c4d6', '#ffb3c8', '#e86f9a'][Math.floor(rnd() * 5)]));
+  // ---- the land: a painted, natural coastline round the city instead of a square edge. Wide sand on the south,
+  // north and east shores; green land with lakes and a swamp of channels on the west, running out into a lobe in the
+  // south-west; then a chain of little keys joined by bridges. One canvas paints it all, map-style; the shore and the
+  // keys are cut from it as meshes with rock hanging underneath.
+  const coast = leoCoastline(x0, y0, x1, y1, rnd);
+  leo.coast = coast;
+  const keys = []; { let kx = x0 - 300, ky = y1 + 285; for (let k = 0; k < 6; k++) { const r = 30 - k * 3.2; keys.push([kx, ky, r]); kx -= 58 + rnd() * 10; ky += 36 + rnd() * 14; } }
+  const lakes = [[x0 - 62, y0 + 120, 26, 40], [x0 - 70, y0 + 330, 22, 30], [x0 - 120, y1 + 40, 34, 24]];
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (const [x, y] of coast.outer) { bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+  for (const [x, y, r] of keys) { bx0 = Math.min(bx0, x - r - 30); by1 = Math.max(by1, y + r + 30); }
+  bx0 -= 4; by0 -= 4; bx1 += 4; by1 += 4;
+  const bw = bx1 - bx0, bh = by1 - by0, PXU = Math.min((LITE ? 1400 : 2600) / bw, (LITE ? 1400 : 2600) / bh);
+  const cv = document.createElement('canvas'); cv.width = Math.ceil(bw * PXU); cv.height = Math.ceil(bh * PXU);
+  const g2 = cv.getContext('2d'); g2.setTransform(PXU, 0, 0, PXU, -bx0 * PXU, -by0 * PXU);
+  const path = (pts) => { g2.beginPath(); pts.forEach(([x, y], i) => (i ? g2.lineTo(x, y) : g2.moveTo(x, y))); g2.closePath(); };
+  const circ = (x, y, r) => { g2.beginPath(); g2.arc(x, y, r, 0, Math.PI * 2); };
+  // water: deep teal, shallows glowing turquoise round every shore, a white line of surf
+  g2.fillStyle = '#0b94ad'; g2.fillRect(bx0, by0, bw, bh);
+  const shallows = (draw) => { for (const [col, blur] of [['#1fb9c4', 46], ['#4fdcd2', 20], ['#7cf0dc', 7]]) { g2.save(); g2.shadowColor = col; g2.shadowBlur = blur * PXU; g2.fillStyle = col; draw(); g2.fill(); g2.restore(); } };
+  shallows(() => path(coast.coast)); for (const [x, y, r] of keys) shallows(() => circ(x, y, r + 3));
+  g2.lineWidth = 2.4; g2.strokeStyle = 'rgba(255,255,255,0.75)'; path(coast.coast); g2.stroke(); for (const [x, y, r] of keys) { circ(x, y, r + 1.2); g2.stroke(); }
+  // sand everywhere on shore, then green land on the west and in the swamp lobe
+  g2.fillStyle = '#f3dcaa'; path(coast.coast); g2.fill(); for (const [x, y, r] of keys) { circ(x, y, r); g2.fill(); }
+  g2.save(); path(coast.land); g2.clip();
+  g2.fillStyle = '#86c05e'; g2.fillRect(bx0, by0, x0 - 6 - bx0, bh); g2.fillRect(bx0, y1 + 58, x0 + 120 - bx0, by1 - y1);
+  const greens = ['#78b455', '#93cc6a', '#6aa84d', '#a3d277', '#5f9c47'];
+  for (let i = 0; i < 520; i++) { const x = bx0 + rnd() * (x0 - bx0), y = by0 + rnd() * bh; g2.fillStyle = greens[i % 5]; g2.globalAlpha = 0.45; g2.beginPath(); g2.ellipse(x, y, 4 + rnd() * 16, 3 + rnd() * 10, rnd() * 3, 0, 7); g2.fill(); }
+  // the swamp: dark green with winding channels in the south-west
+  g2.globalAlpha = 1;
+  for (let i = 0; i < 140; i++) { const a = rnd() * 6.28, rr = rnd() * 170, x = x0 - 110 + Math.cos(a) * rr, y = y1 + 70 + Math.sin(a) * rr * 0.7; g2.fillStyle = ['#4f7d43', '#5b8a4a', '#3f6e3c'][i % 3]; g2.globalAlpha = 0.6; g2.beginPath(); g2.ellipse(x, y, 6 + rnd() * 14, 4 + rnd() * 9, rnd() * 3, 0, 7); g2.fill(); }
+  g2.globalAlpha = 1; g2.lineCap = 'round';
+  for (let i = 0; i < 9; i++) {
+    let x = x0 - 30 - rnd() * 60, y = y1 - 60 + rnd() * 80; g2.beginPath(); g2.moveTo(x, y);
+    for (let k = 0; k < 6; k++) { const nx = x - 18 - rnd() * 30, ny = y + 14 + rnd() * 34; g2.quadraticCurveTo(x + (rnd() - 0.5) * 40, (y + ny) / 2, nx, ny); x = nx; y = ny; }
+    g2.strokeStyle = '#2f8f8c'; g2.lineWidth = 2 + rnd() * 3.5; g2.stroke();
   }
-  coral.castShadow = true; scene.add(coral);
-  // the lagoon: one sheet under the sand, shallow and bright by the beach, deeper blue towards the lip, sun glints and a foam line
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0 + 2 * wOut, y1 - y0 + 2 * wOut).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
-    uniforms: { uTime: timeU, uNight: nightU, uC: { value: new THREE.Vector2(W(cx, cy).x, W(cx, cy).z) }, uHalf: { value: new THREE.Vector2((x1 - x0) / 2 + sOut + 7, (y1 - y0) / 2 + sOut + 7) }, uW: { value: SHORE.lagoon - 7 } },
-    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: `uniform float uTime; uniform float uNight; uniform vec2 uC; uniform vec2 uHalf; uniform float uW; varying vec3 vW;
-      float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-      float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
-      void main(){
-        vec2 p = vW.xz - uC; vec2 q = abs(p) - uHalf; float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0); // distance out from the wet sand
-        float k = clamp(d / uW, 0.0, 1.0);
-        vec3 shallow = vec3(0.36, 0.93, 0.86), deep = vec3(0.02, 0.56, 0.74);
-        vec3 col = mix(shallow, deep, smoothstep(0.05, 0.95, k));
-        float caus = n(vW.xz * 0.22 + vec2(uTime * 0.35, uTime * 0.2)) * n(vW.xz * 0.31 - vec2(uTime * 0.25, uTime * 0.3));
-        col += vec3(0.75, 1.0, 0.95) * smoothstep(0.28, 0.6, caus) * (1.0 - k) * 0.45;
-        float glint = step(0.985, n(vW.xz * 0.9 + vec2(uTime * 1.3, -uTime))) * (1.0 - uNight);
-        float foam = smoothstep(0.12, 0.0, k) * (0.55 + 0.45 * sin(uTime * 1.6 + vW.x * 0.08 + vW.z * 0.05));
-        col = mix(col, vec3(1.0), clamp(foam * 0.8 + glint, 0.0, 1.0));
-        col *= mix(1.0, 0.32, uNight);
-        col += vec3(0.1, 0.55, 0.6) * uNight * (1.0 - k) * 0.35; // the shallows glow a little after dark
-        gl_FragColor = vec4(col, 1.0);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`,
-  }));
-  water.position.copy(W(cx, cy, -4.1)); scene.add(water);
-  // turquoise falls pour off the lip into the clouds
-  waterfall(x0 - lOut, 1200, -4, 22, 320, Math.PI / 2); waterfall(x0 - lOut, 1480, -4, 14, 260, Math.PI / 2);
-  waterfall(1200, y1 + lOut, -4, 34, 360, 0); waterfall(1560, y1 + lOut, -4, 18, 300, 0); waterfall(x1 + lOut, 1300, -4, 16, 280, Math.PI / 2);
+  for (const [x, y, rx, ry] of lakes) { g2.fillStyle = '#e8d3a2'; g2.beginPath(); g2.ellipse(x, y, rx + 3, ry + 3, 0.3, 0, 7); g2.fill(); g2.fillStyle = '#35b6c8'; g2.beginPath(); g2.ellipse(x, y, rx, ry, 0.3, 0, 7); g2.fill(); g2.fillStyle = '#5fd6dc'; g2.beginPath(); g2.ellipse(x - rx * 0.2, y - ry * 0.2, rx * 0.55, ry * 0.5, 0.3, 0, 7); g2.fill(); }
+  g2.restore();
+  // the keys: green middles with sandy edges
+  for (const [x, y, r] of keys) { g2.fillStyle = '#86c05e'; circ(x, y, r * 0.62); g2.fill(); g2.fillStyle = '#6aa84d'; circ(x + r * 0.15, y - r * 0.1, r * 0.3); g2.fill(); }
+  // the coast road from the city's south-west corner out to the keys bridge
+  g2.lineCap = 'round'; g2.lineJoin = 'round';
+  const tipI = coast.coast.reduce((b, p, i) => (Math.hypot(p[0] - keys[0][0], p[1] - keys[0][1]) < Math.hypot(coast.coast[b][0] - keys[0][0], coast.coast[b][1] - keys[0][1]) ? i : b), 0);
+  const tip = [coast.coast[tipI][0] - coast.normal[tipI][0] * 6, coast.coast[tipI][1] - coast.normal[tipI][1] * 6];
+  const road = [[x0 + 10, y1 + 30], [x0 - 60, y1 + 70], [(x0 - 60 + tip[0]) / 2, (y1 + 90 + tip[1]) / 2], tip];
+  for (const [col, wd, dash] of [['#4c4852', 8, []], ['#f0e3b8', 0.7, [3, 3]]]) { g2.strokeStyle = col; g2.lineWidth = wd; g2.setLineDash(dash); g2.beginPath(); g2.moveTo(...road[0]); g2.bezierCurveTo(...road[1], ...road[2], ...road[3]); g2.stroke(); }
+  g2.setLineDash([]);
+  // a little grain so it reads as painted
+  for (let i = 0; i < 9000; i++) { g2.fillStyle = `rgba(${rnd() < 0.5 ? '255,255,255' : '0,0,0'},${0.03 + rnd() * 0.04})`; g2.fillRect(bx0 + rnd() * bw, by0 + rnd() * bh, 1.2, 1.2); }
+  const mapTex = new THREE.CanvasTexture(cv); mapTex.colorSpace = THREE.SRGBColorSpace; mapTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  // the painted sheet, shimmering where it's water (caustics, glints and a moving swell)
+  const sheetMat = new THREE.MeshStandardMaterial({ map: mapTex, roughness: 0.85 });
+  sheetMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = timeU; sh.uniforms.uNight = nightU;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vLW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvLW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      uniform float uTime; uniform float uNight; varying vec3 vLW;
+      float lh(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+      float ln(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(lh(i),lh(i+vec2(1,0)),f.x), mix(lh(i+vec2(0,1)),lh(i+vec2(1,1)),f.x), f.y); }`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { vec3 c = diffuseColor.rgb; float wet = smoothstep(0.02, 0.12, c.b - c.r) * smoothstep(0.0, 0.08, c.g - c.r);
+        float caus = ln(vLW.xz * 0.2 + vec2(uTime * 0.32, uTime * 0.18)) * ln(vLW.xz * 0.29 - vec2(uTime * 0.22, uTime * 0.27));
+        float glint = step(0.986, ln(vLW.xz * 0.85 + vec2(uTime * 1.2, -uTime))) * (1.0 - uNight);
+        diffuseColor.rgb += wet * (vec3(0.7, 1.0, 0.95) * smoothstep(0.3, 0.62, caus) * 0.32 + glint);
+        totalEmissiveRadiance += wet * vec3(0.05, 0.4, 0.45) * uNight * 0.6; }`);
+  };
+  const uvShape = (pts) => {
+    const shp = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+    const geo = new THREE.ShapeGeometry(shp, 1); const p = geo.attributes.position, uv = geo.attributes.uv;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i); uv.setXY(i, (x - bx0) / bw, 1 - (y - by0) / bh); const w = W(x, y, -0.9); p.setXYZ(i, w.x, w.y, w.z); }
+    const ix = geo.index.array, A = new THREE.Vector3().fromBufferAttribute(p, ix[0]), B = new THREE.Vector3().fromBufferAttribute(p, ix[1]), C = new THREE.Vector3().fromBufferAttribute(p, ix[2]);
+    if (B.sub(A).cross(C.sub(A)).y < 0) for (let i = 0; i < ix.length; i += 3) { const t = ix[i]; ix[i] = ix[i + 2]; ix[i + 2] = t; } // face up
+    for (let i = 0; i < p.count; i++) geo.attributes.normal.setXYZ(i, 0, 1, 0);
+    return geo;
+  };
+  const sheet = new THREE.Mesh(uvShape(coast.outer), sheetMat); sheet.receiveShadow = true; scene.add(sheet);
+  sheet.userData.city = 'leonida'; sheet.userData.top = true; islandMeshes.push(sheet);
+  const rock = rockFromPerimeter(coast.outer, 380, rnd); rock.userData.city = 'leonida'; islandMeshes.push(rock); scene.add(rock);
+  // the keys, each its own little floating island, and the bridges that hop between them
+  const deckB = new THREE.MeshStandardMaterial({ color: 0xd9d2c6, roughness: 0.8 }), railB = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+  const span = (ax, ay, bx2, by2) => {
+    const dx = bx2 - ax, dy = by2 - ay, L = Math.hypot(dx, dy), mid = W((ax + bx2) / 2, (ay + by2) / 2, -0.6), rot = Math.atan2(-dy, dx);
+    const d = new THREE.Mesh(BOX, deckB); d.scale.set(L, 1.4, 7); d.position.copy(mid); d.rotation.y = rot; d.castShadow = d.receiveShadow = true; scene.add(d);
+    for (const s of [-3.4, 3.4]) { const r2 = new THREE.Mesh(BOX, railB); r2.scale.set(L, 1.1, 0.4); r2.position.copy(mid).add(new THREE.Vector3(Math.sin(rot) * s, 1.1, Math.cos(rot) * s)); r2.rotation.y = rot; scene.add(r2); }
+    for (let k = 1; k < Math.floor(L / 22); k++) { const p2 = W(ax + dx * k / Math.floor(L / 22), ay + dy * k / Math.floor(L / 22), -2); const col = new THREE.Mesh(BOX, deckB); col.scale.set(2.2, 18, 2.2); col.position.copy(p2).add(new THREE.Vector3(0, -9, 0)); scene.add(col); }
+  };
+  let prev = road[3];
+  keys.forEach(([x, y, r], k) => {
+    const ring = []; for (let a = 0; a < 40; a++) { const t = (a / 40) * Math.PI * 2, rr = r + 16 + Math.sin(t * 3 + k) * 3; ring.push([x + Math.cos(t) * rr, y + Math.sin(t) * rr]); }
+    const m = new THREE.Mesh(uvShape(ring), sheetMat); m.receiveShadow = true; scene.add(m);
+    const rk = rockFromPerimeter(ring, 70 + r * 2.4, rnd); scene.add(rk);
+    const dir = [x - prev[0], y - prev[1]], dl = Math.hypot(...dir);
+    span(prev[0], prev[1], x - dir[0] / dl * (r - 2), y - dir[1] / dl * (r - 2));
+    prev = [x + dir[0] / dl * (r - 2), y + dir[1] / dl * (r - 2)];
+    waterfall(x + r + 14, y, -1.5, 6, 120 + r * 3, Math.PI / 2);
+  });
+  // waterfalls off the shore into the clouds, and clouds round the rock
+  for (const k of [0.12, 0.31, 0.47, 0.58, 0.72, 0.9]) { const i = Math.floor(k * coast.outer.length), [x, y] = coast.outer[i], [nx, ny] = coast.normal[i]; waterfall(x, y, -1.5, 14 + rnd() * 18, 260 + rnd() * 110, Math.atan2(nx, ny)); }
   for (let i = 0; i < (LITE ? 8 : 16); i++) puff(x0 - 40 + rnd() * (x1 - x0 + 80), y0 - 40 + rnd() * (y1 - y0 + 80), -320 - rnd() * 50, 300 + rnd() * 240, i % 2);
-
-  // ---- beach life: umbrellas, towels, loungers, palms, lifeguard huts
-  const spots = [];
-  const beachPt = (side, t, o) => (side === 0 ? [x0 - sOut + t * (x1 - x0 + 2 * sOut), y0 - o] : side === 1 ? [x0 - sOut + t * (x1 - x0 + 2 * sOut), y1 + o] : side === 2 ? [x0 - o, y0 + t * (y1 - y0)] : [x1 + o, y0 + t * (y1 - y0)]);
-  for (let i = 0; i < 190; i++) {
-    const side = rnd() < 0.42 ? 1 : rnd() < 0.62 ? 2 : rnd() < 0.5 ? 0 : 3;     // most on the south and west beaches
-    const t = rnd(); if (side === 0 && t > 0.14 && t < 0.8) continue;             // the boardwalk and piers on the north shore
-    if (side === 3) continue;                                                     // the marina and port on the east shore
-    spots.push(beachPt(side, t, 8 + rnd() * 14));
+  // glowing Elysium line round the shore
+  { const arr = []; for (const h of [-0.6, -6]) coast.outer.forEach(([x, y], i) => { const [xb, yb] = coast.outer[(i + 1) % coast.outer.length]; const a = W(x, y, h), b = W(xb, yb, h); arr.push(a.x, a.y, a.z, b.x, b.y, b.z); });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0x2ff0ff, transparent: true, opacity: 1, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
+    const l = new THREE.LineSegments(geo, mat); l.renderOrder = 2; scene.add(l); glowLines.push({ mat, op: 1 }); }
+  // trees and palms on the green land; dark cypress in the swamp
+  const onLand = (x, y) => pointInPoly(x, y, coast.land) && !(x > x0 - 8 && x < x1 + 8 && y > y0 - 8 && y < y1 + 8) && !lakes.some(([lx, ly, rx, ry]) => ((x - lx) / (rx + 5)) ** 2 + ((y - ly) / (ry + 5)) ** 2 < 1);
+  const greenAt = (x, y) => x < x0 - 6 || (y > y1 + 58 && x < x0 + 120);
+  const bush = [];
+  const palmsB = [];
+  for (let i = 0; i < (LITE ? 500 : 1100); i++) {
+    const x = bx0 + rnd() * (x0 - bx0 + 130), y = by0 + rnd() * bh;
+    if (!onLand(x, y) || !greenAt(x, y)) continue;
+    const swamp = Math.hypot(x - (x0 - 110), (y - (y1 + 70)) / 0.7) < 170;
+    if (swamp || rnd() < 0.55) bush.push([x, y, 0.7 + rnd() * 0.6, swamp]); else palmsB.push([x, y, 0.75 + rnd() * 0.45]);
   }
+  for (const [x, y, r] of keys) for (let k = 0; k < 3 + r / 6; k++) { const a = rnd() * 6.28, rr = rnd() * r * 0.7; palmsB.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr, 0.7 + rnd() * 0.35]); }
+  if (bush.length) {
+    const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true }), bush.length);
+    const trunkB = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.6, 1, 5).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0x5a4632 }), bush.length);
+    bush.forEach(([x, y, s, swamp], i) => {
+      const h = (swamp ? 9 : 6) * s;
+      m4.compose(W(x, y, -0.9), q.identity(), v3.set(s, h, s)); trunkB.setMatrixAt(i, m4);
+      m4.compose(W(x, y, -0.9 + h + 2.4 * s), q.setFromAxisAngle(UP, rnd() * 3), v3.set(4.2 * s, (swamp ? 4.6 : 3.4) * s, 4.2 * s)); crown.setMatrixAt(i, m4);
+      crown.setColorAt(i, c3.set(swamp ? ['#3f6e3c', '#4f7d43', '#36603a'][i % 3] : ['#4f9a4a', '#62ad52', '#3f8a44', '#78bd5a'][i % 4]));
+    });
+    crown.castShadow = trunkB.castShadow = true; scene.add(crown, trunkB);
+  }
+  // beach umbrellas and towels on the sand
+  const spots = [];
+  for (let i = 0; i < 260; i++) {
+    const r0 = rnd();
+    let x, y;
+    if (r0 < 0.55) { x = x0 - 10 + rnd() * (x1 - x0 + 10); y = y1 + 14 + rnd() * 62; }                 // the wide south beach
+    else { const j = Math.floor(rnd() * coast.coast.length), [cx2, cy2] = coast.coast[j], [nx, ny] = coast.normal[j], d = 6 + rnd() * 10; x = cx2 - nx * d; y = cy2 - ny * d; }
+    if (!pointInPoly(x, y, coast.coast) || (x > x0 - 4 && x < x1 + 4 && y > y0 - 4 && y < y1 + 4) || greenAt(x, y) && pointInPoly(x, y, coast.land) || (y < y0 && x > 1100 && x < 1760) || x > x1) continue;
+    spots.push([x, y]);
+  }
+  for (let i = 0; i < 90; i++) { const j = Math.floor(rnd() * coast.coast.length), [cx2, cy2] = coast.coast[j], [nx, ny] = coast.normal[j], d = 4 + rnd() * 6, x = cx2 - nx * d, y = cy2 - ny * d; if (x > x1 && y < y1 - 20) continue; if (y < y0 && x > 1100 && x < 1760) continue; palmsB.push([x, y, 0.85 + rnd() * 0.5]); }
   const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.15, 6, 4).translate(0, 3, 0), new THREE.MeshStandardMaterial({ color: 0xeeeeee }), spots.length);
   const canopy = new THREE.InstancedMesh(new THREE.ConeGeometry(4.2, 1.6, 8).translate(0, 6.6, 0), new THREE.MeshStandardMaterial({ roughness: 0.7, flatShading: true }), spots.length);
   const towel = new THREE.InstancedMesh(BOX, new THREE.MeshStandardMaterial({ roughness: 0.9 }), spots.length);
@@ -1236,8 +1354,6 @@ function buildLeonida(rnd) {
     m4.compose(W(x + 3, y + 1.5, -0.75), q.setFromAxisAngle(UP, rnd() * 3), v3.set(2.4, 0.12, 4.6)); towel.setMatrixAt(i, m4); towel.setColorAt(i, c3.set(brights[Math.floor(rnd() * brights.length)]));
   });
   pole.castShadow = canopy.castShadow = true; scene.add(pole, canopy, towel);
-  const palmsB = [];
-  for (let i = 0; i < 120; i++) { const side = rnd() < 0.35 ? 1 : rnd() < 0.55 ? 2 : rnd() < 0.5 ? 0 : 3; const t = rnd(); if (side === 3 && t > 0.4) continue; palmsB.push([...beachPt(side, t, 3 + rnd() * 5), 0.85 + rnd() * 0.5]); }
   const ptrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.6, 1, 6).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0x9a7650, roughness: 0.9 }), palmsB.length);
   const leaf = new THREE.InstancedMesh(new THREE.BoxGeometry(7.5, 0.3, 1.9).translate(3.75, 0, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true }), palmsB.length * 7);
   palmsB.forEach(([x, y, s], i) => {
@@ -1255,7 +1371,7 @@ function buildLeonida(rnd) {
     scene.add(leo.uplights);
   }
   const hutM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
-  for (const [x, y, col] of [[1100, y1 + 14, 0xff8fb8], [1380, y1 + 14, 0x5fe0cf], [1640, y1 + 14, 0xff6f61], [x0 - 14, 1500, 0xffd27a], [x0 - 14, 1300, 0xb59bff], [x0 - 14, 1100, 0x7fd1ff]]) {
+  for (const [x, y, col] of [[1060, y1 + 46, 0xff8fb8], [1300, y1 + 52, 0x5fe0cf], [1540, y1 + 48, 0xff6f61], [1760, y1 + 44, 0xffd27a], [1000, y0 - 30, 0xb59bff], [1800, y0 - 30, 0x7fd1ff]]) {
     const g = new THREE.Group(); g.position.copy(W(x, y, -0.8));
     for (const [a, b] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) { const l = new THREE.Mesh(BOX, hutM); l.scale.set(0.4, 6, 0.4); l.position.set(a, 0, b); g.add(l); }
     const cab = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 })); cab.scale.set(5, 3.6, 4.4); cab.position.y = 6; g.add(cab);
@@ -1266,7 +1382,7 @@ function buildLeonida(rnd) {
   // ---- the north boardwalk, the ferry piers and the Ferris wheel
   const deckM = new THREE.MeshStandardMaterial({ color: 0xb08a62, roughness: 0.85 });
   box(1360, y0 - 12, 500, 18, 1, -0.9, deckM);
-  for (const [x, len] of [[1180, wOut + SHORE.lip + 6], [1700, wOut + SHORE.lip + 6]]) box(x, y0 - len / 2, 10, len, 1.2, -1.1, deckM);
+  for (const [x, len] of [[1180, 112], [1700, 112]]) box(x, y0 - len / 2, 10, len, 1.2, -1.1, deckM);
   const bulbs = [];
   for (let x = 1115; x <= 1605; x += 7) bulbs.push(W(x, y0 - 21, 5 + Math.sin(x * 0.45) * 0.8));
   const bp = new THREE.Points(new THREE.BufferGeometry().setFromPoints(bulbs), new THREE.PointsMaterial({ map: GLOW, size: 7, color: 0xffd9a0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -1347,7 +1463,7 @@ function buildLeonida(rnd) {
       m4.compose(W(x1 + 5 + j * 5.4, 1380 + i * 12 + (i > 2 ? 70 : 0), -0.8 + k * 2.6), q, v3.set(4.8, 2.5, 11)); cont.setMatrixAt(n, m4); cont.setColorAt(n++, c3.set(ccol[Math.floor(rnd() * ccol.length)]));
     }
     cont.count = n; cont.castShadow = true; scene.add(cont);
-    const ship = new THREE.Group(); ship.position.copy(W(x1 + sOut + 22, 1470, -4));
+    const ship = new THREE.Group(); ship.position.copy(W(x1 + 80, 1470, -2.6));
     const hull = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x2b3a55, roughness: 0.6 })); hull.scale.set(14, 6, 96); hull.position.y = 1; ship.add(hull);
     const bridge = new THREE.Mesh(BOX, windowed(new THREE.MeshStandardMaterial({ color: 0xffffff }))); bridge.scale.set(12, 12, 10); bridge.position.set(0, 9, 40); ship.add(bridge);
     for (let k = 0; k < 14; k++) { const c = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: ccol[k % ccol.length], roughness: 0.7 })); c.scale.set(12, 2.5 * (1 + (k % 3)), 5.4); c.position.set(0, 4 + 1.25 * (k % 3), -38 + k * 5.6); ship.add(c); }
@@ -1386,18 +1502,18 @@ function buildLeonida(rnd) {
 
   // ---- Sunset Marina: a pontoon along the east lagoon with finger piers and yachts moored at them
   {
-    const px = x1 + sOut + 6;
-    box(px, 1165, 4, 270, 0.8, -3.6, deckM);
+    const px = x1 + 56;
+    box(px, 1165, 4, 270, 0.8, -1.2, deckM);
     const moored = [];
-    for (let y = 1040; y <= 1290; y += 21) { box(px + 9, y, 18, 2.4, 0.7, -3.6, deckM); if (rnd() < 0.8) moored.push([px + 12, y + (rnd() < 0.5 ? 5.5 : -5.5)]); }
+    for (let y = 1040; y <= 1290; y += 21) { box(px + 9, y, 18, 2.4, 0.7, -1.2, deckM); if (rnd() < 0.8) moored.push([px + 12, y + (rnd() < 0.5 ? 5.5 : -5.5)]); }
     const hullG = new THREE.CylinderGeometry(2.2, 1.4, 12, 6).rotateZ(Math.PI / 2).scale(1, 0.55, 1).translate(0, 1, 0);
     const hulls = new THREE.InstancedMesh(hullG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), moored.length);
     const cabs = new THREE.InstancedMesh(BOX, new THREE.MeshStandardMaterial({ color: 0x1d2a3a, roughness: 0.1, metalness: 0.6 }), moored.length);
     const masts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.15, 16, 4).translate(0, 8, 0), new THREE.MeshStandardMaterial({ color: 0xdddddd }), moored.length);
     moored.forEach(([x, y], i) => {
-      m4.compose(W(x, y, -4.2), q, v3.set(1, 1, 1)); hulls.setMatrixAt(i, m4);
-      m4.compose(W(x - 1, y, -2.2), q, v3.set(5, 1.8, 2.8)); cabs.setMatrixAt(i, m4);
-      m4.compose(W(x + 1, y, -2), q, v3.set(1, rnd() < 0.5 ? 1 : 0.01, 1)); masts.setMatrixAt(i, m4);
+      m4.compose(W(x, y, -1.8), q, v3.set(1, 1, 1)); hulls.setMatrixAt(i, m4);
+      m4.compose(W(x - 1, y, 0.2), q, v3.set(5, 1.8, 2.8)); cabs.setMatrixAt(i, m4);
+      m4.compose(W(x + 1, y, 0.4), q, v3.set(1, rnd() < 0.5 ? 1 : 0.01, 1)); masts.setMatrixAt(i, m4);
     });
     hulls.castShadow = cabs.castShadow = masts.castShadow = true; scene.add(hulls, cabs, masts);
   }
@@ -1421,7 +1537,7 @@ function buildLeonida(rnd) {
     const deck = new THREE.Mesh(BOX, yachtM); deck.scale.set(4, 1.2, 3); deck.position.set(-1.5, 4.2, 0); g.add(deck);
     const stripe = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: brights[i % brights.length] })); stripe.scale.set(12, 0.5, 3.6); stripe.position.y = 1.4; g.add(stripe);
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
-    leo.yachts.push({ g, u: rnd(), sp: 0.006 + rnd() * 0.006, o: sOut + 14 + rnd() * 16 });
+    leo.yachts.push({ g, u: rnd(), sp: 0.004 + rnd() * 0.004, o: 18 + rnd() * 18 });
   }
   leo.box = [x0, y0, x1, y1];
 
@@ -1429,13 +1545,10 @@ function buildLeonida(rnd) {
   for (const [a, b] of [[[960, 735], [1180, 976]], [[1700, 702], [1700, 976]]]) for (let i = 0; i < 2; i++) { const g = airshipMesh(0.55, rnd); scene.add(g); leo.routes.push({ g, a, b, off: i * 0.5 + rnd() * 0.1 }); }
 }
 // Along the lagoon: a point a share u of the way round a rectangle o units out from the land.
-function lagoonAt(u, o) {
-  const [x0, y0, x1, y1] = leo.box, w = x1 - x0 + 2 * o, h = y1 - y0 + 2 * o, L = 2 * (w + h);
-  let d = (((u % 1) + 1) % 1) * L;
-  if (d < w) return [x0 - o + d, y0 - o, 0]; d -= w;
-  if (d < h) return [x1 + o, y0 - o + d, 1]; d -= h;
-  if (d < w) return [x1 + o - d, y1 + o, 2]; d -= w;
-  return [x0 - o, y1 + o - d, 3];
+function lagoonAt(u, o) { // along the shore, o units out into the water: [x, y, heading]
+  const C = leo.coast.coast, N = leo.coast.normal, n = C.length, f = (((u % 1) + 1) % 1) * n, i = Math.floor(f), j = (i + 1) % n, k = f - i;
+  const x = C[i][0] + (C[j][0] - C[i][0]) * k + N[i][0] * o, y = C[i][1] + (C[j][1] - C[i][1]) * k + N[i][1] * o;
+  return [x, y, Math.atan2(-(C[j][1] - C[i][1]), C[j][0] - C[i][0])];
 }
 function updateLeonida(t, dt) {
   if (leo.wheel) {
@@ -1476,9 +1589,9 @@ function updateLeonida(t, dt) {
   if (leo.beam) leo.beam.rotation.y = t * 0.8, leo.beam.material.opacity = 0.04 + nightU.value * 0.16;
   for (const y of leo.yachts) {
     y.u += y.sp * dt;
-    const [x, z, side] = lagoonAt(y.u, y.o);
-    y.g.position.copy(W(x, z, -3.6 + Math.sin(t * 1.2 + y.o) * 0.25));
-    y.g.rotation.y = [0, -Math.PI / 2, Math.PI, Math.PI / 2][side];
+    const [x, z, hd] = lagoonAt(y.u, y.o);
+    y.g.position.copy(W(x, z, -1.4 + Math.sin(t * 1.2 + y.o) * 0.25));
+    y.g.rotation.y = hd;
   }
   const P = 52;
   for (const f of leo.routes) {
@@ -2301,17 +2414,25 @@ const SKY_NIGHT = new THREE.Color(0x0b303b), SKY_DAY = new THREE.Color(0x9fd2de)
 const TOP_NIGHT = new THREE.Color(0x010810), TOP_DAY = new THREE.Color(0x185c79), TOP_DUSK = new THREE.Color(0x0f3a4e);
 const SUN_DAY = new THREE.Color(0xfff2df), SUN_DUSK = new THREE.Color(0xff9a5c), MOON = new THREE.Color(0x9fe0f0);
 const skyC = new THREE.Color();
+// Over the Leonida Islands the daytime sky turns to a warm, sunset-coloured afternoon.
+const LEO_SKY = new THREE.Color(0xffb48e), LEO_HOR = new THREE.Color(0xff8f7a), LEO_TOP = new THREE.Color(0x2c5f8a), LEO_SUN = new THREE.Color(0xffb070), LEO_CLOUD = new THREE.Color(0xffd3c4);
+let leoTint = 0;
 const WATER_DAY = new THREE.Color(0x3b6a88), WATER_NIGHT = new THREE.Color(0x06222a), HEMI_DAY = new THREE.Color(0xd6e6ff);
 function updateSky(h) {
   const el = Math.sin(((h - 6) / 14) * Math.PI);          // sun up 06:00, down 20:00
   const day = smooth(-0.1, 0.35, el);
   const dusk = Math.exp(-Math.pow((el - 0.08) / 0.2, 2)) * (h > 12 ? 1 : 0.6);
   skyC.copy(SKY_NIGHT).lerp(SKY_DAY, day).lerp(DUSK, dusk * 0.5);
+  leoTint += ((cityInView() === 'leonida' ? 1 : 0) - leoTint) * 0.04;
+  const lk = leoTint * day;
+  skyC.lerp(LEO_SKY, lk * 0.55);
   scene.background = skyC; scene.fog.color.copy(skyC).lerp(TOP_NIGHT, 0.35 * (1 - day));
   skyU.horizon.value.copy(skyC).lerp(DUSK, dusk * 0.35);
-  skyU.top.value.copy(TOP_NIGHT).lerp(TOP_DAY, day).lerp(TOP_DUSK, dusk * 0.5);
+  skyU.top.value.copy(TOP_NIGHT).lerp(TOP_DAY, day).lerp(TOP_DUSK, dusk * 0.5).lerp(LEO_TOP, lk * 0.5);
+  skyU.horizon.value.lerp(LEO_HOR, lk * 0.45);
   skyU.glowAmt.value = 0.25 + (1 - day) * 0.35 + dusk * 0.15;
   skyTint.light.set(0xf2fbff).lerp(new THREE.Color(0xffe0d0), dusk * 0.4).lerp(new THREE.Color(0x7d9fb0), 1 - day);
+  skyTint.light.lerp(LEO_CLOUD, lk * 0.45);
   skyTint.shadow.set(0x7fa6b8).lerp(new THREE.Color(0xa98f9c), dusk * 0.3).lerp(new THREE.Color(0x0e2733), 1 - day);
   if (cloudSea) cloudSea.material.uniforms.uHaze.value.copy(skyC);
   for (const m of puffMats) m.color.copy(skyTint.light).lerp(skyTint.shadow, 0.25);
@@ -2322,7 +2443,7 @@ function updateSky(h) {
   skyU.sunDir.value.set(Math.cos(az), Math.max(el, -0.2) + 0.02, -0.45).normalize();
   skyU.sunAmt.value = smooth(-0.08, 0.05, el);
   skyU.sunCol.value.copy(SUN_DUSK).lerp(SUN_DAY, smooth(0.05, 0.5, el));
-  if (el > -0.04) { sun.position.set(Math.cos(az) * 900, 140 + Math.max(el, 0) * 900, -420); sun.color.copy(SUN_DUSK).lerp(SUN_DAY, smooth(0.05, 0.5, el)); sun.intensity = 0.6 + 2.6 * day; }
+  if (el > -0.04) { sun.position.set(Math.cos(az) * 900, 140 + Math.max(el, 0) * 900, -420); sun.color.copy(SUN_DUSK).lerp(SUN_DAY, smooth(0.05, 0.5, el)).lerp(LEO_SUN, lk * 0.4); sun.intensity = 0.6 + 2.6 * day; }
   else { sun.position.set(-500, 800, 380); sun.color.copy(MOON); sun.intensity = 0.9; }
   hemi.intensity = 0.7 + 0.9 * day;
   hemi.color.copy(MOON).lerp(HEMI_DAY, day);
