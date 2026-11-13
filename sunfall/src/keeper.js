@@ -23,7 +23,7 @@ export const KEEPER = {
 };
 export const DECREES = {
   festival: { title: (d) => `A Keeper's festival in ${dname(d)}`, effect: 'Doors in the district are half price and crowds come from all over, as in a lantern festival. It replaces tomorrow\'s forecast.', district: true },
-  freeFerry: { title: () => 'Free sky ferry', effect: 'Ferry tickets between Sunfall and Nightfall cost nothing for the day.' },
+  freeFerry: { title: () => 'Free sky ferry', effect: 'Sky ferry tickets between the cities cost nothing for the day.' },
   curfew: { title: () => 'Casino curfew', effect: 'Every casino in both cities is shut for the day. Nobody is charged at their doors.' },
   jobsDrive: { title: () => 'Jobs drive', effect: `The city posts ${KEEPER.JOBS_DRIVE} extra paid jobs for the day, from the treasury.` },
 };
