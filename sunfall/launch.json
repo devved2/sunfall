@@ -9,6 +9,7 @@
   "feeClaims": {"contract": "0x6b1216a40b65c83e9c9e18a562c446697b8cf8ec", "event": "0x8e516b1bd244658d81db3afcb0a968075b1d535a0e97d62254d5fb333e0e3ec7", "pool": "0x7fbc636437a6ae138513ef136ca157b0812fd4a29de5c51dc40842ff574cbd53", "from": "2026-11-11T16:45:00Z"},
   "vaultPolicy": {"prize": 30, "ops": 70},
   "prizeSplit": [25, 17, 12, 9, 8, 7, 6, 6, 5, 5],
+  "prizeSplitNext": {"fromSeason": 2, "split": [36, 20, 12, 8, 5, 3, 2, 2, 1, 1], "rookiePct": 10},
   "dailyPrizePct": 50,
   "dailyPrizeCapHype": 1,
   "prizePerAgentHype": 0.2,
