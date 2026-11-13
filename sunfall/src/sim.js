@@ -39,7 +39,10 @@ export const NIGHTFALL = { GAME_CROSS: 0.5, NIGHT_OUT: 0.05, CHARTER_OWNER_SHARE
 // The Leonida Islands: a beach city. Its residents go out in the afternoon more than anyone (BEACH_DAY: less chance of
 // staying in), cross for a game now and then (GAME_CROSS), and some lively residents of the other two cities take the
 // ferry over for a night on the Strip (NIGHT_OUT). Agents move there free while the islands are new (FREE_MOVE).
-export const LEONIDA = { GAME_CROSS: 0.4, NIGHT_OUT: 0.04, BEACH_DAY: 0.6, FREE_MOVE: true };
+export const LEONIDA = { GAME_CROSS: 0.4, NIGHT_OUT: 0.04, BEACH_DAY: 0.6, FREE_MOVE: true, OPEN_TO_AGENTS: false };
+// Until the islands open to agents (OPEN_TO_AGENTS), agents can't live there, visit, take jobs, buy, rob or take over there.
+export const closedToAgents = (r, city) => Boolean(r?.outside) && city === 'leonida' && !LEONIDA.OPEN_TO_AGENTS;
+export const LEONIDA_CLOSED = "the Leonida Islands aren't open to agents yet";
 
 // The Keeper's decree in force today, if any (src/keeper.js sets it at the day turn).
 export const decreeIs = (kind) => state.keeper?.active?.day === state.day && state.keeper.active.kind === kind;
@@ -239,6 +242,7 @@ export const moveFare = (r, city) => (r.outside && ((city === 'nightfall' && NIG
 export function requestMove(r, city, district = null) {
   if (!cityById(city)) refuse(422, `city must be one of ${CITIES.map((c) => c.id).join(', ')}`);
   if (city === cityOf(r)) refuse(409, `you already live in ${cityById(city).name}`);
+  if (closedToAgents(r, city)) refuse(403, LEONIDA_CLOSED);
   if (district != null && !districtsOf(city).some((d) => d.id === district)) refuse(422, `district must be one of ${districtsOf(city).map((d) => d.id).join(', ')}`);
   if (r.moving) refuse(409, `you're already booked on the ferry to ${cityById(r.moving.city).name}`);
   const fare = moveFare(r, city);
@@ -346,6 +350,7 @@ export function clampPlan(r, d, { cashAfterCost = r.cash, keepLanded = true } = 
     if (choice === 'in') { out[half] = 'in'; continue; }
     const v = resolveVenue(choice, r);
     if (!v) refuse(422, `${half}: no such venue "${choice}"`);
+    if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, `${half}: ${LEONIDA_CLOSED}`);
     out[half] = v.type; out[half + 'Venue'] = v.id;
   }
   const spend = d.spend;
@@ -409,7 +414,7 @@ function rulesPlan(r) {
       if (there.length) { choice[half] = pick(there).id; why[half] = pick(LINES.ferry); }
     }
     // A night on the Strip: now and then a lively resident of Sunfall or Nightfall takes the ferry to the islands.
-    if (half === 'night' && home !== 'leonida' && state.leonida && typeof choice[half] === 'string' && !state.venues[choice[half]] && t.social > 0.55 && r.cash > 90 && secureRandom() < LEONIDA.NIGHT_OUT) {
+    if (half === 'night' && home !== 'leonida' && state.leonida && !closedToAgents(r, 'leonida') && typeof choice[half] === 'string' && !state.venues[choice[half]] && t.social > 0.55 && r.cash > 90 && secureRandom() < LEONIDA.NIGHT_OUT) {
       const kinds = t.risk > 0.6 ? ['bar', 'market', 'casino'] : ['bar', 'market'];
       const there = Object.values(state.venues).filter((v) => v.isVenue && kinds.includes(v.type) && cityOfDistrict(v.district) === 'leonida');
       if (there.length) { choice[half] = pick(there).id; why[half] = pick(LINES.leonida); }
