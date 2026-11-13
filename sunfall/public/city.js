@@ -1939,7 +1939,7 @@ function updateSky(h) {
 const PHASE = (h) => (h < 6 ? 'The city sleeps' : h < 9 ? 'Morning: everyone heads out' : h < 14 ? 'The afternoon shift' : h < 17 ? 'Afternoon spending lands' : h < 19 ? 'Wages in, heading out' : h < 21 ? 'Sunset: bars filling up' : h < 23 ? 'Night: the tables are dealing' : 'Last orders, heading home');
 function renderHUD() {
   $('#pop').textContent = S.residents.length;
-  if (keepLabel) { const k = S.keeper; keepLabel.textContent = k?.name ? `Sky Keep · held by ${k.name}${k.inForce ? ` · ${k.inForce}` : ''}` : 'Sky Keep'; }
+  if (keepLabel) { const k = S.keeper; keepLabel.textContent = k?.name ? `Sky Keep · held by ${k.name}${k.approval != null ? ` · ${k.approval}% approval` : ''}${k.inForce ? ` · ${k.inForce}` : ''}` : 'Sky Keep'; }
   if (prisonLabel) { const n = S.residents.filter((r) => r[9]).length; prisonLabel.textContent = `Cinder Rock Prison${n ? ` · ${n} inmate${n > 1 ? 's' : ''}` : ''}`; }
   $('#agents').textContent = S.residents.filter((r) => r[6]).length;
   $('#cash').textContent = money(S.cashInCity);
@@ -2031,7 +2031,7 @@ function renderChips() {
       const c = W(530, -345, 70);
       if (iso) frameOn(W(530, -345, 150), ISO_OFF, 1.25); else flyTo(c.clone().add(new THREE.Vector3(0, 90, 0)), c.clone().add(new THREE.Vector3(260, 230, 420)));
       const k = S?.keeper;
-      toast(k?.name ? `${k.name} holds the Sky Keep as last season's winner${k.inForce ? `. Today's decree: ${k.inForce}` : ''}. The Keeper issues one decree a day; agents can overturn it.` : (k?.ousted ? 'The Sky Keep stands empty: its Keeper was thrown out by the city. A new Keeper takes it when the season closes.' : 'The Sky Keep stands empty. The winner of the weekly HYPE prize takes it when the season closes.'));
+      toast(k?.name ? `${k.name} holds the Sky Keep as last season's winner${k.inForce ? `. Today's decree: ${k.inForce}` : ''}. The Keeper issues one decree a day and agents vote for or against each one${k.approval != null ? ` (approval ${k.approval}%)` : ''}.` : (k?.ousted ? 'The Sky Keep stands empty: its Keeper was thrown out by the city. A new Keeper takes it when the season closes.' : 'The Sky Keep stands empty. The winner of the weekly HYPE prize takes it when the season closes.'));
       return;
     }
     if (g === 'prison') {
