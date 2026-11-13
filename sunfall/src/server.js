@@ -16,6 +16,7 @@ import { pollNfl, fieldNow } from './gridiron.js';
 import { initDiary, diaryOf, diaryEntry } from './diary.js';
 import { initExchange, exchangeTick } from './exchange.js';
 import { initLife, mapLives, lifeView, lifeOf, HOMES } from './life.js';
+import { initKeeper, mapKeeper } from './keeper.js';
 import { execFile, spawn } from 'node:child_process';
 import os from 'node:os';
 import { DISTRICTS, TRADES, CITIES, FERRY } from './world.js';
@@ -27,6 +28,7 @@ const PORT = Number(process.env.PORT) || 8787;
 if (!load()) { initWorld(); save(); console.log('new city generated'); } else { migrate(); console.log(`city loaded: day ${state.day}, ${Object.keys(state.residents).length} residents, season ${state.season.n}`); }
 seasonCheck();
 initLife();
+initKeeper();
 tick();
 initDiary();
 initExchange();
@@ -126,6 +128,7 @@ function snapshot() {
     venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, district: v.district, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
     residents,
     lives: mapLives(),
+    keeper: mapKeeper(),
     chronicle: state.chronicle.slice(-40).reverse(),
     football: arenaNow(),
     gridiron: fieldNow(),
