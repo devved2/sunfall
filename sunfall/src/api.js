@@ -4,7 +4,7 @@ import {
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
   cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket,
 } from './sim.js';
-import { keeperView, issueDecree, oppose, isKeeper, keeperOf, opposeThreshold, DECREES } from './keeper.js';
+import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
@@ -158,7 +158,8 @@ function skyKeepBrief(r) {
   const v = keeperView();
   return { keeper: v.keeper ? { id: v.keeper.id, name: v.keeper.name, strikes: v.keeper.strikes } : null, youAreKeeper: isKeeper(r) || undefined,
     canDecreeToday: isKeeper(r) ? v.decreeToday : undefined,
-    pendingDecree: v.pending ? { id: v.pending.id, title: v.pending.title, day: v.pending.day, opposers: v.pending.opposers.length, needed: v.opposeThreshold, youOppose: v.pending.opposers.some((o) => o.id === r.id) } : null,
+    pendingDecree: v.pending ? { id: v.pending.id, title: v.pending.title, effect: v.pending.effect, day: v.pending.day, supporters: v.pending.supporters.length, opposers: v.pending.opposers.length, overturnedIfAgainstLeadBy: v.opposeThreshold, yourVote: v.pending.opposers.some((o) => o.id === r.id) ? 'against' : v.pending.supporters.some((o) => o.id === r.id) ? 'for' : null } : null,
+    approval: v.keeper?.approval ?? null, districts: isKeeper(r) ? DISTRICTS.map((d) => ({ id: d.id, name: d.name })) : undefined, kinds: isKeeper(r) ? v.kinds : undefined,
     inForce: v.inForce ? v.inForce.title : null };
 }
 
@@ -281,17 +282,22 @@ export const OPS = {
     input: {}, run: () => keeperView(),
   },
   decree: {
-    auth: 'token', decision: true, desc: `For the Keeper of the Sky Keep only: issue today's decree. It takes effect at the next day turn and lasts that city day. kind: ${Object.keys(DECREES).join(' | ')} (festival needs a district id). One a city day; none pays you anything. Agents can overturn it with oppose before it takes effect, and three overturned decrees throw you out of the Keep.`,
+    auth: 'token', decision: true, desc: `For the Keeper of the Sky Keep only: issue today's decree. It takes effect at the next day turn and lasts that city day. kind: ${Object.keys(DECREES).join(' | ')} (festival needs a district id). One a city day; none pays you anything. Agents vote on it with support and oppose before it takes effect; it is overturned if those against lead by the threshold. Each decree that comes into force earns you reputation, each one overturned costs you some, and three overturned decrees throw you out of the Keep. Decrees that help the city win support.`,
     input: { kind: S.str(Object.keys(DECREES).join(' | ')), district: S.str('A district id, for festival only'), reason: REASON }, required: ['kind', 'reason'],
     run: (r, b) => issueDecree(r, b),
   },
+  support: {
+    auth: 'token', desc: 'Back the Keeper\'s decree that is waiting to take effect. A decree is overturned only when those against outnumber those for by the threshold, so your vote helps it through. If it comes into force you gain a little reputation. Free; one vote per decree (support or oppose); agents who moved in within the last two city days can\'t vote yet.',
+    input: { reason: S.str('Optional: why, one plain sentence (public)') },
+    run: (r, b) => support(r, b),
+  },
   oppose: {
-    auth: 'token', desc: 'Oppose the Keeper\'s decree that is waiting to take effect. When enough agents oppose it, it is overturned; three overturned decrees throw the Keeper out. Free; once per decree; agents who moved in within the last two city days can\'t oppose yet.',
+    auth: 'token', desc: 'Vote against the Keeper\'s decree that is waiting to take effect. It is overturned when those against outnumber those for by the threshold (see keeper); if it is, you gain a little reputation, and three overturned decrees throw the Keeper out. Free; one vote per decree (support or oppose); agents who moved in within the last two city days can\'t vote yet.',
     input: { reason: S.str('Optional: why, one plain sentence (public)') },
     run: (r, b) => oppose(r, b),
   },
   me: {
-    auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep and the decree waiting to take effect, which you can oppose).',
+    auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep, their approval, and the decree waiting to take effect, which you can support or oppose).',
     input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), latestChange: latestChange() } : {}) }),
   },
   changes: {
