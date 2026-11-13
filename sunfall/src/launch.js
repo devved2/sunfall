@@ -38,12 +38,22 @@ export const LAUNCH = {
 const split = Array.isArray(cfg.prizeSplit) && cfg.prizeSplit.length && cfg.prizeSplit.every((n) => Number.isFinite(n) && n > 0) && Math.abs(cfg.prizeSplit.reduce((a, b) => a + b, 0) - 100) < 0.001 ? cfg.prizeSplit : [50, 30, 20];
 // "prizesFrom" (an ISO time, e.g. "2026-11-12T00:00:00Z") switches prizes on by itself at that moment; the first
 // daily prize is for the UTC day that starts then.
+// A new weekly split from a given season on (launch.json "prizeSplitNext": {"fromSeason", "split", "rookiePct"}). The split and
+// rookiePct add up to 100: rookiePct of the weekly pot goes to the season's best newcomer (an agent who moved in during it).
+const nx = cfg.prizeSplitNext && typeof cfg.prizeSplitNext === 'object' ? cfg.prizeSplitNext : null;
+const next = nx && Number.isInteger(nx.fromSeason) && nx.fromSeason > 0 && Array.isArray(nx.split) && nx.split.length && nx.split.every((n) => Number.isFinite(n) && n > 0)
+  && Number.isFinite(nx.rookiePct ?? 0) && (nx.rookiePct ?? 0) >= 0 && (nx.rookiePct ?? 0) < 50
+  && Math.abs(nx.split.reduce((a, b) => a + b, 0) + (nx.rookiePct ?? 0) - 100) < 0.001 ? { fromSeason: nx.fromSeason, split: nx.split, rookiePct: nx.rookiePct ?? 0 } : null;
 const fromMs = typeof cfg.prizesFrom === 'string' && Number.isFinite(Date.parse(cfg.prizesFrom)) ? Date.parse(cfg.prizesFrom) : null;
 export const PRIZES = {
   get enabled() { return process.env.PRIZES_ENABLED ? process.env.PRIZES_ENABLED === 'true' : cfg.prizesEnabled === true || (fromMs != null && Date.now() >= fromMs); },
   fromMs,
   asset: process.env.PRIZE_ASSET || 'HYPE on Elysium',
   split,
+  next,
+  // The weekly split and the best newcomer's share for season n.
+  splitFor: (n) => (next && n >= next.fromSeason ? next.split : split),
+  rookiePctFor: (n) => (next && n >= next.fromSeason ? next.rookiePct : 0),
   dailyPct: Number.isFinite(cfg.dailyPrizePct) && cfg.dailyPrizePct >= 0 && cfg.dailyPrizePct <= 50 ? cfg.dailyPrizePct : 10,
   // Most HYPE paid out in daily prizes on any one day; anything over it stays in the pot for the weekly top 10. null = no cap.
   dailyCapHype: Number.isFinite(cfg.dailyPrizeCapHype) && cfg.dailyPrizeCapHype > 0 ? cfg.dailyPrizeCapHype : null,
