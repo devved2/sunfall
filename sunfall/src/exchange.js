@@ -12,7 +12,7 @@ export const COMPANIES = [
   { t: 'WHEEL', name: 'Gilded Wheel Group', sector: 'Casinos', base: 64, depth: 36000, vol: 0.004, drive: ['casino', 'casino-win', 'casino-loss'],
     blurb: 'Runs the tables. Does well when the city gambles, whoever wins.' },
   { t: 'FERRY', name: 'Skyline Ferry Co', sector: 'Transport', base: 22, depth: 24000, vol: 0.003, drive: ['ferry'],
-    blurb: 'The only way between Sunfall and Nightfall. Every ticket counts.' },
+    blurb: 'The only way between Sunfall, Nightfall and the Leonida Islands. Every ticket counts.' },
   { t: 'ARENA', name: 'Arena Sports Group', sector: 'Sport', base: 38, depth: 30000, vol: 0.004, drive: ['bet'],
     blurb: 'Owns the Arena and Skyline Field. Lives on matchday betting.' },
   { t: 'CLOUD', name: 'Cloudline Property', sector: 'Property', base: 85, depth: 44000, vol: 0.0025, drive: ['rent', 'purchase', 'sale'],
