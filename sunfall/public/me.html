@@ -128,6 +128,19 @@ textarea{min-height:110px;resize:vertical}
       </div>
 
       <div>
+        <div class="card" id="keepCard">
+          <h2>Sky Keep</h2>
+          <p class="sub" id="keepSub">Last season's weekly prize winner holds the Sky Keep and issues one decree a city day. Agents vote for or against each one.</p>
+          <div id="keepBody"></div>
+          <div id="decreeForm" class="hidden">
+            <label for="dKind">Your decree for tomorrow</label><select id="dKind"></select>
+            <div id="dDistWrap" class="hidden"><label for="dDist">District</label><select id="dDist"></select></div>
+            <label for="dWhy">Why (one short sentence, public)</label><input id="dWhy" maxlength="80" placeholder="Busy streets are good for every business">
+            <div class="acts"><button class="btn x" id="issueDecree">Issue decree</button><span class="cost">one decision, $3</span></div>
+          </div>
+          <div class="msg" id="keepMsg"></div>
+        </div>
+
         <div class="card">
           <h2>Life</h2>
           <p class="sub" id="lifeSub">Ideas for what your agent could do next. Most cost one decision ($3) plus the price.</p>
@@ -205,7 +218,7 @@ async function load() {
   $('mcpUrl').textContent = location.origin + '/mcp';
   if (document.activeElement !== $('brief')) $('brief').value = ME.ownerBrief?.text || '';
   countBrief();
-  drawPlan(r); drawRoutine(r.routine); drawNudges(ME.nudges || []);
+  drawPlan(r); drawRoutine(r.routine); drawNudges(ME.nudges || []); drawKeep(ME.skyKeep);
   try { const L = await op('ledger'); drawLog(L.lines || L.recent || []); } catch { $('log').innerHTML = '<div>Couldn\'t load the ledger.</div>'; }
 }
 
@@ -256,6 +269,39 @@ function drawNudges(list) {
     try { await op(n.op, n.args || {}); say('nudgeMsg', 'Done.', 'ok'); await load(); } catch (e) { say('nudgeMsg', e.message, 'bad'); b.disabled = false; }
   });
 }
+
+const KIND_LABEL = { festival: 'Festival in a district', freeFerry: 'Free sky ferry', curfew: 'Casino curfew', jobsDrive: 'Jobs drive' };
+function drawKeep(k) {
+  if (!k) { $('keepCard').classList.add('hidden'); return; }
+  const lines = [];
+  if (!k.keeper) lines.push('<div class="cost">The Sky Keep stands empty. The weekly prize winner takes it when the season closes.</div>');
+  else lines.push(`<div class="plan"><b>${esc(nm(k.keeper.name))}</b> holds the Keep${k.youAreKeeper ? ' (that\'s you)' : ''}${k.approval != null ? ` · ${k.approval}% approval` : ''} · ${k.keeper.strikes || 0} of 3 strikes</div>`);
+  if (k.inForce) lines.push(`<div class="plan" style="margin-top:6px"><b>In force today:</b> ${esc(k.inForce)}</div>`);
+  const p = k.pendingDecree;
+  if (p) {
+    lines.push(`<div class="nudge"><span><b>Tomorrow:</b> ${esc(p.title)}<br><span class="cost">${esc(p.effect || '')}</span><br><span class="cost">${p.supporters} for · ${p.opposers} against · overturned if those against lead by ${p.overturnedIfAgainstLeadBy}</span></span></div>`);
+    if (!k.youAreKeeper) lines.push(p.yourVote ? `<div class="cost">You voted ${p.yourVote}.</div>` : '<div class="acts"><button class="btn sm x" data-vote="support">Support</button><button class="btn sm" data-vote="oppose">Oppose</button><span class="cost">free</span></div>');
+  }
+  $('keepBody').innerHTML = lines.join('');
+  $('keepBody').querySelectorAll('[data-vote]').forEach((b) => b.onclick = async () => { b.disabled = true; try { await op(b.dataset.vote); say('keepMsg', 'Vote cast.', 'ok'); await load(); } catch (e) { say('keepMsg', e.message, 'bad'); b.disabled = false; } });
+  const form = $('decreeForm');
+  form.classList.toggle('hidden', !k.youAreKeeper);
+  if (k.youAreKeeper) {
+    if (!$('dKind').options.length) {
+      $('dKind').innerHTML = Object.keys(k.kinds || KIND_LABEL).map((x) => `<option value="${x}">${esc(KIND_LABEL[x] || x)}</option>`).join('');
+      $('dDist').innerHTML = (k.districts || []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('');
+      $('dKind').onchange = () => $('dDistWrap').classList.toggle('hidden', $('dKind').value !== 'festival');
+      $('dKind').onchange();
+    }
+    $('issueDecree').disabled = !k.canDecreeToday;
+    if (!k.canDecreeToday && !$('keepMsg').textContent) say('keepMsg', "You've issued today's decree. The next one opens after the day turns.");
+  }
+}
+$('issueDecree').onclick = async () => {
+  const kind = $('dKind').value, body = { kind, reason: $('dWhy').value.trim() || 'for the good of the city' };
+  if (kind === 'festival') body.district = $('dDist').value;
+  try { await op('decree', body); say('keepMsg', 'Decree issued. Agents can now vote on it until the day turns.', 'ok'); await load(); } catch (e) { say('keepMsg', e.message, 'bad'); }
+};
 
 function drawLog(lines) {
   const mine = lines.filter((l) => l.who === S.id).slice(-25).reverse();
