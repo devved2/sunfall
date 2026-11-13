@@ -23,8 +23,13 @@ const GRID = 40, OFF = 20, XMAX = 980, YMAX = 660;
 // Nightfall: a second island east of Sunfall in the same map space, its streets on the same 40-unit grid.
 const NF = { x0: 1540, x1: 2180, y0: 60, y1: 660, cx: 1860, cy: 360 };
 const inNF = (x) => x > 1260;
-const snapX = (v) => (inNF(v) ? clamp(OFF + GRID * Math.round((v - OFF) / GRID), NF.x0, NF.x1) : clamp(OFF + GRID * Math.round((v - OFF) / GRID), OFF, XMAX));
-const snapY = (v) => clamp(OFF + GRID * Math.round((v - OFF) / GRID), OFF, YMAX);
+// The Leonida Islands: a third island south of the gap between the two, on the same 40-unit grid.
+const LI = { x0: 980, x1: 1860, y0: 1020, y1: 1620, cx: 1420, cy: 1320 };
+const inLI = (y) => y > 880;
+const regionOf = (x, y) => (inLI(y) ? 'leonida' : inNF(x) ? 'nightfall' : 'sunfall');
+const BOUNDS = { sunfall: [OFF, XMAX, OFF, YMAX], nightfall: [NF.x0, NF.x1, NF.y0, NF.y1], leonida: [LI.x0, LI.x1, LI.y0, LI.y1] };
+const snapX = (v, y = 0) => { const [a, b] = BOUNDS[regionOf(v, y)]; return clamp(OFF + GRID * Math.round((v - OFF) / GRID), a, b); };
+const snapY = (v, x = 0) => { const [, , a, b] = BOUNDS[regionOf(x, v)]; return clamp(OFF + GRID * Math.round((v - OFF) / GRID), a, b); };
 
 // ------------------------------------------------------------------ renderer, scene, camera
 const canvas = $('#scene');
@@ -217,7 +222,15 @@ const STYLE = {
   halo: { k: 1, h: [70, 175], cols: ['#cfd6ee', '#b4c0e4', '#e4e9f7', '#9cadd8', '#c2b8e8'], neon: 0.3, glass: true },
   undertow: { k: 2, h: [10, 28], cols: ['#5a4a5e', '#6a5560', '#4e4658', '#73606a', '#5e5052'], neon: 0.4 },
   ashdock: { k: 1, h: [7, 15], cols: ['#5c5048', '#4a4440', '#6a5a4c', '#544a46'], chimney: 0.55, neon: 0.12 },
+  // Leonida Islands: pastel art-deco hotels in neon on the Strip, white towers on the Keys, stilt shacks in the bayou, a busy port
+  strip: { k: 2, h: [12, 34], cols: ['#ffc9d9', '#b8efe4', '#ffdcb0', '#d8c6ff', '#bde2ff', '#fff0c8', '#ffbfae'], neon: 0.8 },
+  keys: { k: 1, h: [34, 96], cols: ['#eef9f8', '#c9eef0', '#f6f2ea', '#b6e3ea', '#e2f4ff', '#ffe3ea'], neon: 0.3, split: 0.25, empty: 0.12 },
+  bayou: { k: 2, h: [5, 10], cols: ['#8a6e52', '#a08466', '#6f5a46', '#b49a78', '#8f7a62', '#c7b08a', '#9fb7a0'], empty: 0.32 },
+  port: { k: 1, h: [8, 15], cols: ['#8e9aa6', '#a6a096', '#7d8892', '#b0a48e', '#c9b9a0'], chimney: 0.07, split: 0.3 },
+  marina: { k: 1, h: [18, 54], cols: ['#ffffff', '#e8f6ff', '#fde8d8', '#d9f3ee', '#f0e6ff'], neon: 0.35, split: 0.4, empty: 0.1 },
 };
+const LEON = new Set(['strip', 'keys', 'marina', 'bayou', 'port']);
+const GRAND = '1280,1160'; // the Leonida Grand, the islands' pink art-deco tower, stands on this block
 // Hand-placed landmarks (map coordinates of 40x40 cells)
 const CENTRAL_PARK = new Set(['520,80', '560,80', '520,120', '560,120', '520,160', '560,160']);
 const PLAZA = new Set(['680,320']);
@@ -229,12 +242,17 @@ const ISLANDS = [
   { parts: [[765, 14, 985, 466]], depth: 250 },
   { parts: [[340, 494, 985, 686]], depth: 220 },
   { parts: [[1535, 54, 2185, 666]], depth: 300, tex: [1520, 40], nf: true }, // Nightfall (tex: where its streets sit on the road texture)
+  { parts: [[975, 1014, 1865, 1626]], depth: 340, tex: [960, 1000], li: true }, // the Leonida Islands (beach and lagoon around it: see buildLeonida)
 ];
+// The islands' shore: the land above, a ring of sand around it, a ring of lagoon around that, and a coral lip.
+const SHORE = { sand: 26, lagoon: 40, lip: 6 };
 // Cinder Rock: the prison island floating off the city's west edge. Agents caught robbing a business spend 24 hours here.
 const PRISON = { x0: -660, y0: 190, x1: -250, y1: 510, cx: -455, cy: 350, lift: -30, yard: [-380, 350], yardR: 30 };
 const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
-  { name: 'Cinder Rock Prison', x: -560, y: 350, h: PRISON.lift + 262, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true }];
-const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
+  { name: 'Cinder Rock Prison', x: -560, y: 350, h: PRISON.lift + 262, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true },
+  { name: 'LEONIDA ISLANDS', x: 1420, y: 1320, h: 250, big: true }, { name: 'Ferry to Leonida', x: 960, y: 735, h: 14 }, { name: 'Ferry to Leonida', x: 1700, y: 700, h: 14 },
+  { name: 'Ferry to Sunfall', x: 1180, y: 955, h: 14 }, { name: 'Ferry to Nightfall', x: 1700, y: 955, h: 14 }, { name: 'Ocean Strip Beach', x: 930, y: 1300, h: 10 }, { name: 'Leonida Wheel', x: 1420, y: 985, h: 84 }, { name: 'Sunset Marina', x: 1900, y: 1160, h: 10 }];
+const SLAB = { flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', strip: '#d9c7b4', keys: '#c9cfcf', marina: '#d4d8dc', bayou: '#5e6a4a', port: '#7d8088', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
 const SPINDLE = '1880,360'; // Nightfall's centrepiece tower stands on this block
 const venueMeshes = [];
 const islandMeshes = []; // land and rock of each island, so a click on a city brings it into focus
@@ -252,23 +270,28 @@ function build() {
     const t = roadTex.clone(); t.needsUpdate = true;
     const [tx, ty] = isl.tex || [0, 0];
     t.repeat.set((x1 - x0) / 970, (y1 - y0) / 672); t.offset.set((x0 - tx - 15) / 970, 1 - (y1 - ty - 14) / 672);
-    const land = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4, y1 - y0), [side, side, new THREE.MeshStandardMaterial({ map: t, roughness: 0.92 }), side, side, side]);
+    const land = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4, y1 - y0), [side, side, new THREE.MeshStandardMaterial({ map: t, roughness: 0.92, color: isl.li ? 0xf3e6e0 : 0xffffff }), side, side, side]);
     land.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -2)); land.receiveShadow = true; scene.add(land);
-    land.userData.city = isl.nf ? 'nightfall' : 'sunfall'; land.userData.top = true; islandMeshes.push(land);
-    const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
-    const rock = rockUnder(x0, y0, x1, y1, isl.depth, rnd); rock.userData.city = land.userData.city; islandMeshes.push(rock); scene.add(rock);
+    land.userData.city = isl.nf ? 'nightfall' : isl.li ? 'leonida' : 'sunfall'; land.userData.top = true; islandMeshes.push(land);
+    const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: isl.li ? 0xe9d3a8 : 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
+    const e = isl.li ? SHORE.sand + SHORE.lagoon + SHORE.lip : 0; // the islands' rock carries their beach and lagoon too
+    const rock = rockUnder(x0 - e, y0 - e, x1 + e, y1 + e, isl.depth, rnd); rock.userData.city = land.userData.city; islandMeshes.push(rock); scene.add(rock);
   }
   buildElysiumGlow();
 
+  bayouPools.length = 0; roofPools.length = 0;
   const bld = [], neon = [], chim = [], trees = [], slabs = [], parks = [], roofs = [], acs = [], tanks = [], antennas = [], awnings = [], palms = [], houses = [], benches = [], parkCells = [], crystals = [], domes = [];
   const venueNear = (cx, cy) => S.venues.some((v) => { const [rx, ry] = v.type === 'stadium' || v.type === 'field' ? [70, 50] : [34, 34]; return Math.abs(v.x - cx) < rx && Math.abs(v.y - cy) < ry; });
   const cells = [];
   for (let i = 0; i < 24; i++) for (let j = 0; j < 17; j++) { const cx = OFF + GRID * i + 20, cy = OFF + GRID * j + 20; if (cy <= 676) cells.push([cx, cy]); }
   for (let cx = NF.x0 + 20; cx < NF.x1; cx += GRID) for (let cy = NF.y0 + 20; cy < NF.y1; cy += GRID) cells.push([cx, cy]);
+  for (let cx = LI.x0 + 20; cx < LI.x1; cx += GRID) for (let cy = LI.y0 + 20; cy < LI.y1; cy += GRID) cells.push([cx, cy]);
+  const rnd0 = rnd, rndL = mulberry32(1987); // the islands' blocks draw from their own stream, so Sunfall and Nightfall keep their layout
   for (const [cx, cy] of cells) {
     {
+      const rnd = inLI(cy) ? rndL : rnd0;
       const key = `${cx},${cy}`;
-      if (key === SPINDLE) continue;
+      if (key === SPINDLE || key === GRAND) continue;
       if (isCanal(cx, cy)) continue;
       if (CENTRAL_PARK.has(key)) { parkCells.push([cx, cy]); continue; }
       if (PLAZA.has(key)) { plazaAt = [cx, cy]; continue; }
@@ -282,7 +305,7 @@ function build() {
       const lot = (28 - (k - 1) * 2) / k;
       for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) {
         const lx = cx - 14 + lot / 2 + a * (lot + 2), ly = cy - 14 + lot / 2 + b * (lot + 2);
-        if (st.empty && rnd() < st.empty) { trees.push([lx, ly, 1 + rnd() * 0.5]); continue; }
+        if (st.empty && rnd() < st.empty) { if (LEON.has(d.id)) { palms.push([lx, ly, 0.8 + rnd() * 0.45]); if (d.id === 'bayou' && rnd() < 0.5) bayouPools.push([lx, ly, lot]); } else trees.push([lx, ly, 1 + rnd() * 0.5]); continue; }
         if (d.id === 'neon') { let h = 55 + Math.pow(rnd(), 1.4) * 95; if (S.venues.some((v) => Math.hypot(v.x - lx, v.y - ly) < 120)) h = Math.min(h, 44); crystals.push([lx, ly, lot * (0.55 + rnd() * 0.3), h, st.cols[Math.floor(rnd() * st.cols.length)], rnd() * Math.PI]); if (rnd() < 0.6) crystals.push([lx + (rnd() - 0.5) * lot * 0.6, ly + (rnd() - 0.5) * lot * 0.6, lot * 0.3, h * (0.35 + rnd() * 0.3), st.cols[Math.floor(rnd() * st.cols.length)], rnd() * Math.PI]); continue; }
         const shrink = rnd() * 2.5;
         let [h0, h1] = st.h;
@@ -291,33 +314,38 @@ function build() {
         if (S.venues.some((v) => Math.hypot(v.x - lx, v.y - ly) < 75)) h = Math.min(h, 42);
         const w = lot - shrink, dd = lot - rnd() * 2.5;
         const col = st.cols[Math.floor(rnd() * st.cols.length)];
-        const tiered = d.id !== 'hillside' && h > 34 && rnd() < 0.45;
-        const pitched = !tiered && ((d.id === 'hillside') || (d.id === 'oldtown' && rnd() < 0.8) || (d.id === 'flats' && h < 28 && rnd() < 0.55) || (d.id === 'harbour' && rnd() < 0.4));
+        const tiered = d.id !== 'hillside' && d.id !== 'bayou' && (h > 34 || d.id === 'strip') && rnd() < (d.id === 'strip' ? 0.6 : 0.45);
+        const pitched = !tiered && ((d.id === 'hillside') || d.id === 'bayou' || (d.id === 'oldtown' && rnd() < 0.8) || (d.id === 'flats' && h < 28 && rnd() < 0.55) || (d.id === 'harbour' && rnd() < 0.4));
         bld.push([lx, ly, w, dd, h, col, 0, d.id, !tiered, pitched]);
-        if (pitched) { const rc = d.id === 'hillside' ? ['#5d6fa8', '#c25b4a', '#4f8f8a', '#7a5ea8'] : ['#b5523b', '#9c4a36', '#c0613f', '#5b6378', '#4f7a8a']; roofs.push([lx, ly, w, dd, 0.8 + h, rc[Math.floor(rnd() * rc.length)], (d.id === 'hillside' ? 0.75 : 0.32) * Math.min(w, dd) + rnd() * 2]); if (d.id === 'hillside' && rnd() < 0.6) chim.push([lx + w * 0.25, ly - dd * 0.2, h + 3 + rnd() * 3, 0.45]); }
+        if (pitched) { const rc = d.id === 'hillside' ? ['#5d6fa8', '#c25b4a', '#4f8f8a', '#7a5ea8'] : ['#b5523b', '#9c4a36', '#c0613f', '#5b6378', '#4f7a8a']; roofs.push([lx, ly, w, dd, 0.8 + h, (d.id === 'bayou' ? ['#7c8a8e', '#9a6a4a', '#6f7f6a', '#a5a9a2'] : rc)[Math.floor(rnd() * rc.length) % (d.id === 'bayou' ? 4 : rc.length)], (d.id === 'hillside' ? 0.75 : 0.32) * Math.min(w, dd) + rnd() * 2]); if (d.id === 'hillside' && rnd() < 0.6) chim.push([lx + w * 0.25, ly - dd * 0.2, h + 3 + rnd() * 3, 0.45]); }
         let topH = h, topW = w, topD = dd;
         if (tiered) { const th = h * (0.18 + rnd() * 0.25); bld.push([lx, ly, w * 0.68, dd * 0.68, th, col, h + 0.9, d.id, true]); topH = h + 0.9 + th; topW = w * 0.68; topD = dd * 0.68; }
         if (!pitched && (d.id === 'flats' || d.id === 'oldtown') && topH > 30 && rnd() < 0.4) domes.push([lx, ly, Math.min(topW, topD) * 0.8, 0.8 + topH + 0.9, ['#5fb3a8', '#d8b45a', '#9b88d0', '#6f9ad8'][Math.floor(rnd() * 4)]]);
         if (pitched) {}
         else {
           const rt = 0.8 + topH + 0.9;
+          if ((d.id === 'strip' || d.id === 'keys' || d.id === 'marina') && rnd() < 0.4) { roofPools.push([lx, ly, topW * 0.6, topD * 0.5, rt]); continue; } // a rooftop pool, nothing else up there
           if (rnd() < 0.5) acs.push([lx + topW * 0.22, ly - topD * 0.22, rt, 3.6]);
           const nAc = rnd() < 0.65 ? 1 + Math.floor(rnd() * 3) : 0;
           for (let a2 = 0; a2 < nAc; a2++) acs.push([lx + (rnd() - 0.5) * topW * 0.6, ly + (rnd() - 0.5) * topD * 0.6, rt, 1.6 + rnd() * 1.6]);
           if ((d.id === 'flats' || d.id === 'oldtown' || d.id === 'undertow') && rnd() < 0.32) tanks.push([lx + (rnd() - 0.5) * topW * 0.4, ly + (rnd() - 0.5) * topD * 0.4, rt]);
           if (topH > 95 && rnd() < 0.8) antennas.push([lx, ly, rt, 10 + rnd() * 12]);
           if ((d.id === 'flats' || d.id === 'oldtown' || d.id === 'undertow') && rnd() < 0.45) awnings.push([lx, ly + dd / 2 + 1.1, w * 0.72, ['#c8423a', '#2f6f5e', '#d9a13a', '#3a5a9c', '#e8ddc8', '#7a3b6e'][Math.floor(rnd() * 6)]]);
+          if (d.id === 'strip' && rnd() < 0.6) awnings.push([lx, ly + dd / 2 + 1.1, w * 0.8, ['#ff6f9f', '#2fd6c4', '#ffb347', '#ffffff', '#8f7bff'][Math.floor(rnd() * 5)]]);
         }
         if (st.neon && rnd() < st.neon) {
           const y = 12 + rnd() * (h - 20);
-          const ncol = d.id === 'halo' ? ['#7fe8ff', '#b9a4ff'] : d.id === 'velvet' ? ['#ff3d8b', '#c03cff', '#ff2fd0', '#3df2ff', '#a35bff'] : ['#ff3d8b', '#3df2ff', '#a35bff', '#ff8a3d'];
+          const ncol = d.id === 'halo' ? ['#7fe8ff', '#b9a4ff'] : d.id === 'velvet' ? ['#ff3d8b', '#c03cff', '#ff2fd0', '#3df2ff', '#a35bff'] : d.id === 'strip' ? ['#ff4fa3', '#2ff0e0', '#ffb347', '#b36bff', '#ff6f61'] : d.id === 'keys' ? ['#7ff6ff', '#ffd0ec'] : ['#ff3d8b', '#3df2ff', '#a35bff', '#ff8a3d'];
           neon.push([lx, ly, w + 0.6, dd + 0.6, y, ncol[Math.floor(rnd() * ncol.length)]]);
+          if (d.id === 'strip' && rnd() < 0.7) neon.push([lx, ly, w + 0.6, dd + 0.6, 4.5, ncol[Math.floor(rnd() * ncol.length)]]); // neon at street level on the Strip
           if (d.id === 'velvet' && h > 40 && rnd() < 0.6) neon.push([lx, ly, w + 0.6, dd + 0.6, 6 + rnd() * (h - 12), ncol[Math.floor(rnd() * ncol.length)]]);
           if (h > 110) neon.push([lx, ly, w + 0.6, dd + 0.6, h - 2, '#ff3d8b']);
         }
         if (st.chimney && rnd() < st.chimney) { chim.push([lx + w / 4, ly - dd / 4, 26 + rnd() * 22]); steamAt.push(W(lx + w / 4, ly - dd / 4, 0.8 + 26 + 11)); }
         if (st.trees && rnd() < st.trees) trees.push([lx + lot / 2, ly + lot / 2, 0.8 + rnd() * 0.4]);
       }
+      // palms along the islands' streets
+      if (LEON.has(d.id) && d.id !== 'port' && rnd() < 0.55) palms.push([cx - 16 + (rnd() < 0.5 ? 0 : 32), cy - 16 + (rnd() < 0.5 ? 0 : 32), 0.75 + rnd() * 0.3]);
     }
   }
   // sidewalks / blocks
@@ -425,6 +453,16 @@ function build() {
     domes.forEach(([x, y, r, top, col], i) => { m4.compose(W(x, y, top), q, new THREE.Vector3(r, r * 0.9, r)); dm.setMatrixAt(i, m4); dm.setColorAt(i, c3.set(col)); });
     dm.castShadow = true; scene.add(dm);
   }
+  // rooftop pools on the islands' hotels and towers: a white deck and turquoise water that glows a little at night
+  if (roofPools.length) {
+    const deck = new THREE.InstancedMesh(BOX, new THREE.MeshStandardMaterial({ color: 0xf4efe6, roughness: 0.8 }), roofPools.length);
+    const pool = new THREE.InstancedMesh(BOX, glowing(new THREE.MeshStandardMaterial({ color: 0x3fe0e6, roughness: 0.08, metalness: 0.1 })), roofPools.length);
+    roofPools.forEach(([x, y, w, d, top], i) => {
+      m4.compose(W(x, y, top), q, new THREE.Vector3(w + 2.4, 0.5, d + 2.4)); deck.setMatrixAt(i, m4);
+      m4.compose(W(x, y, top + 0.3), q, new THREE.Vector3(w, 0.4, d)); pool.setMatrixAt(i, m4); pool.setColorAt(i, c3.set(0x3fe0e6));
+    });
+    deck.receiveShadow = true; scene.add(deck, pool);
+  }
   // landmarks: Central Park, the Plaza, the canal
   buildLandmarks(rnd, parkCells, trees, palms, benches);
   // trees: chunky cube canopies
@@ -464,6 +502,7 @@ function build() {
   const lamps = [];
   for (let x = OFF; x <= XMAX; x += GRID) for (let y = OFF; y <= YMAX; y += GRID) if (!inRift(x + 6.5, y + 6.5)) lamps.push([x + 6.5, y + 6.5]);
   for (let x = NF.x0; x <= NF.x1; x += GRID) for (let y = NF.y0; y <= NF.y1; y += GRID) lamps.push([x + 6.5, y + 6.5]);
+  for (let x = LI.x0; x <= LI.x1; x += GRID) for (let y = LI.y0; y <= LI.y1; y += GRID) lamps.push([x + 6.5, y + 6.5]);
   const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.3, 9, 5).translate(0, 4.5, 0), new THREE.MeshStandardMaterial({ color: 0x2b2b30 }), lamps.length);
   lamps.forEach(([x, y], i) => { m4.compose(W(x, y, 0), q, new THREE.Vector3(1, 1, 1)); pole.setMatrixAt(i, m4); });
   scene.add(pole);
@@ -473,12 +512,13 @@ function build() {
 
   // sky docks jutting off the island edges
   const pierMat = new THREE.MeshStandardMaterial({ color: 0x4a3c30, roughness: 0.9 });
-  for (const [x, y, w, d] of [[-2, 420, 44, 7], [-2, 500, 52, 7], [-2, 590, 40, 7], [800, 702, 7, 60], [870, 700, 7, 52], [140, 702, 7, 50], [1006, 400, 44, 9], [1514, 400, 44, 9]]) {
+  for (const [x, y, w, d] of [[-2, 420, 44, 7], [-2, 500, 52, 7], [-2, 590, 40, 7], [800, 702, 7, 60], [870, 700, 7, 52], [140, 702, 7, 50], [1006, 400, 44, 9], [1514, 400, 44, 9], [960, 712, 9, 40], [1700, 682, 9, 34]]) {
     const p = new THREE.Mesh(BOX, pierMat); p.scale.set(w, 1.4, d); p.position.copy(W(x, y, -1)); p.receiveShadow = true; scene.add(p);
   }
 
   for (const v of S.venues) buildVenue(v, rnd);
   buildNightfall(rnd);
+  buildLeonida(mulberry32(1986)); // its own random stream, so the other cities keep their layout
   buildLandmarkLabels();
   buildBillboard();
   buildCars(rnd);
@@ -491,6 +531,7 @@ let lampPoints = null, waterMat = null, canalMat = null, plazaAt = null;
 const steamAt = [];
 const UP = new THREE.Vector3(0, 1, 0), qq0 = new THREE.Quaternion();
 const nightGlows = [], blinkers = [], beams = [], boats = [];
+const bayouPools = [], roofPools = [];
 
 
 // ================================================================== the sky world
@@ -571,9 +612,9 @@ function buildElysiumGlow() {
   const rim = [], streets = [];
   const seg = (arr, ax, ay, bx, by, h) => { const a = W(ax, ay, h), b = W(bx, by, h); arr.push(a.x, a.y, a.z, b.x, b.y, b.z); };
   for (const isl of ISLANDS) for (const [x0, y0, x1, y1] of isl.parts) {
-    const o = 1.6;
+    const o = 1.6 + (isl.li ? SHORE.sand + SHORE.lagoon + SHORE.lip : 0); // the islands glow round their coral lip
     for (const h of [0.6, -5.5]) { seg(rim, x0 - o, y0 - o, x1 + o, y0 - o, h); seg(rim, x1 + o, y0 - o, x1 + o, y1 + o, h); seg(rim, x1 + o, y1 + o, x0 - o, y1 + o, h); seg(rim, x0 - o, y1 + o, x0 - o, y0 - o, h); }
-    const [gx0, gx1, gy0, gy1] = isl.nf ? [NF.x0, NF.x1, NF.y0, NF.y1] : [OFF, XMAX, OFF, YMAX];
+    const [gx0, gx1, gy0, gy1] = isl.nf ? [NF.x0, NF.x1, NF.y0, NF.y1] : isl.li ? [LI.x0, LI.x1, LI.y0, LI.y1] : [OFF, XMAX, OFF, YMAX];
     for (let x = gx0; x <= gx1; x += GRID) if (x > x0 && x < x1) seg(streets, x, y0 + 2, x, y1 - 2, 0.35);
     for (let y = gy0; y <= gy1; y += GRID) if (y > y0 && y < y1) seg(streets, x0 + 2, y, x1 - 2, y, 0.35);
   }
@@ -1087,6 +1128,335 @@ function updateFerries(t) {
   }
 }
 
+// ================================================================== the Leonida Islands
+// A beach city south of the gap: sand and a turquoise lagoon all round, palms everywhere, pastel art-deco on the Strip,
+// the pink Leonida Grand, a Ferris wheel on the boardwalk by the ferry pier, a lighthouse and cranes at the port,
+// yachts circling the lagoon, flamingos in the bayou, and a neon LEONIDA sign over the south beach.
+const leo = { wheel: null, gondolas: [], beam: null, yachts: [], routes: [], flock: null, birds: [] };
+function leonidaSign(text) {
+  const c = document.createElement('canvas'); c.width = 2048; c.height = 512; const g = c.getContext('2d');
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = 'italic 800 300px "Inter", system-ui, sans-serif';
+  for (const [col, blur, lw] of [['#2ff0e0', 60, 26], ['#2ff0e0', 20, 14]]) { g.shadowColor = col; g.shadowBlur = blur; g.strokeStyle = col; g.lineWidth = lw; g.strokeText(text, 1024, 270); }
+  for (const [col, blur] of [['#ff4fa3', 70], ['#ff4fa3', 24], ['#fff0f6', 0]]) { g.shadowColor = '#ff4fa3'; g.shadowBlur = blur; g.fillStyle = col; g.fillText(text, 1024, 270); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+function buildLeonida(rnd) {
+  const [x0, y0, x1, y1] = [975, 1014, 1865, 1626];
+  const sOut = SHORE.sand, wOut = SHORE.sand + SHORE.lagoon, lOut = wOut + SHORE.lip;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), c3 = new THREE.Color(), e = new THREE.Euler(), v3 = new THREE.Vector3();
+  const box = (x, y, w, d, h, y0b, mat) => { const m = new THREE.Mesh(BOX, mat); m.scale.set(w, h, d); m.position.copy(W(x, y, y0b)); m.receiveShadow = true; scene.add(m); return m; };
+  const ring = (o, h, yb, mat) => { // four boxes making a frame o units wide round the land
+    box(cx, y0 - o / 2, x1 - x0 + 2 * o, o, h, yb, mat); box(cx, y1 + o / 2, x1 - x0 + 2 * o, o, h, yb, mat);
+    box(x0 - o / 2, cy, o, y1 - y0, h, yb, mat); box(x1 + o / 2, cy, o, y1 - y0, h, yb, mat);
+  };
+  // the coral lip, the lagoon floor and the beach
+  const lipM = new THREE.MeshStandardMaterial({ color: 0xd8c3a5, roughness: 0.95 });
+  for (const [xa, ya, xb, yb] of [[x0 - lOut, y0 - lOut, x1 + lOut, y0 - wOut], [x0 - lOut, y1 + wOut, x1 + lOut, y1 + lOut], [x0 - lOut, y0 - wOut, x0 - wOut, y1 + wOut], [x1 + wOut, y0 - wOut, x1 + lOut, y1 + wOut]])
+    box((xa + xb) / 2, (ya + yb) / 2, xb - xa, yb - ya, 3.2, -5, lipM);
+  box(cx, cy, x1 - x0 + 2 * wOut, y1 - y0 + 2 * wOut, 1, -9, new THREE.MeshStandardMaterial({ color: 0xe8d6b0, roughness: 1 }));
+  ring(sOut, 3.6, -4.4, new THREE.MeshStandardMaterial({ color: 0xf3dfb0, roughness: 1 }));        // dry sand, just below the street
+  ring(sOut + 7, 1, -5, new THREE.MeshStandardMaterial({ color: 0xd9c08e, roughness: 0.6 }));        // wet sand at the waterline
+  // pink coral heads along the lip
+  const coral = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true }), 90);
+  for (let i = 0; i < 90; i++) {
+    const t = rnd(), side = Math.floor(rnd() * 4), o = wOut + 1 + rnd() * (SHORE.lip - 2);
+    const [x, y] = side === 0 ? [x0 - lOut + t * (x1 - x0 + 2 * lOut), y0 - o] : side === 1 ? [x0 - lOut + t * (x1 - x0 + 2 * lOut), y1 + o] : side === 2 ? [x0 - o, y0 - wOut + t * (y1 - y0 + 2 * wOut)] : [x1 + o, y0 - wOut + t * (y1 - y0 + 2 * wOut)];
+    const s = 1.4 + rnd() * 2.4; m4.compose(W(x, y, -1.8), q.setFromEuler(e.set(rnd() * 3, rnd() * 3, 0)), v3.set(s, s * 0.8, s));
+    coral.setMatrixAt(i, m4); coral.setColorAt(i, c3.set(['#ff7fa8', '#ff9a7a', '#f7c4d6', '#ffb3c8', '#e86f9a'][Math.floor(rnd() * 5)]));
+  }
+  coral.castShadow = true; scene.add(coral);
+  // the lagoon: one sheet under the sand, shallow and bright by the beach, deeper blue towards the lip, sun glints and a foam line
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0 + 2 * wOut, y1 - y0 + 2 * wOut).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
+    uniforms: { uTime: timeU, uNight: nightU, uC: { value: new THREE.Vector2(W(cx, cy).x, W(cx, cy).z) }, uHalf: { value: new THREE.Vector2((x1 - x0) / 2 + sOut + 7, (y1 - y0) / 2 + sOut + 7) }, uW: { value: SHORE.lagoon - 7 } },
+    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform float uTime; uniform float uNight; uniform vec2 uC; uniform vec2 uHalf; uniform float uW; varying vec3 vW;
+      float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+      float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
+      void main(){
+        vec2 p = vW.xz - uC; vec2 q = abs(p) - uHalf; float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0); // distance out from the wet sand
+        float k = clamp(d / uW, 0.0, 1.0);
+        vec3 shallow = vec3(0.36, 0.93, 0.86), deep = vec3(0.02, 0.56, 0.74);
+        vec3 col = mix(shallow, deep, smoothstep(0.05, 0.95, k));
+        float caus = n(vW.xz * 0.22 + vec2(uTime * 0.35, uTime * 0.2)) * n(vW.xz * 0.31 - vec2(uTime * 0.25, uTime * 0.3));
+        col += vec3(0.75, 1.0, 0.95) * smoothstep(0.28, 0.6, caus) * (1.0 - k) * 0.45;
+        float glint = step(0.985, n(vW.xz * 0.9 + vec2(uTime * 1.3, -uTime))) * (1.0 - uNight);
+        float foam = smoothstep(0.12, 0.0, k) * (0.55 + 0.45 * sin(uTime * 1.6 + vW.x * 0.08 + vW.z * 0.05));
+        col = mix(col, vec3(1.0), clamp(foam * 0.8 + glint, 0.0, 1.0));
+        col *= mix(1.0, 0.32, uNight);
+        col += vec3(0.1, 0.55, 0.6) * uNight * (1.0 - k) * 0.35; // the shallows glow a little after dark
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  }));
+  water.position.copy(W(cx, cy, -4.1)); scene.add(water);
+  // turquoise falls pour off the lip into the clouds
+  waterfall(x0 - lOut, 1200, -4, 22, 320, Math.PI / 2); waterfall(x0 - lOut, 1480, -4, 14, 260, Math.PI / 2);
+  waterfall(1200, y1 + lOut, -4, 34, 360, 0); waterfall(1560, y1 + lOut, -4, 18, 300, 0); waterfall(x1 + lOut, 1300, -4, 16, 280, Math.PI / 2);
+  for (let i = 0; i < (LITE ? 8 : 16); i++) puff(x0 - 40 + rnd() * (x1 - x0 + 80), y0 - 40 + rnd() * (y1 - y0 + 80), -320 - rnd() * 50, 300 + rnd() * 240, i % 2);
+
+  // ---- beach life: umbrellas, towels, loungers, palms, lifeguard huts
+  const spots = [];
+  const beachPt = (side, t, o) => (side === 0 ? [x0 - sOut + t * (x1 - x0 + 2 * sOut), y0 - o] : side === 1 ? [x0 - sOut + t * (x1 - x0 + 2 * sOut), y1 + o] : side === 2 ? [x0 - o, y0 + t * (y1 - y0)] : [x1 + o, y0 + t * (y1 - y0)]);
+  for (let i = 0; i < 190; i++) {
+    const side = rnd() < 0.42 ? 1 : rnd() < 0.62 ? 2 : rnd() < 0.5 ? 0 : 3;     // most on the south and west beaches
+    const t = rnd(); if (side === 0 && t > 0.14 && t < 0.8) continue;             // the boardwalk and piers on the north shore
+    if (side === 3) continue;                                                     // the marina and port on the east shore
+    spots.push(beachPt(side, t, 8 + rnd() * 14));
+  }
+  const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.15, 6, 4).translate(0, 3, 0), new THREE.MeshStandardMaterial({ color: 0xeeeeee }), spots.length);
+  const canopy = new THREE.InstancedMesh(new THREE.ConeGeometry(4.2, 1.6, 8).translate(0, 6.6, 0), new THREE.MeshStandardMaterial({ roughness: 0.7, flatShading: true }), spots.length);
+  const towel = new THREE.InstancedMesh(BOX, new THREE.MeshStandardMaterial({ roughness: 0.9 }), spots.length);
+  const brights = ['#ff4f8b', '#2fd6c4', '#ffd23f', '#ffffff', '#ff7a3d', '#8f7bff', '#3fa7ff'];
+  spots.forEach(([x, y], i) => {
+    m4.compose(W(x, y, -0.8), q.setFromEuler(e.set((rnd() - 0.5) * 0.25, 0, (rnd() - 0.5) * 0.25)), v3.set(1, 1, 1)); pole.setMatrixAt(i, m4); canopy.setMatrixAt(i, m4);
+    canopy.setColorAt(i, c3.set(brights[Math.floor(rnd() * brights.length)]));
+    m4.compose(W(x + 3, y + 1.5, -0.75), q.setFromAxisAngle(UP, rnd() * 3), v3.set(2.4, 0.12, 4.6)); towel.setMatrixAt(i, m4); towel.setColorAt(i, c3.set(brights[Math.floor(rnd() * brights.length)]));
+  });
+  pole.castShadow = canopy.castShadow = true; scene.add(pole, canopy, towel);
+  const palmsB = [];
+  for (let i = 0; i < 120; i++) { const side = rnd() < 0.35 ? 1 : rnd() < 0.55 ? 2 : rnd() < 0.5 ? 0 : 3; const t = rnd(); if (side === 3 && t > 0.4) continue; palmsB.push([...beachPt(side, t, 3 + rnd() * 5), 0.85 + rnd() * 0.5]); }
+  const ptrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.6, 1, 6).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0x9a7650, roughness: 0.9 }), palmsB.length);
+  const leaf = new THREE.InstancedMesh(new THREE.BoxGeometry(7.5, 0.3, 1.9).translate(3.75, 0, 0), new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true }), palmsB.length * 7);
+  palmsB.forEach(([x, y, s], i) => {
+    const hgt = 15 * s, lean = (rnd() - 0.5) * 0.35;
+    m4.compose(W(x, y, -0.8), q.setFromEuler(e.set(lean, 0, (rnd() - 0.5) * 0.35)), v3.set(s, hgt, s)); ptrunk.setMatrixAt(i, m4);
+    const top = W(x, y, -0.8).add(v3.set(0, hgt, 0).applyQuaternion(q));
+    for (let k = 0; k < 7; k++) { m4.compose(top, q.clone().setFromEuler(e.set(0, k * 0.9 + rnd() * 0.3, -0.38 - rnd() * 0.25, 'YXZ')), v3.set(s, s, s)); leaf.setMatrixAt(i * 7 + k, m4); leaf.setColorAt(i * 7 + k, c3.set(k % 2 ? '#3f9a52' : '#56b05e')); }
+  });
+  ptrunk.castShadow = leaf.castShadow = true; scene.add(ptrunk, leaf);
+  const hutM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
+  for (const [x, y, col] of [[1100, y1 + 14, 0xff8fb8], [1380, y1 + 14, 0x5fe0cf], [1640, y1 + 14, 0xff6f61], [x0 - 14, 1500, 0xffd27a], [x0 - 14, 1300, 0xb59bff], [x0 - 14, 1100, 0x7fd1ff]]) {
+    const g = new THREE.Group(); g.position.copy(W(x, y, -0.8));
+    for (const [a, b] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) { const l = new THREE.Mesh(BOX, hutM); l.scale.set(0.4, 6, 0.4); l.position.set(a, 0, b); g.add(l); }
+    const cab = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 })); cab.scale.set(5, 3.6, 4.4); cab.position.y = 6; g.add(cab);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(4, 1.6, 4).rotateY(Math.PI / 4), hutM); roof.position.y = 10.4; g.add(roof);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+  }
+
+  // ---- the north boardwalk, the ferry piers and the Ferris wheel
+  const deckM = new THREE.MeshStandardMaterial({ color: 0xb08a62, roughness: 0.85 });
+  box(1360, y0 - 12, 500, 18, 1, -0.9, deckM);
+  for (const [x, len] of [[1180, wOut + SHORE.lip + 6], [1700, wOut + SHORE.lip + 6]]) box(x, y0 - len / 2, 10, len, 1.2, -1.1, deckM);
+  const bulbs = [];
+  for (let x = 1115; x <= 1605; x += 7) bulbs.push(W(x, y0 - 21, 5 + Math.sin(x * 0.45) * 0.8));
+  const bp = new THREE.Points(new THREE.BufferGeometry().setFromPoints(bulbs), new THREE.PointsMaterial({ map: GLOW, size: 7, color: 0xffd9a0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(bp); nightGlows.push(bp.material);
+  {
+    const R = 38, H = R + 9, at = W(1420, y0 - 12, 0);
+    const steel = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4, metalness: 0.5 });
+    for (const s of [-1, 1]) for (const z of [-3.2, 3.2]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, H * 1.08, 6), steel); leg.position.set(at.x + s * 10, H / 2, at.z + z); leg.rotation.z = s * 0.26; leg.castShadow = true; scene.add(leg); }
+    const wheel = new THREE.Group(); wheel.position.set(at.x, H, at.z); scene.add(wheel);
+    const rimM = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 0.6, 1.4), toneMapped: false }); neonMats.push(rimM);
+    for (const z of [-2.6, 2.6]) { const rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.55, 6, 64), rimM); rim.position.z = z; wheel.add(rim); const hub = new THREE.Mesh(new THREE.TorusGeometry(R * 0.25, 0.5, 6, 24), steel); hub.position.z = z; wheel.add(hub); }
+    for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; for (const z of [-2.6, 2.6]) { const sp = new THREE.Mesh(BOX, steel); sp.scale.set(0.3, R, 0.3); sp.position.set(Math.cos(a) * R / 2, Math.sin(a) * R / 2, z); sp.rotation.z = a - Math.PI / 2; wheel.add(sp); } }
+    const lights = []; for (let k = 0; k < 48; k++) { const a = (k / 48) * Math.PI * 2; lights.push(new THREE.Vector3(Math.cos(a) * R, Math.sin(a) * R, 3.2)); }
+    const lp = new THREE.Points(new THREE.BufferGeometry().setFromPoints(lights), new THREE.PointsMaterial({ map: GLOW, size: 9, color: 0x7ff6ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); wheel.add(lp); nightGlows.push(lp.material);
+    const cols = ['#ff8fb8', '#5fe0cf', '#ffd27a', '#b59bff', '#ff6f61', '#7fd1ff'];
+    for (let k = 0; k < 16; k++) {
+      const gd = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: cols[k % cols.length], roughness: 0.5 })); gd.scale.set(3.4, 3, 3.4); gd.castShadow = true; scene.add(gd);
+      leo.gondolas.push({ m: gd, a: (k / 16) * Math.PI * 2, R, c: wheel.position });
+    }
+    leo.wheel = wheel;
+  }
+
+  // ---- the Leonida Grand: a stepped pink art-deco tower with neon fins and a glowing crown
+  {
+    const [gx, gy] = GRAND.split(',').map(Number), at = W(gx, gy, 0.8);
+    const pink = windowed(new THREE.MeshStandardMaterial({ color: 0xffb7cb, roughness: 0.6 })), cream = windowed(new THREE.MeshStandardMaterial({ color: 0xfff1de, roughness: 0.6 }));
+    const fin = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.2, 2.0), toneMapped: false }); neonMats.push(fin);
+    const pinkNeon = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.5, 1.3), toneMapped: false }); neonMats.push(pinkNeon);
+    let y = 0;
+    for (const [w, h, m] of [[30, 44, pink], [24, 34, cream], [18, 26, pink], [12, 18, cream]]) {
+      const b = new THREE.Mesh(BOX, m); b.scale.set(w, h, w); b.position.set(at.x, at.y + y, at.z); b.castShadow = b.receiveShadow = true; scene.add(b);
+      const band = new THREE.Mesh(BOX, pinkNeon); band.scale.set(w + 0.6, 0.8, w + 0.6); band.position.set(at.x, at.y + y + h - 0.6, at.z); scene.add(band);
+      for (const s of [-1, 1]) { const f = new THREE.Mesh(BOX, fin); f.scale.set(0.8, h * 0.8, 0.8); f.position.set(at.x + s * w * 0.22, at.y + y + h * 0.1, at.z + w / 2 + 0.3); scene.add(f); const f2 = f.clone(); f2.position.z = at.z - w / 2 - 0.3; scene.add(f2); }
+      y += h;
+    }
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(4, 26, 8).translate(0, 13, 0), cream); spire.position.set(at.x, at.y + y, at.z); spire.castShadow = true; scene.add(spire);
+    for (const [r, hh] of [[6.4, 4], [4.8, 10], [3.2, 16]]) { const rg = new THREE.Mesh(new THREE.TorusGeometry(r, 0.5, 6, 24).rotateX(Math.PI / 2), fin); rg.position.set(at.x, at.y + y + hh, at.z); scene.add(rg); }
+    const beacon = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(at.x, at.y + y + 28, at.z)]), new THREE.PointsMaterial({ map: GLOW, size: 40, color: 0xff6fb5, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(beacon); blinkers.push(beacon.material);
+    const sm = new THREE.MeshBasicMaterial({ map: neonTexture('Leonida Grand', '#ff4fa3'), transparent: true, toneMapped: false }); neonMats.push(sm);
+    for (const s of [1, -1]) { const sg = new THREE.Mesh(new THREE.PlaneGeometry(26, 6.5), sm); sg.position.set(at.x, at.y + 50, at.z + s * 12.4); if (s < 0) sg.rotation.y = Math.PI; scene.add(sg); }
+  }
+
+  // ---- the LEONIDA sign over the south beach
+  {
+    const sm = new THREE.MeshBasicMaterial({ map: leonidaSign('Leonida'), transparent: true, depthWrite: false, toneMapped: false }); neonMats.push(sm);
+    const at = W(1300, y1 + 16, 0), frame = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.6, metalness: 0.5 });
+    for (const s of [-55, 55]) { const p = new THREE.Mesh(BOX, frame); p.scale.set(1.4, 30, 1.4); p.position.set(at.x + s, -1, at.z); p.castShadow = true; scene.add(p); }
+    for (const r of [0, Math.PI]) { const sg = new THREE.Mesh(new THREE.PlaneGeometry(150, 37.5), sm); sg.position.set(at.x, 34, at.z + (r ? -0.2 : 0.2)); sg.rotation.y = r; scene.add(sg); }
+  }
+
+  // ---- the port: a lighthouse on the south-east point, gantry cranes, stacked containers and a cargo ship
+  {
+    const at = W(x1 + 12, y1 + 12, -0.8), white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), red = new THREE.MeshStandardMaterial({ color: 0xe8404a, roughness: 0.6 });
+    for (let k = 0; k < 6; k++) { const r0 = 4.4 - k * 0.42, seg = new THREE.Mesh(new THREE.CylinderGeometry(r0 - 0.42, r0, 7, 14).translate(0, 3.5, 0), k % 2 ? red : white); seg.position.set(at.x, at.y + k * 7, at.z); seg.castShadow = true; scene.add(seg); }
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 3.4, 10), new THREE.MeshBasicMaterial({ color: 0xfff1b0, toneMapped: false })); lamp.position.set(at.x, at.y + 43.7, at.z); scene.add(lamp);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(2.8, 3, 10), red); cap.position.set(at.x, at.y + 47, at.z); scene.add(cap);
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(9, 140, 16, 1, true).translate(0, -70, 0).rotateZ(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xfff3c0, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    beam.position.set(at.x, at.y + 43.7, at.z); scene.add(beam); leo.beam = beam;
+    const steel = new THREE.MeshStandardMaterial({ color: 0xe0a33a, roughness: 0.5, metalness: 0.4 });
+    for (const y of [1420, 1520]) {
+      const g = new THREE.Group(); g.position.copy(W(x1 + 10, y, -0.8));
+      for (const [a, b] of [[-6, -5], [6, -5], [-6, 5], [6, 5]]) { const l = new THREE.Mesh(BOX, steel); l.scale.set(1, 30, 1); l.position.set(a, 0, b); g.add(l); }
+      const top = new THREE.Mesh(BOX, steel); top.scale.set(14, 2.4, 12); top.position.y = 30; g.add(top);
+      const boom = new THREE.Mesh(BOX, steel); boom.scale.set(54, 1.6, 2.2); boom.position.set(18, 31, 0); g.add(boom);
+      const cable = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x333333 })); cable.scale.set(0.2, 16, 0.2); cable.position.set(30, 16, 0); g.add(cable);
+      g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+    }
+    const ccol = ['#d9483b', '#2f6fb0', '#e8a33a', '#3f8f5a', '#7a4fa0', '#e0e0e0', '#2fb5a8'];
+    const cont = new THREE.InstancedMesh(BOX, new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.2 }), 60);
+    let n = 0;
+    for (let i = 0; i < 6 && n < 60; i++) for (let j = 0; j < 3 && n < 60; j++) for (let k = 0; k < 1 + Math.floor(rnd() * 3) && n < 60; k++) {
+      m4.compose(W(x1 + 5 + j * 5.4, 1380 + i * 12 + (i > 2 ? 70 : 0), -0.8 + k * 2.6), q, v3.set(4.8, 2.5, 11)); cont.setMatrixAt(n, m4); cont.setColorAt(n++, c3.set(ccol[Math.floor(rnd() * ccol.length)]));
+    }
+    cont.count = n; cont.castShadow = true; scene.add(cont);
+    const ship = new THREE.Group(); ship.position.copy(W(x1 + sOut + 22, 1470, -4));
+    const hull = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x2b3a55, roughness: 0.6 })); hull.scale.set(14, 6, 96); hull.position.y = 1; ship.add(hull);
+    const bridge = new THREE.Mesh(BOX, windowed(new THREE.MeshStandardMaterial({ color: 0xffffff }))); bridge.scale.set(12, 12, 10); bridge.position.set(0, 9, 40); ship.add(bridge);
+    for (let k = 0; k < 14; k++) { const c = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: ccol[k % ccol.length], roughness: 0.7 })); c.scale.set(12, 2.5 * (1 + (k % 3)), 5.4); c.position.set(0, 4 + 1.25 * (k % 3), -38 + k * 5.6); ship.add(c); }
+    ship.traverse((o) => { if (o.isMesh) o.castShadow = true; }); scene.add(ship);
+  }
+
+  // ---- the bayou: murky pools with lily pads, and a flock of flamingos
+  if (bayouPools.length) {
+    const pm = new THREE.MeshStandardMaterial({ color: 0x2f5a48, roughness: 0.2, metalness: 0.2 });
+    const pools = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.5, 0.5, 0.3, 18), pm, bayouPools.length);
+    const pads = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.9, 0.9, 0.15, 8), new THREE.MeshStandardMaterial({ color: 0x5fa04a, roughness: 0.8 }), bayouPools.length * 4);
+    bayouPools.forEach(([x, y, lot], i) => {
+      m4.compose(W(x, y, 0.85), q, v3.set(lot * 0.8, 1, lot * 0.8)); pools.setMatrixAt(i, m4);
+      for (let k = 0; k < 4; k++) { m4.compose(W(x + (rnd() - 0.5) * lot * 0.5, y + (rnd() - 0.5) * lot * 0.5, 1.05), q, v3.set(1, 1, 1)); pads.setMatrixAt(i * 4 + k, m4); }
+    });
+    scene.add(pools, pads);
+  }
+  {
+    const flock = [];
+    for (let i = 0; i < 18; i++) flock.push(i < 10 && bayouPools.length ? (() => { const [x, y, lot] = bayouPools[i % bayouPools.length]; return [x + (rnd() - 0.5) * lot * 0.6, y + (rnd() - 0.5) * lot * 0.6, 1]; })() : [1020 + rnd() * 160, y1 + 18 + rnd() * 6, -0.8]);
+    const pinkM = new THREE.MeshStandardMaterial({ color: 0xff8fb0, roughness: 0.6 });
+    const body = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), pinkM, flock.length);
+    const neck = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.28, 3.2, 5).translate(0, 1.6, 0), pinkM, flock.length);
+    const head = new THREE.InstancedMesh(new THREE.SphereGeometry(0.55, 8, 6), pinkM, flock.length);
+    const legs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.09, 3.4, 4).translate(0, 1.7, 0), new THREE.MeshStandardMaterial({ color: 0xe86f8f }), flock.length);
+    flock.forEach(([x, y, hb], i) => {
+      const yaw = rnd() * 6.28; q.setFromAxisAngle(UP, yaw); const base = W(x, y, hb);
+      m4.compose(base, q, v3.set(1, 1, 1)); legs.setMatrixAt(i, m4);
+      m4.compose(base.clone().add(new THREE.Vector3(0, 4, 0)), q, v3.set(1.5, 1, 0.9)); body.setMatrixAt(i, m4);
+      const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+      m4.compose(base.clone().add(new THREE.Vector3(0, 4.3, 0)).addScaledVector(fwd, 1.1), q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.35)), v3.set(1, 1, 1)); neck.setMatrixAt(i, m4);
+      m4.compose(base.clone().add(new THREE.Vector3(0, 7.2, 0)).addScaledVector(fwd, 2.2), q, v3.set(1, 1, 1)); head.setMatrixAt(i, m4);
+    });
+    for (const m of [body, neck, head, legs]) { m.castShadow = true; scene.add(m); }
+  }
+
+  // ---- Sunset Marina: a pontoon along the east lagoon with finger piers and yachts moored at them
+  {
+    const px = x1 + sOut + 6;
+    box(px, 1165, 4, 270, 0.8, -3.6, deckM);
+    const moored = [];
+    for (let y = 1040; y <= 1290; y += 21) { box(px + 9, y, 18, 2.4, 0.7, -3.6, deckM); if (rnd() < 0.8) moored.push([px + 12, y + (rnd() < 0.5 ? 5.5 : -5.5)]); }
+    const hullG = new THREE.CylinderGeometry(2.2, 1.4, 12, 6).rotateZ(Math.PI / 2).scale(1, 0.55, 1).translate(0, 1, 0);
+    const hulls = new THREE.InstancedMesh(hullG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), moored.length);
+    const cabs = new THREE.InstancedMesh(BOX, new THREE.MeshStandardMaterial({ color: 0x1d2a3a, roughness: 0.1, metalness: 0.6 }), moored.length);
+    const masts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.15, 16, 4).translate(0, 8, 0), new THREE.MeshStandardMaterial({ color: 0xdddddd }), moored.length);
+    moored.forEach(([x, y], i) => {
+      m4.compose(W(x, y, -4.2), q, v3.set(1, 1, 1)); hulls.setMatrixAt(i, m4);
+      m4.compose(W(x - 1, y, -2.2), q, v3.set(5, 1.8, 2.8)); cabs.setMatrixAt(i, m4);
+      m4.compose(W(x + 1, y, -2), q, v3.set(1, rnd() < 0.5 ? 1 : 0.01, 1)); masts.setMatrixAt(i, m4);
+    });
+    hulls.castShadow = cabs.castShadow = masts.castShadow = true; scene.add(hulls, cabs, masts);
+  }
+
+  // ---- fireworks over the beaches at night
+  {
+    const N = LITE ? 360 : 900;
+    const pos = new Float32Array(N * 3).fill(-9999), col = new Float32Array(N * 3);
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: GLOW, size: 7, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    pts.frustumCulled = false; scene.add(pts);
+    leo.fw = { pts, pos, col, vel: new Float32Array(N * 3), age: new Float32Array(N).fill(99), base: new Float32Array(N * 3), N, next: 0, cursor: 0 };
+  }
+
+  // ---- yachts circling the lagoon
+  const yachtM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), glassM = new THREE.MeshStandardMaterial({ color: 0x1d2a3a, roughness: 0.1, metalness: 0.6 });
+  for (let i = 0; i < (LITE ? 3 : 6); i++) {
+    const g = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 1.6, 14, 6).rotateZ(Math.PI / 2), yachtM); hull.scale.set(1, 0.55, 1); hull.position.y = 1; g.add(hull);
+    const cab = new THREE.Mesh(BOX, glassM); cab.scale.set(6, 2.2, 3.4); cab.position.set(-1, 2.6, 0); g.add(cab);
+    const deck = new THREE.Mesh(BOX, yachtM); deck.scale.set(4, 1.2, 3); deck.position.set(-1.5, 4.2, 0); g.add(deck);
+    const stripe = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: brights[i % brights.length] })); stripe.scale.set(12, 0.5, 3.6); stripe.position.y = 1.4; g.add(stripe);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+    leo.yachts.push({ g, u: rnd(), sp: 0.006 + rnd() * 0.006, o: sOut + 14 + rnd() * 16 });
+  }
+  leo.box = [x0, y0, x1, y1];
+
+  // ---- the sky ferry routes to the islands: from Sunfall's south pier and from Nightfall's south pier
+  for (const [a, b] of [[[960, 735], [1180, 976]], [[1700, 702], [1700, 976]]]) for (let i = 0; i < 2; i++) { const g = airshipMesh(0.55, rnd); scene.add(g); leo.routes.push({ g, a, b, off: i * 0.5 + rnd() * 0.1 }); }
+}
+// Along the lagoon: a point a share u of the way round a rectangle o units out from the land.
+function lagoonAt(u, o) {
+  const [x0, y0, x1, y1] = leo.box, w = x1 - x0 + 2 * o, h = y1 - y0 + 2 * o, L = 2 * (w + h);
+  let d = (((u % 1) + 1) % 1) * L;
+  if (d < w) return [x0 - o + d, y0 - o, 0]; d -= w;
+  if (d < h) return [x1 + o, y0 - o + d, 1]; d -= h;
+  if (d < w) return [x1 + o - d, y1 + o, 2]; d -= w;
+  return [x0 - o, y1 + o - d, 3];
+}
+function updateLeonida(t, dt) {
+  if (leo.wheel) {
+    const a0 = t * 0.12; leo.wheel.rotation.z = a0;
+    for (const g of leo.gondolas) g.m.position.set(g.c.x + Math.cos(g.a + a0) * g.R, g.c.y + Math.sin(g.a + a0) * g.R - 2.4, g.c.z);
+  }
+  if (leo.fw) {
+    const F = leo.fw, night = nightU.value;
+    if (night > 0.55 && t > F.next) { // a burst: 150 sparks from one point over the beach, in one or two colours
+      F.next = t + 0.5 + Math.random() * 1.4;
+      const [bx0, by0, bx1, by1] = leo.box, side = Math.random();
+      const at = side < 0.5 ? W(bx0 + Math.random() * (bx1 - bx0), by1 + 40 + Math.random() * 40, 0) : W(bx0 - 40 - Math.random() * 40, by0 + Math.random() * (by1 - by0), 0);
+      at.y = 110 + Math.random() * 90;
+      const pal = [[1, 0.3, 0.65], [0.2, 1, 0.9], [1, 0.8, 0.3], [0.7, 0.45, 1], [1, 1, 1], [1, 0.45, 0.3]];
+      const ca = pal[Math.floor(Math.random() * pal.length)], cb = pal[Math.floor(Math.random() * pal.length)], sp = 34 + Math.random() * 22;
+      for (let k = 0; k < 150; k++) {
+        const i = F.cursor; F.cursor = (F.cursor + 1) % F.N;
+        const u = Math.random() * 2 - 1, a = Math.random() * 6.283, r = Math.sqrt(1 - u * u), s2 = sp * (0.85 + Math.random() * 0.3);
+        F.vel[i * 3] = r * Math.cos(a) * s2; F.vel[i * 3 + 1] = u * s2; F.vel[i * 3 + 2] = r * Math.sin(a) * s2;
+        F.pos[i * 3] = at.x; F.pos[i * 3 + 1] = at.y; F.pos[i * 3 + 2] = at.z; F.age[i] = 0;
+        const c = k % 3 ? ca : cb; F.base[i * 3] = c[0]; F.base[i * 3 + 1] = c[1]; F.base[i * 3 + 2] = c[2];
+      }
+    }
+    for (let i = 0; i < F.N; i++) {
+      if (F.age[i] > 2.6) { if (F.pos[i * 3 + 1] > -9000) F.pos[i * 3 + 1] = -9999; continue; }
+      F.age[i] += dt; const drag = Math.exp(-dt * 1.4);
+      F.vel[i * 3] *= drag; F.vel[i * 3 + 2] *= drag; F.vel[i * 3 + 1] = F.vel[i * 3 + 1] * drag - 14 * dt;
+      F.pos[i * 3] += F.vel[i * 3] * dt; F.pos[i * 3 + 1] += F.vel[i * 3 + 1] * dt; F.pos[i * 3 + 2] += F.vel[i * 3 + 2] * dt;
+      const fade = Math.max(0, 1 - F.age[i] / 2.6) * (0.75 + 0.25 * Math.sin(F.age[i] * 40 + i)) * 2.2;
+      F.col[i * 3] = F.base[i * 3] * fade; F.col[i * 3 + 1] = F.base[i * 3 + 1] * fade; F.col[i * 3 + 2] = F.base[i * 3 + 2] * fade;
+    }
+    F.pts.geometry.attributes.position.needsUpdate = true; F.pts.geometry.attributes.color.needsUpdate = true;
+  }
+  if (leo.beam) leo.beam.rotation.y = t * 0.8, leo.beam.material.opacity = 0.04 + nightU.value * 0.16;
+  for (const y of leo.yachts) {
+    y.u += y.sp * dt;
+    const [x, z, side] = lagoonAt(y.u, y.o);
+    y.g.position.copy(W(x, z, -3.6 + Math.sin(t * 1.2 + y.o) * 0.25));
+    y.g.rotation.y = [0, -Math.PI / 2, Math.PI, Math.PI / 2][side];
+  }
+  const P = 52;
+  for (const f of leo.routes) {
+    const k = ((t / P + f.off) % 1 + 1) % 1;
+    let u, back = false;
+    if (k < 0.1) u = 0; else if (k < 0.45) u = smooth(0.1, 0.45, k); else if (k < 0.55) u = 1; else { u = 1 - smooth(0.55, 0.9, k); back = true; }
+    if (k >= 0.9) { u = 0; back = true; }
+    const [ax, ay] = f.a, [bx, by] = f.b;
+    f.g.position.copy(W(ax + (bx - ax) * u, ay + (by - ay) * u, 26 + Math.sin(u * Math.PI) * 30 + Math.sin(t * 0.8 + f.off * 9) * 0.6));
+    const dx = (bx - ax) * (back ? -1 : 1), dz = (by - ay) * (back ? -1 : 1);
+    f.g.rotation.y = Math.atan2(-dz, dx);
+  }
+}
+
 function buildSkyWorld(rnd) {
   puffMats.push(new THREE.SpriteMaterial({ map: puffTexture(), transparent: true, depthWrite: false, color: 0xffffff, opacity: 0.9 }));
   puffMats.push(new THREE.SpriteMaterial({ map: puffTexture(29), transparent: true, depthWrite: false, color: 0xffffff, opacity: 0.85 }));
@@ -1222,6 +1592,7 @@ function buildSteam() {
 const _pv = new THREE.Vector3(), _pv2 = new THREE.Vector3(), _pv3 = new THREE.Vector3();
 function updateSkyWorld(t, dt) {
   updateFerries(t);
+  updateLeonida(t, dt);
   timeU.value = t;
   for (const p of puffs) {
     p.sp.position.x = p.base.x + Math.sin(t * 0.02 + p.ph) * 30;
@@ -1729,8 +2100,9 @@ function buildBoats(rnd) {
 const cars = [];
 let carMesh = null, carLights = null, cabinMesh = null, tailLights = null;
 function buildCars(rnd) {
-  const N = LITE ? 24 : 48;
+  const N0 = LITE ? 24 : 48, N = N0 + (LITE ? 10 : 22); // the last ones cruise the Leonida Islands
   const cols = ['#c9c4bd', '#2b2f36', '#8a2f2f', '#2f4f8a', '#d9b23c', '#e9e4dc', '#3f6b4f'];
+  const pastel = ['#ff8fb8', '#5fe0cf', '#ffd27a', '#ffffff', '#b59bff', '#ff6f61', '#7fd1ff'];
   carMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(5.4, 1.5, 2.8).translate(0, 1.2, 0), new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5 }), N);
   carMesh.castShadow = true;
   cabinMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.9, 1.15, 2.5).translate(-0.3, 2.5, 0), new THREE.MeshStandardMaterial({ color: 0x1c2430, roughness: 0.15, metalness: 0.7 }), N);
@@ -1739,11 +2111,18 @@ function buildCars(rnd) {
     new THREE.PointsMaterial({ map: GLOW, size: 6, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xff2a2a, opacity: 0 }));
   scene.add(tailLights);
   const c3 = new THREE.Color();
-  for (let i = 0; i < N; i++) {
+  const rl = mulberry32(77);
+  for (let i = N0; i < N; i++) {
+    const horiz = rl() < 0.5;
+    const line = horiz ? LI.y0 + GRID * Math.floor(rl() * 16) : LI.x0 + GRID * Math.floor(rl() * 23);
+    cars[i] = { horiz, line, dir: rl() < 0.5 ? 1 : -1, s: rl() * 1000, v: 16 + rl() * 18, li: true };
+    carMesh.setColorAt(i, c3.set(pastel[Math.floor(rl() * pastel.length)]));
+  }
+  for (let i = 0; i < N0; i++) {
     const horiz = rnd() < 0.55, nf = i % 3 === 2; // a third of the traffic is in Nightfall
     const line = nf ? (horiz ? NF.y0 + GRID * Math.floor(rnd() * 16) : NF.x0 + GRID * Math.floor(rnd() * 17)) : horiz ? OFF + GRID * Math.floor(rnd() * 17) : OFF + GRID * Math.floor(rnd() * 25);
     const dir = rnd() < 0.5 ? 1 : -1;
-    cars.push({ horiz, line, dir, s: rnd() * 1000, v: 22 + rnd() * 22, nf });
+    cars[i] = { horiz, line, dir, s: rnd() * 1000, v: 22 + rnd() * 22, nf };
     carMesh.setColorAt(i, c3.set(cols[Math.floor(rnd() * cols.length)]));
   }
   scene.add(carMesh);
@@ -1756,7 +2135,7 @@ function updateCars(dt) {
   if (!carMesh) return;
   const pos = carLights.geometry.attributes.position, tpos = tailLights.geometry.attributes.position;
   cars.forEach((c, i) => {
-    const [ox, oy, mx, my] = c.nf ? [NF.x0, NF.y0, NF.x1, NF.y1] : [OFF, OFF, XMAX, YMAX];
+    const [ox, oy, mx, my] = c.nf ? [NF.x0, NF.y0, NF.x1, NF.y1] : c.li ? [LI.x0, LI.y0, LI.x1, LI.y1] : [OFF, OFF, XMAX, YMAX];
     const span = c.horiz ? mx - ox : my - oy;
     c.s = (c.s + c.v * dt) % span;
     const t = c.dir > 0 ? c.s : span - c.s;
@@ -1779,7 +2158,7 @@ let natMesh = null, agMesh = null, agMark = null, headMesh = null;
 const SKIN = ['#f1c7a5', '#e0ac85', '#c48b62', '#9a6643', '#6e4630', '#4e3122'].map((c) => new THREE.Color(c));
 const venueById = () => Object.fromEntries(S.venues.map((v) => [v.id, v]));
 function sidewalk(x, y, o) {
-  const sx = snapX(x), sy = snapY(y);
+  const sx = snapX(x, y), sy = snapY(y, x);
   return Math.abs(x - sx) < Math.abs(y - sy) ? [sx + o, y] : [x, sy + o];
 }
 function spotFor(vid, id, V) {
@@ -1787,9 +2166,9 @@ function spotFor(vid, id, V) {
   const h = hash(id + vid);
   return [v.x - 13 + ((h & 255) / 255) * 26, v.y + 16 + (((h >> 8) & 255) / 255) * 9];
 }
-const sameCity = (P, Q) => inNF(P[0]) === inNF(Q[0]); // a night out across the sky is a ferry ride, not a walk
+const sameCity = (P, Q) => regionOf(P[0], P[1]) === regionOf(Q[0], Q[1]); // a night out across the sky is a ferry ride, not a walk
 function routeOf(P, Q, o) {
-  const a = [snapX(P[0]) + o, snapY(P[1]) + o], b = [snapX(Q[0]) + o, snapY(Q[1]) + o];
+  const a = [snapX(P[0], P[1]) + o, snapY(P[1], P[0]) + o], b = [snapX(Q[0], Q[1]) + o, snapY(Q[1], Q[0]) + o];
   const pts = [P, a, [b[0], a[1]], b, Q];
   const cum = [0];
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
@@ -2006,26 +2385,29 @@ document.addEventListener('click', (e) => { const f = e.target.closest('[data-wh
 $('#livehead').onclick = () => $('#live').classList.toggle('closed');
 
 // chips
-// The chips show one city's districts at a time; the city chip flies across to the other one.
+// The chips show one city's districts at a time; the city chips fly across to the others.
 let chipCity = 'sunfall';
 const NF_CAM = { target: W(NF.cx, NF.cy, 10), pos: W(NF.cx, NF.cy, 10).add(new THREE.Vector3(-70, 160, 690)) };
+const LI_CAM = { target: W(LI.cx, LI.cy, 10), pos: W(LI.cx, LI.cy, 10).add(new THREE.Vector3(-220, 260, 800)) };
+const CITY_CHIP = { sunfall: '☀ Sunfall', nightfall: '☾ Nightfall', leonida: '✺ Leonida Islands' };
 function goCity(city) {
   unfollow();
   if (city === 'nightfall') { if (iso) frameOn(W(NF.cx, NF.cy), ISO_OFF, 1.35); else flyTo(NF_CAM.target, NF_CAM.pos); }
+  else if (city === 'leonida') { if (iso) frameOn(W(LI.cx, LI.cy), ISO_OFF, 1.15); else flyTo(LI_CAM.target, LI_CAM.pos); }
   else if (iso) frameOn(new THREE.Vector3(), ISO_OFF, 1); else flyTo(HOME_CAM.target, HOME_CAM.pos);
 }
 function renderChips() {
   const el = $('#chips');
-  const two = (S.cities || []).length > 1 && S.districts.some((d) => d.city === 'nightfall');
+  const others = (S.cities || []).map((c) => c.id).filter((c) => c !== chipCity && CITY_CHIP[c] && S.districts.some((d) => (d.city || 'sunfall') === c));
   const ds = S.districts.filter((d) => (d.city || 'sunfall') === chipCity);
-  el.innerHTML = `<button data-go="clean" class="cl">${cleanOn ? '◳ Show panels' : '◱ City only'}</button><button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">${chipCity === 'nightfall' ? 'Nightfall' : 'Overview'}</button>` + ds.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('')
-    + (two ? `<button data-go="city" class="cty">${chipCity === 'nightfall' ? '☀ Back to Sunfall' : '☾ Fly to Nightfall'}</button>` : '') + `<button data-go="keep">♛ Sky Keep</button><button data-go="prison">⛓ Cinder Rock</button><button data-go="agent" class="ag">☼ Follow an agent</button>`;
+  el.innerHTML = `<button data-go="clean" class="cl">${cleanOn ? '◳ Show panels' : '◱ City only'}</button><button data-go="view" class="vw">${iso ? '◰ 3D view' : '◫ Map view'}</button><button data-go="all">${chipCity === 'nightfall' ? 'Nightfall' : chipCity === 'leonida' ? 'Leonida Islands' : 'Overview'}</button>` + ds.map((d) => `<button data-go="${d.id}">${esc(d.name)}</button>`).join('')
+    + others.map((c) => `<button data-go="city" data-city="${c}" class="cty">${c === 'sunfall' ? '☀ Back to Sunfall' : 'Fly to ' + CITY_CHIP[c]}</button>`).join('') + `<button data-go="keep">♛ Sky Keep</button><button data-go="prison">⛓ Cinder Rock</button><button data-go="agent" class="ag">☼ Follow an agent</button>`;
   el.onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const g = b.dataset.go;
     if (g === 'clean') { setClean(!cleanOn); return; }
     if (g === 'view') { setView(!iso); return; }
-    if (g === 'city') { chipCity = chipCity === 'nightfall' ? 'sunfall' : 'nightfall'; renderChips(); goCity(chipCity); return; }
+    if (g === 'city') { chipCity = b.dataset.city || 'sunfall'; renderChips(); goCity(chipCity); return; }
     if (g === 'all') { goCity(chipCity); return; }
     if (g === 'keep') {
       const c = W(530, -345, 70);
@@ -2244,7 +2626,7 @@ function renderVenue(vid, d) {
   const owner = D ? (D.owner === 'city' ? '<span class="dim">the city</span>' : `<button class="lk ${D.owner.isAgent ? 'agent' : ''}" data-who="${esc(D.owner.id)}">${esc(txt(D.owner.name))}${D.owner.isAgent ? ' ☼' : ''}</button>`) : (v.owner ? esc(v.owner) : '<span class="dim">the city</span>');
   const staff = d?.staff || [];
   $('#dbody').innerHTML = `
-    <div class="kicker">${v.isVenue ? esc(v.type) : 'workplace'} · ${esc(dist?.name || '')}${dist?.city === 'nightfall' ? ' · Nightfall' : ''}</div>
+    <div class="kicker">${v.isVenue ? esc(v.type) : 'workplace'} · ${esc(dist?.name || '')}${dist?.city === 'nightfall' ? ' · Nightfall' : dist?.city === 'leonida' ? ' · Leonida Islands' : ''}</div>
     <h3>${esc(v.name)}</h3>
     <div class="dim">Owner: ${owner}${(D?.partners || []).length ? ` · partners ${D.partners.map((p) => `<button class="lk" data-who="${esc(p.id)}">${esc(txt(p.name))}</button> ${p.pct}%`).join(', ')}` : ''}${v.forSale ? `<br><span style="color:#ffd36e">${v.fireSale ? 'Fire sale' : 'For sale'} at ${money(v.salePrice)}</span>` : ''}</div>
     ${v.isVenue ? `<div class="tiles">
@@ -2300,7 +2682,7 @@ function pick(e) {
   return null;
 }
 // Which city the camera is looking at: whichever side of the gap between the islands its target is on.
-const cityInView = () => (controls.target.x + 500 > 1260 ? 'nightfall' : 'sunfall');
+const cityInView = () => regionOf(controls.target.x + 500, controls.target.z + 350);
 function focusDistrict(d) {
   unfollow();
   frameOn(W(d.rect[0] + d.rect[2] / 2, d.rect[1] + d.rect[3] / 2), new THREE.Vector3(60, 190, 230), 2.1);
@@ -2337,7 +2719,7 @@ function doHover() {
   } else if (h?.district || h?.spot) {
     tip.innerHTML = `<b>${h.district ? esc(h.district.name) : 'Here'}</b><br><span class="dim">click to zoom in</span>`;
   } else if (h?.island) {
-    tip.innerHTML = `<b>${h.island === 'nightfall' ? '☾ Nightfall' : '☀ Sunfall'}</b><br><span class="dim">click to fly there</span>`;
+    tip.innerHTML = `<b>${CITY_CHIP[h.island] || '☀ Sunfall'}</b><br><span class="dim">click to fly there</span>`;
   }
   if (h) { tip.style.display = 'block'; tip.style.left = e.clientX + 14 + 'px'; tip.style.top = e.clientY + 14 + 'px'; canvas.style.cursor = 'pointer'; }
   else { tip.style.display = 'none'; canvas.style.cursor = ''; }
