@@ -672,57 +672,149 @@ function tower(grp, x, z, r, h, roofH, roofCol, rnd, win = true) {
   return h + roofH;
 }
 
-function buildSkyKeep(rnd) {
-  // the castle island, floating above and behind the city
-  const [x0, y0, x1, y1] = [420, -440, 640, -240], lift = 70;
+function buildSkyKeep() {
+  // Sky Keep: a three-tier citadel island floating above and behind the city. Its own random stream, so the rest of the
+  // sky world keeps its layout. Tiers: the outer green with cottages, lanterns and the sky dock; the walled middle
+  // terrace with its towers, gatehouse, gardens, fountain and the Hall of Keepers; and the citadel on top, crowned by
+  // the great spire. Banners, the crown of light and the night beacon show whether someone holds the Keep.
+  const R = mulberry32(7331);
+  const [x0, y0, x1, y1] = [420, -440, 640, -240], lift = 70, CX = 530, CY = -345;
   const grp = new THREE.Group(); grp.position.set(0, lift, 0); scene.add(grp);
-  const under = rockUnder(x0, y0, x1, y1, 300, rnd); grp.add(under);
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 9), new THREE.MeshStandardMaterial({ color: 0x79a85a, roughness: 0.95, flatShading: true }));
-  top.scale.set(118, 6, 104); top.position.copy(W(530, -340, -3)); top.receiveShadow = true; grp.add(top);
-  const keep = new THREE.Group(); keep.position.copy(W(530, -345, 0)); grp.add(keep);
-  const wallM = windowed(new THREE.MeshStandardMaterial({ color: 0xe9dfcf, roughness: 0.85 }));
-  const hall = new THREE.Mesh(BOX, wallM); hall.scale.set(46, 34, 38); hall.castShadow = hall.receiveShadow = true; keep.add(hall);
-  const hallRoof = new THREE.Mesh(new THREE.ConeGeometry(0.7071, 1, 4).rotateY(Math.PI / 4).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0x5d6fa8, flatShading: true }));
-  hallRoof.scale.set(50, 26, 42); hallRoof.position.y = 34; keep.add(hallRoof);
-  tower(keep, 0, 0, 7, 120, 46, 0x6b7fc0, rnd);           // the great spire
-  for (const [tx, tz, r, h] of [[-27, -22, 6, 72], [27, -22, 6, 80], [-27, 22, 6.5, 64], [27, 22, 6, 70], [-44, 0, 4.5, 50], [44, 0, 4.5, 56], [0, -36, 5, 92], [14, 36, 4, 48]]) tower(keep, tx, tz, r, h, r * 4.2, [0x6b7fc0, 0x7a5ea8, 0x4f8f8a][Math.floor(rnd() * 3)], rnd);
-  for (const [wx, wz, ww, wd] of [[0, -30, 54, 3], [0, 30, 54, 3], [-30, 0, 3, 54], [30, 0, 3, 54]]) { const wall = new THREE.Mesh(BOX, wallM); wall.scale.set(ww, 16, wd); wall.position.set(wx, 0, wz); wall.castShadow = true; keep.add(wall); }
-  for (let i = 0; i < 12; i++) { const a = rnd() * 6.28, r = 60 + rnd() * 40; cottage(keep, Math.cos(a) * r, Math.sin(a) * r * 0.85, 7 + rnd() * 3, 6 + rnd() * 3, rnd); }
-  // The Keeper's court: royal banners down the hall and the gate towers, lantern posts round the island's rim,
-  // and a crown of light on the great spire that burns bright while someone holds the Keep (dim when it stands empty).
-  const bannerM = new THREE.MeshStandardMaterial({ color: 0x8e1f3a, roughness: 0.7, emissive: 0x3a0812, emissiveIntensity: 0.35 });
-  const trimM = new THREE.MeshStandardMaterial({ color: 0xffd36e, emissive: 0xffb02e, emissiveIntensity: 0.5, metalness: 0.4, roughness: 0.4 });
-  for (const [bx, bz, ry, bh] of [[-13, -19.8, 0, 24], [13, -19.8, 0, 24], [-13, 19.8, 0, 24], [13, 19.8, 0, 24], [0, 19.8, 0, 28], [0, -19.8, 0, 28], [-23.8, -9, Math.PI / 2, 22], [-23.8, 9, Math.PI / 2, 22], [23.8, -9, Math.PI / 2, 22], [23.8, 9, Math.PI / 2, 22]]) {
-    const ban = new THREE.Mesh(BOX, bannerM); ban.scale.set(8, bh, 0.8); ban.position.set(bx, 32 - bh, bz); ban.rotation.y = ry; keep.add(ban);
-    const cap = new THREE.Mesh(BOX, trimM); cap.scale.set(7, 1.2, 0.9); cap.position.set(bx, 32.4, bz); cap.rotation.y = ry; keep.add(cap);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(3, 4, 3).rotateX(Math.PI), bannerM); tip.position.set(bx, 32 - bh - 1.6, bz); tip.rotation.y = ry; keep.add(tip);
+  grp.add(rockUnder(x0, y0, x1, y1, 300, R));
+  const K = new THREE.Group(); K.position.copy(W(CX, CY, 0)); grp.add(K);
+  const M = (k, o) => imat('keep_' + k, o);
+  const stone = windowed(new THREE.MeshStandardMaterial({ color: 0xe9dfcf, roughness: 0.85 }));
+  const wallStone = M('wall', { color: 0xd3c8b4, roughness: 0.9 });
+  const darkStone = M('dark', { color: 0x9c9284, roughness: 0.95, flatShading: true });
+  const paving = M('paving', { color: 0xd9cfbd, roughness: 0.95 });
+  const gold = M('gold', { color: 0xffd36e, emissive: 0xffb02e, emissiveIntensity: 0.5, metalness: 0.5, roughness: 0.35 });
+  const roofs = [0x5d6fa8, 0x7a5ea8, 0x4f8f8a].map((c) => M('roof' + c, { color: c, roughness: 0.55, metalness: 0.15, flatShading: true }));
+  const banner = M('banner', { color: 0x8e1f3a, roughness: 0.7, emissive: 0x3a0812, emissiveIntensity: 0.35 });
+  const shapeR = mulberry32(99);
+  const slab = (rad, depth, top, mat) => {
+    const geo = new THREE.ExtrudeGeometry(isletShape(shapeR, rad, 18), { depth, bevelEnabled: true, bevelSize: 1.4, bevelThickness: 1.2, bevelSegments: 2, curveSegments: 6 }).rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(geo, mat); m.position.y = top; m.receiveShadow = true; m.castShadow = true; K.add(m); return m;
+  };
+  // the three tiers
+  slab(118, 12, -1.2, M('earth', { color: 0x6e5440, roughness: 1, flatShading: true }));
+  slab(116, 1.6, 0.4, M('grass', { color: 0x74ad55, roughness: 0.95 }));
+  slab(78, 14, 14, wallStone);
+  slab(76, 0.8, 14.4, M('lawn', { color: 0x83b862, roughness: 0.95 }));
+  slab(46, 10, 24, darkStone);
+  slab(45, 0.8, 24.4, paving);
+  const T1 = 0.4, T2 = 14.4, T3 = 24.4;
+  const box = (mat, w, h, d, x, y, z, ry = 0, g = K) => { const m = new THREE.Mesh(BOX, mat); m.scale.set(w, h, d); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+  const merlonList = [];
+  // ---- the curtain wall round the middle terrace, with eight round towers; the gatehouse faces the city (+z)
+  const WR = 70, WRZ = 64, NT = 8, gateA = Math.PI / 2;
+  const wp = (a) => [Math.cos(a) * WR, Math.sin(a) * WRZ];
+  for (let i = 0; i < NT; i++) {
+    const a0 = (i / NT) * Math.PI * 2 + Math.PI / NT, a1 = ((i + 1) / NT) * Math.PI * 2 + Math.PI / NT;
+    const [ax, az] = wp(a0), [bx, bz] = wp(a1), len = Math.hypot(bx - ax, bz - az), mx = (ax + bx) / 2, mz = (az + bz) / 2, ry = -Math.atan2(bz - az, bx - ax);
+    const gate = Math.abs(((((a0 + a1) / 2) - gateA) + Math.PI * 3) % (Math.PI * 2) - Math.PI) < 0.3;
+    if (gate) {   // the gatehouse: two squat towers, an arch and a glowing portcullis
+      for (const s of [-1, 1]) { const g = new THREE.Group(); g.position.set(mx + s * 13, T2, mz); K.add(g); tower(g, 0, 0, 6, 24, 16, roofs[0].color.getHex(), R); }
+      box(wallStone, 22, 18, 9, mx, T2, mz, ry);
+      box(M('arch', { color: 0x2b2733 }), 9, 12, 9.4, mx, T2, mz, ry);
+      const port = new THREE.Mesh(BOX, new THREE.MeshBasicMaterial({ color: 0xffc46a, transparent: true, opacity: 0.4, toneMapped: false })); port.scale.set(8, 11, 0.4); port.position.set(mx, T2, mz + 4.9); K.add(port); nightGlows.push(port.material);
+      continue;
+    }
+    box(wallStone, len + 2, 12, 4, mx, T2, mz, ry);
+    const n = Math.floor(len / 5);
+    for (let k = 0; k < n; k++) { const t = (k + 0.5) / n; merlonList.push([ax + (bx - ax) * t, T2 + 12, az + (bz - az) * t, ry]); }
   }
-  for (const [px, pz] of [[-27, -22], [27, -22], [-27, 22], [27, 22]]) {   // pennants flying from the corner towers
-    const pole = new THREE.Mesh(BOX, trimM); pole.scale.set(0.5, 14, 0.5); pole.position.set(px, 98, pz); keep.add(pole);
-    const pen = new THREE.Mesh(BOX, bannerM); pen.scale.set(9, 4, 0.3); pen.position.set(px + 4.5, 102, pz); keep.add(pen);
+  for (let i = 0; i < NT; i++) {
+    const a = (i / NT) * Math.PI * 2 + Math.PI / NT; if (Math.abs(a - gateA) < 0.2) continue;
+    const [tx, tz] = wp(a), g = new THREE.Group(); g.position.set(tx, T2, tz); K.add(g);
+    tower(g, 0, 0, 5.5, 26 + R() * 8, 18 + R() * 6, roofs[i % 3].color.getHex(), R);
   }
+  { const im = new THREE.InstancedMesh(BOX, wallStone, merlonList.length), d = new THREE.Object3D();
+    merlonList.forEach(([x, y, z, ry], i) => { d.position.set(x, y, z); d.rotation.y = ry; d.scale.set(2.4, 2.6, 4.2); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
+    im.castShadow = true; K.add(im); }
+  // the grand stair from the outer green up to the gate
+  for (let s = 0; s < 10; s++) box(paving, 20 - s * 0.4, T2 * (s + 1) / 10, 3.6, 0, T1 - 0.4, 100 - s * 3.4);
+  for (const sx of [-11, 11]) for (let s = 0; s < 3; s++) { const pz = 98 - s * 12, py = T1 + (T2 - T1) * (s * 12 / 34); box(darkStone, 1.6, 6, 1.6, sx, py, pz); const l = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 6), M('stairlamp', { color: 0xffd38a, emissive: 0xffb050, emissiveIntensity: 1.2 })); l.position.set(sx, py + 7, pz); K.add(l); }
+  // ---- the citadel on the top tier
+  const C = new THREE.Group(); C.position.y = T3; K.add(C);
+  const hall = new THREE.Mesh(BOX, stone); hall.scale.set(46, 34, 38); hall.castShadow = hall.receiveShadow = true; C.add(hall);
+  const hallRoof = new THREE.Mesh(new THREE.ConeGeometry(0.7071, 1, 4).rotateY(Math.PI / 4).translate(0, 0.5, 0), roofs[0]); hallRoof.scale.set(50, 26, 42); hallRoof.position.y = 34; C.add(hallRoof);
+  tower(C, 0, 0, 7, 120, 46, 0x6b7fc0, R);   // the great spire
+  for (const [tx, tz, r, h] of [[-27, -22, 6, 72], [27, -22, 6, 80], [-27, 22, 6.5, 64], [27, 22, 6, 70], [-36, 0, 4.5, 50], [36, 0, 4.5, 56], [0, -32, 5, 92], [14, 32, 4, 48]]) tower(C, tx, tz, r, h, r * 4.2, [0x6b7fc0, 0x7a5ea8, 0x4f8f8a][Math.floor(R() * 3)], R);
+  // flying bridges between the towers
+  for (const [ax, az, bx, bz, by] of [[-27, -22, 27, -22, 58], [-27, 22, 27, 22, 50], [0, -32, 0, 0, 74]]) { const len = Math.hypot(bx - ax, bz - az); const b = box(stone, len, 3, 4, (ax + bx) / 2, by, (az + bz) / 2, -Math.atan2(bz - az, bx - ax), C); b.material = wallStone; }
+  // rose windows: stained glass that glows at night, on all four faces of the hall
+  const glassCols = [0xff5d7a, 0x6fc8ff, 0xffd36e, 0xb48cff];
+  for (const [wx, wz, ry] of [[0, -19.3, 0], [0, 19.3, 0], [-23.3, 0, Math.PI / 2], [23.3, 0, Math.PI / 2]]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.8, 6, 20), gold); ring.position.set(wx, 22, wz); ring.rotation.y = ry; C.add(ring);
+    const glass = new THREE.Mesh(new THREE.CircleGeometry(5, 20), new THREE.MeshBasicMaterial({ color: glassCols[Math.floor(R() * 4)], transparent: true, opacity: 0.5, toneMapped: false, side: THREE.DoubleSide }));
+    glass.position.set(wx * 1.005, 22, wz * 1.005); glass.rotation.y = ry; C.add(glass); nightGlows.push(glass.material);
+  }
+  // banners down the hall and pennants on the corner towers
+  for (const [bx, bz, ry, bh] of [[-13, -19.8, 0, 22], [13, -19.8, 0, 22], [-13, 19.8, 0, 22], [13, 19.8, 0, 22], [-23.8, -9, Math.PI / 2, 20], [-23.8, 9, Math.PI / 2, 20], [23.8, -9, Math.PI / 2, 20], [23.8, 9, Math.PI / 2, 20]]) {
+    box(banner, 7, bh, 0.8, bx, 32 - bh, bz, ry, C); box(gold, 8, 1.2, 1, bx, 32.4, bz, ry, C);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(3, 4, 3).rotateX(Math.PI), banner); tip.position.set(bx, 32 - bh - 1.6, bz); tip.rotation.y = ry; C.add(tip);
+  }
+  for (const [px, pz, py] of [[-27, -22, 98], [27, -22, 106], [-27, 22, 90], [27, 22, 96]]) { box(gold, 0.5, 14, 0.5, px, py, pz, 0, C); box(banner, 9, 4, 0.3, px + 4.5, py + 9, pz, 0, C); }
+  // ---- the middle terrace: the Hall of Keepers (one gold statue per Keeper so far), gardens and a fountain
+  keepStatues = [];
+  for (let i = 0; i < 8; i++) {
+    const a = gateA + (i - 3.5) * 0.2, sx = Math.cos(a) * 56, sz = Math.sin(a) * 50;
+    box(darkStone, 4.4, 3, 4.4, sx, T2, sz);
+    const st = new THREE.Group(); st.position.set(sx, T2 + 3, sz); st.rotation.y = -a + Math.PI / 2; st.scale.setScalar(1.7); K.add(st);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.5, 5, 8).translate(0, 2.5, 0), gold); st.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), gold); head.position.y = 5.9; st.add(head);
+    const crownS = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.7, 0.8, 6), gold); crownS.position.y = 7; st.add(crownS);
+    st.visible = false; keepStatues.push(st);
+  }
+  const fz = -52;   // the fountain in the back court
+  { const basin = new THREE.Mesh(new THREE.CylinderGeometry(9, 10, 2.4, 20), wallStone); basin.position.set(0, T2 + 1.2, fz); basin.castShadow = true; K.add(basin);
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(8.2, 8.2, 0.4, 20), M('fwater', { color: 0x5ab4d6, roughness: 0.15, metalness: 0.3, emissive: 0x0d3a4a, emissiveIntensity: 0.4 })); water.position.set(0, T2 + 2.3, fz); K.add(water);
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.4, 6, 10), wallStone); col.position.set(0, T2 + 3, fz); K.add(col);
+    const jet = new THREE.Mesh(new THREE.ConeGeometry(2.4, 7, 10, 1, true).rotateX(Math.PI), new THREE.MeshBasicMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.45, depthWrite: false })); jet.position.set(0, T2 + 9.5, fz); K.add(jet); keepJet = jet; }
+  const tree = (x, z, y, s, kind) => {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45 * s, 0.6 * s, 4 * s, 6).translate(0, 2 * s, 0), imat('trunk', { color: 0x5a3e2a })); trunk.position.set(x, y, z); trunk.castShadow = true; K.add(trunk);
+    if (kind < 0.45) for (const [r0, hh, yy] of [[3.4, 5, 2.5], [2.6, 4.4, 5.2], [1.7, 3.6, 7.6]]) { const c = new THREE.Mesh(new THREE.ConeGeometry(r0 * s, hh * s, 7).translate(0, hh * s / 2, 0), imat('pine', { color: 0x2f6b45, flatShading: true })); c.position.set(x, y + yy * s, z); c.castShadow = true; K.add(c); }
+    else { const c = new THREE.Mesh(new THREE.IcosahedronGeometry(3.2 * s, 0), imat(kind < 0.8 ? 'leaf' : 'blossom', { color: kind < 0.8 ? 0x4f8f3e : 0xf2a7c3, flatShading: true, roughness: 0.9 })); c.position.set(x, y + 5.4 * s, z); c.rotation.set(R() * 3, R() * 3, 0); c.castShadow = true; K.add(c); }
+  };
+  for (let i = 0; i < 14; i++) { const a = R() * 6.28; if (Math.abs(((a - gateA) + 9.42) % 6.28 - 3.14) < 0.95) continue; tree(Math.cos(a) * (52 + R() * 10), Math.sin(a) * (48 + R() * 8), T2, 0.8 + R() * 0.4, R()); }
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; box(M('hedge', { color: 0x3f7a35, roughness: 0.95 }), 8, 2.2, 2.2, Math.cos(a) * 15, T2, fz + Math.sin(a) * 15, -a); }
+  // ---- the outer green: cottages, trees, the lantern rim and the sky dock with the Keeper's airship
+  for (let i = 0; i < 12; i++) { const a = R() * 6.28; if (Math.abs(((a - gateA) + 9.42) % 6.28 - 3.14) < 0.45) continue; const r = 88 + R() * 16; cottage(K, Math.cos(a) * r, Math.sin(a) * r * 0.86, 7 + R() * 3, 6 + R() * 3, R); }
+  for (let i = 0; i < 16; i++) { const a = R() * 6.28, r = 84 + R() * 22; tree(Math.cos(a) * r, Math.sin(a) * r * 0.86, T1, 0.9 + R() * 0.5, R()); }
   const lanternM = new THREE.MeshBasicMaterial({ color: 0xffd38a, transparent: true, opacity: 0.4, toneMapped: false }); nightGlows.push(lanternM);
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * Math.PI * 2, rx = Math.cos(a) * 108, rz = Math.sin(a) * 92;
-    const post = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: 0x2b2a33 })); post.scale.set(0.8, 9, 0.8); post.position.set(rx, 4.5, rz); keep.add(post);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), lanternM); lamp.position.set(rx, 10, rz); keep.add(lamp);
-  }
-  const crownY = 120 + 0.8 + 46 + 10;
+  for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2, rx = Math.cos(a) * 110, rz = Math.sin(a) * 96; box(M('post', { color: 0x2b2a33 }), 0.8, 9, 0.8, rx, T1, rz); const l = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), lanternM); l.position.set(rx, T1 + 10, rz); K.add(l); }
+  box(M('dock', { color: 0x8a6a4a, roughness: 0.9 }), 46, 2, 10, 128, T1 - 2, -20);
+  for (const px of [110, 124, 138, 150]) for (const pz of [-25, -15]) box(M('dockpost', { color: 0x5a3e2a }), 1, 8, 1, px, T1 - 6, pz);
+  { const ship = airshipMesh(0.8, R); ship.position.set(150, T1 + 24, -34); ship.rotation.y = 0.15; K.add(ship); keepShip = ship; }
+  // ---- the crown of light on the great spire, and a beacon that climbs into the night while the Keep is held
+  const crownY = T3 + 120 + 0.8 + 46 + 10;
   const crownM = new THREE.MeshBasicMaterial({ color: 0xffd36e, transparent: true, opacity: 0.25, toneMapped: false, blending: THREE.AdditiveBlending, depthWrite: false });
-  const crown = new THREE.Mesh(new THREE.TorusGeometry(11, 1.4, 8, 40), crownM); crown.rotation.x = Math.PI / 2; crown.position.y = crownY; keep.add(crown);
-  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const sp = new THREE.Mesh(new THREE.ConeGeometry(1.6, 7, 4).translate(0, 3.5, 0), crownM); sp.position.set(Math.cos(a) * 11, crownY, Math.sin(a) * 11); keep.add(sp); }
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture("rgba(255,220,140,1)", "rgba(255,170,60,0)"), color: 0xffc860, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
-  halo.scale.set(90, 90, 1); halo.position.y = crownY; keep.add(halo);
-  keepCrown = { crown, crownM, halo };
-  // thin orbit rings of light circling Sky Keep
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(11, 1.4, 8, 40), crownM); crown.rotation.x = Math.PI / 2; crown.position.y = crownY; K.add(crown);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const sp = new THREE.Mesh(new THREE.ConeGeometry(1.6, 7, 4).translate(0, 3.5, 0), crownM); sp.position.set(Math.cos(a) * 11, crownY, Math.sin(a) * 11); K.add(sp); }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(255,220,140,1)', 'rgba(255,170,60,0)'), color: 0xffc860, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  halo.scale.set(90, 90, 1); halo.position.y = crownY; K.add(halo);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(3, 12, 520, 16, 1, true).translate(0, 260, 0), new THREE.MeshBasicMaterial({ color: 0xffd78a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }));
+  beam.position.y = crownY; K.add(beam);
+  keepCrown = { crown, crownM, halo, beam };
+  // ---- floating crystal islets drifting round the Keep
+  for (const [ix, iy, ih, sz, hue] of [[350, -420, 40, 26, 0x8fe6ff], [700, -470, 110, 22, 0xd9a6ff], [690, -230, 10, 18, 0xffd36e], [380, -250, 130, 16, 0x8fe6ff]]) {
+    const g = new THREE.Group(); grp.add(g);
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(sz * 0.62, 0), M('crock', { color: 0x4a4f5c, flatShading: true, roughness: 0.95 })); rock.scale.set(1, 1.5, 1); rock.rotation.set(R() * 0.5, R() * 3, R() * 0.5); rock.position.copy(W(ix, iy, -sz * 0.62)); g.add(rock);
+    const tipR = new THREE.Mesh(new THREE.ConeGeometry(sz * 0.3, sz * 0.9, 5).rotateX(Math.PI), M('crock', {})); tipR.position.copy(W(ix, iy, -sz * 1.45)); g.add(tipR);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(sz * 0.62, sz * 0.6, 2, 6), M('cgrass', { color: 0x74ad55, flatShading: true })); cap.position.copy(W(ix, iy, 1)); g.add(cap);
+    const cm = new THREE.MeshStandardMaterial({ color: hue, emissive: hue, emissiveIntensity: 0.6, transparent: true, opacity: 0.85, flatShading: true, roughness: 0.2 });
+    for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(new THREE.OctahedronGeometry(sz * (0.16 + R() * 0.12), 0), cm); c.scale.y = 2.6; c.position.copy(W(ix + (R() - 0.5) * sz * 0.6, iy + (R() - 0.5) * sz * 0.6, 2 + sz * 0.2)); c.rotation.set(R() * 0.4, R() * 3, R() * 0.4); g.add(c); }
+    islets.push({ g, y0: ih, ph: R() * 6.28 }); g.position.y = ih;
+  }
+  // thin orbit rings of light circling the Keep
   for (const [rad, tilt, rot, op] of [[175, 0.32, 0.4, 0.75], [205, -0.22, -0.9, 0.4]]) {
     const pts = []; for (let i = 0; i <= 180; i++) { const a = (i / 180) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * rad, 0, Math.sin(a) * rad * 0.8)); }
     const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x8fe6ff, transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
-    ring.position.copy(W(530, -345, 70)); ring.rotation.set(tilt, rot, tilt * 0.4); grp.add(ring); glowLines.push({ mat: ring.material, op });
+    ring.position.copy(W(CX, CY, 90)); ring.rotation.set(tilt, rot, tilt * 0.4); grp.add(ring); glowLines.push({ mat: ring.material, op });
   }
-  // waterfalls pouring off the castle island
+  // waterfalls pouring off the island and the terrace
   for (const [fx, fy, rot] of [[470, -240, 0], [600, -240, 0], [640, -330, Math.PI / 2]]) waterfall(fx, fy + (rot ? 0 : 2), lift - 2, 16, 280, rot);
-  for (let i = 0; i < 5; i++) puff(430 + rnd() * 200, -230 + rnd() * 40, lift - 60 - rnd() * 80, 160 + rnd() * 120, 1);
+  for (let i = 0; i < 5; i++) puff(430 + R() * 200, -230 + R() * 40, lift - 60 - R() * 80, 160 + R() * 120, 1);
 }
 
 function buildPrison(rnd) {
@@ -1111,7 +1203,7 @@ function buildSkyWorld(rnd) {
   waterfall(520, 686, -3, 34, 340, 0); waterfall(880, 686, -3, 14, 240, 0);
   waterfall(985, 140, -3, 16, 260, Math.PI / 2); waterfall(300, 14, -3, 14, 240, 0);
   waterfall(747, 330, -3, 8, 160, Math.PI / 2); waterfall(620, 494, -3, 10, 170, 0);
-  buildSkyKeep(rnd);
+  buildSkyKeep();
   buildPrison(mulberry32(41));   // its own random stream, so the rest of the sky world keeps its layout
   for (const [x, y, h, sz] of [[-150, 180, 30, 70], [-120, 560, -30, 54], [1150, 260, 40, 64], [1120, 600, -20, 50], [240, 860, -70, 60], [820, 880, -50, 46], [1060, -120, 70, 58], [-60, -150, 50, 52], [330, -230, 20, 36]]) buildIslet(x, y, h, sz, rnd);
   // airships circling the city
@@ -1216,7 +1308,7 @@ function buildLandmarkLabels() {
   }
 }
 const landmarkEls = [];
-let prisonLabel = null, keepLabel = null, keepCrown = null;
+let prisonLabel = null, keepLabel = null, keepCrown = null, keepStatues = [], keepJet = null, keepShip = null;
 let pondMat = null;
 
 // Kenney City Kit models (MIT): one mesh each, baked so the tile sits on y=0, centred
@@ -1825,7 +1917,10 @@ function updateSky(h) {
   if (lampPoints) lampPoints.material.opacity = night * 0.9;
   stars.material.opacity = 0.15 + 0.85 * smooth(0.25, 0.8, night);
   for (const g of glowLines) g.mat.opacity = g.op * (0.3 + night * 0.7);
-  if (keepCrown) { const held = Boolean(S?.keeper?.name), t = performance.now() / 1000; keepCrown.crownM.opacity = held ? 0.55 + night * 0.4 : 0.12; keepCrown.halo.material.opacity = held ? 0.25 + night * 0.5 + Math.sin(t * 1.6) * 0.06 : 0.04; keepCrown.crown.rotation.z = t * 0.25; }
+  if (keepCrown) { const held = Boolean(S?.keeper?.name), t = performance.now() / 1000; keepCrown.crownM.opacity = held ? 0.55 + night * 0.4 : 0.12; keepCrown.halo.material.opacity = held ? 0.25 + night * 0.5 + Math.sin(t * 1.6) * 0.06 : 0.04; keepCrown.crown.rotation.z = t * 0.25; keepCrown.beam.material.opacity = held ? night * (0.1 + Math.sin(t * 1.1) * 0.02) : 0; }
+  { const n = Math.min(keepStatues.length, S?.keeper?.keepers || 0); keepStatues.forEach((s, i) => { s.visible = i < n; }); }
+  if (keepJet) { const t = performance.now() / 1000; keepJet.scale.y = 1 + Math.sin(t * 3) * 0.08; }
+  if (keepShip) { const t = performance.now() / 1000; keepShip.position.y = 24.4 + Math.sin(t * 0.7) * 1.6; }
   moon.visible = false; // the planet is the night sky's centrepiece now
   for (const m of nightGlows) m.opacity = 0.2 + night * 0.8;
   for (const m of neonMats) m.color.setScalar(0.85 + night * 1.5);
@@ -1934,7 +2029,7 @@ function renderChips() {
     if (g === 'all') { goCity(chipCity); return; }
     if (g === 'keep') {
       const c = W(530, -345, 70);
-      if (iso) frameOn(c, ISO_OFF, 1.9); else flyTo(c.clone().add(new THREE.Vector3(0, 90, 0)), c.clone().add(new THREE.Vector3(260, 230, 420)));
+      if (iso) frameOn(W(530, -345, 150), ISO_OFF, 1.25); else flyTo(c.clone().add(new THREE.Vector3(0, 90, 0)), c.clone().add(new THREE.Vector3(260, 230, 420)));
       const k = S?.keeper;
       toast(k?.name ? `${k.name} holds the Sky Keep as last season's winner${k.inForce ? `. Today's decree: ${k.inForce}` : ''}. The Keeper issues one decree a day; agents can overturn it.` : (k?.ousted ? 'The Sky Keep stands empty: its Keeper was thrown out by the city. A new Keeper takes it when the season closes.' : 'The Sky Keep stands empty. The winner of the weekly HYPE prize takes it when the season closes.'));
       return;
