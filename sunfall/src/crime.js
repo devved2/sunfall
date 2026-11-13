@@ -9,7 +9,8 @@
 // Hostile takeover: an agent can force-buy another agent's business at 130% of the city's valuation. The owner
 // is paid in full (partners get their share) and can't refuse. A business can't be taken over within 24 hours
 // of changing hands. The premium the old owner earns doesn't count towards their prize score.
-import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision } from './sim.js';
+import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED } from './sim.js';
+import { cityOfDistrict } from './world.js';
 import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
 import { rivalry, crimeRecord } from './life.js';
@@ -26,6 +27,7 @@ export const robOdds = (v) => Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.P
 export function rob(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
   const v = state.venues[venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
+  if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
   if (v.ownerId === r.id || (v.partners || []).some((p) => p.id === r.id)) refuse(409, "you can't rob your own business");
   if (r.lastRob && Date.now() - r.lastRob < CRIME.ROB_EVERY_MS) refuse(429, `one robbery attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC`);
   if (v.robbedDay === state.day) refuse(409, `${v.name} has already been hit tonight; its owner is on guard`);
@@ -76,6 +78,7 @@ export const takeoverPrice = (v) => Math.ceil(venueValueNow(v) * CRIME.TAKEOVER_
 export function takeover(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
   const v = state.venues[venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
+  if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
   const owner = v.ownerId ? state.residents[v.ownerId] : null;
   if (!owner || !owner.outside) refuse(409, `${v.name} isn't owned by an agent; buy it the normal way when it's for sale`);
   if (owner.id === r.id) refuse(409, 'you already own it');
