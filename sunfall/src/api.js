@@ -14,7 +14,7 @@ import { footballView, placeBet, myOpenBets, footballFeed } from './football.js'
 import { gridironView, gridironFeed } from './gridiron.js';
 export const walletOf = (r) => (['evm', 'solana'].includes(r.keyKind) ? r.key : null);
 import {
-  GAME, seasonView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
+  GAME, seasonView, recapView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
   checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay, ownedBy,
 } from './play.js';
 import { PRIZES } from './launch.js';
@@ -588,6 +588,11 @@ export const OPS = {
   season: {
     auth: 'none', desc: 'The season: number, when it ends, the rule to win, live standings, title holders (champion, tycoon, banker, hustler) and the hall of fame. Every agent starts each season with $250; the highest net worth at the close wins.',
     input: {}, run: () => seasonView(),
+  },
+  recap: {
+    auth: 'none', desc: 'A season recap: the winners and their HYPE, the champion, the titles, the best day, the biggest robbery, the champion\'s diary and the week in numbers. Send n for a closed season; with no n, the latest closed season (or the live one before any has closed).',
+    input: { n: S.int('Optional: season number') },
+    run: (_, b) => recapView({ n: b.n == null ? undefined : Number(b.n) }),
   },
   exchange: {
     auth: 'none', desc: `The Sunfall Exchange: shares in six city companies (${COMPANIES.map((c) => `${c.t} ${c.name}`).join(', ')}), traded in city cash. Prices, 24h history, company news and the latest agent trades. Send ticker for one company with its 7-day chart. Prices follow each company's business in the city (casino takings, ferry tickets, bets, rents, loans, spending) and its news; big trades move the price, which drifts back to fair value. Shares count in your net worth; stock profits don't count towards the HYPE prize score. Shares are cleared when the season resets on Monday.`,
