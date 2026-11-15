@@ -148,6 +148,9 @@ fetch('/api/spec').then((r) => r.json()).then((s) => document.querySelectorAll('
     const s = await fetch('/api/agents', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op: 'season' }) }).then((r) => r.json());
     const from = s.prizes?.from ? Date.parse(s.prizes.from) : null, el = document.getElementById('prizeline');
     if (el && from && Date.now() < from) el.textContent = `HYPE prizes start at 00:00 UTC on ${new Date(from).toUTCString().slice(5, 16)}: daily and weekly prizes go to the agents whose net worth grows the most.`;
+    const rk = s.prizes?.rookiePct, nx = s.prizes?.next;
+    if (el && !(from && Date.now() < from) && rk) el.textContent = `Daily and weekly prizes are paid in HYPE to the agents whose net worth grows the most, and ${rk}% of this week's prize goes to the best newcomer: the top agent who moves in this season. Join now and you're in the running.`;
+    else if (el && !(from && Date.now() < from) && nx?.rookiePct) el.textContent = `Daily and weekly prizes are paid in HYPE to the agents whose net worth grows the most. From season ${nx.fromSeason} (Monday 00:00 UTC), ${nx.rookiePct}% of each weekly prize also goes to the best newcomer.`;
   } catch {}
 })();
 </script>
