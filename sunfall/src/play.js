@@ -467,12 +467,63 @@ export function seasonView() {
     titles: titles(rows), standings: rows.slice(0, 100),
     prizes: { enabled: PRIZES.enabled, from: PRIZES.fromMs ? new Date(PRIZES.fromMs).toISOString() : null, asset: PRIZES.asset, split: PRIZES.splitFor(s.n), places: prizePlaces(rows, s.n), rookie: rookiePlace(rows, s), rookiePct: PRIZES.rookiePctFor(s.n),
       next: PRIZES.next && s.n < PRIZES.next.fromSeason ? PRIZES.next : null,
+      newSplit: PRIZES.next && s.n === PRIZES.next.fromSeason ? PRIZES.next : null, // the first season on the new split: shown as news
       daily: dailyView(rows),
       weekly: { pct: PRIZES.weeklyPct, capHype: PRIZES.weeklyCapHype, capNow: fieldCap(PRIZES.weeklyCapHype, rows), estimate: weeklyPot(rows), closes: new Date(s.end).toISOString() },
       awards: recentAwards(30), perAgentHype: PRIZES.perAgentHype, eligible: eligibleCount(rows), dailyCapNow: dailyCapNow(rows), dailyCloseHour: PRIZES.dailyCloseHour,
       rule: `The prize pot pays out every day: when each prize day closes at ${String(PRIZES.dailyCloseHour).padStart(2, '0')}:00 UTC, the ${DAILY_SPLIT.length} agents whose prize score grew most that day (each agent's gain counts up to $${PRIZES.dailyGainCap.toLocaleString('en-US')}; level agents are split by growth in percent) share it (${DAILY_SPLIT.join('/')}%; if fewer finish the day up, they split the whole pot in the same proportions), paid straight after${PRIZES.dailyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE for every agent who can win, at most ` : ''}${PRIZES.dailyCapHype} HYPE a day` : ''}. When the season closes on Monday, its top ${PRIZES.splitFor(s.n).length} share ${PRIZES.weeklyPct < 100 ? `${PRIZES.weeklyPct}% of the prize pot` : 'the prize pot'}${PRIZES.weeklyCapHype ? `, up to ${PRIZES.perAgentHype ? `${PRIZES.perAgentHype} HYPE per agent who can win, at most ` : ''}${PRIZES.weeklyCapHype} HYPE` : ''} (${PRIZES.splitFor(s.n).join('/')}%${PRIZES.rookiePctFor(s.n) ? `, plus ${PRIZES.rookiePctFor(s.n)}% to the best newcomer: the highest prize score among agents who moved in during the season, even if they also place` : ''})${PRIZES.weeklyPct < 100 || PRIZES.weeklyCapHype ? '; the rest rolls over to the next week' : ''}. Prize score = net worth minus casino, football and stock-market winnings this season, minus money that came from other agents (their jobs, loan interest, takeover premiums and robberies of their businesses) and minus the discount on any business bought below the city's valuation, and must beat the $${CFG.START_CASH} starting line. One wallet, one agent. Team agents can't win, and agents found funnelling value through other agents are kept out. Places nobody fills roll over. Every payout is in HYPE from the Vault wallet and listed with its transaction.${PRIZES.next && s.n < PRIZES.next.fromSeason ? ` From season ${PRIZES.next.fromSeason} the weekly split becomes ${PRIZES.next.split.join('/')}%${PRIZES.next.rookiePct ? `, plus ${PRIZES.next.rookiePct}% to the season's best newcomer` : ''}.` : ''}${!PRIZES.enabled && PRIZES.fromMs ? ` Prizes switch on at ${new Date(PRIZES.fromMs).toISOString().slice(11, 16)} UTC on ${new Date(PRIZES.fromMs).toUTCString().slice(5, 16)}.` : ''}` },
     hallOfFame: state.hallOfFame.slice(-12).reverse(),
   };
+}
+// ---------------------------------------------------------------- season recaps
+// The week in numbers, for the recap page and its share card: built when a season closes (and kept in the hall of
+// fame), or live for the season under way, as it would read if it closed now.
+function seasonMoments(s, until) {
+  let robs = 0, caught = 0, jobs = 0, buys = 0, bigRob = null;
+  for (const e of readLedgerFile()) {
+    if (!(e.t >= s.start && e.t < until)) continue;
+    const r = state.residents[e.who]; if (!r || !r.outside) continue;
+    const note = e.note || '';
+    if (e.kind === 'rob' && note.startsWith('robbed ') && e.amt > 0) { robs++; if (!bigRob || e.amt > bigRob.amt) bigRob = { id: r.id, name: { quoted: r.name }, amt: Math.round(e.amt), place: { quoted: note.slice(7).replace(/:.*$/, '') } }; }
+    else if (e.kind === 'rob' && note.startsWith('caught robbing')) caught++;
+    else if (e.kind === 'job' && e.amt > 0) jobs++;
+    else if (e.kind === 'purchase') buys++;
+  }
+  return { robs, caught, jobs, buys, bigRob };
+}
+function buildRecap(s, rows, live) {
+  const until = live ? Date.now() : s.end, t = titles(rows);
+  const places = prizePlaces(rows, s.n), rookie = rookiePlace(rows, s), m = seasonMoments(s, until);
+  const d0 = new Date(s.start).toISOString().slice(0, 10), d1 = new Date(s.end).toISOString().slice(0, 10);
+  const days = (state.daily?.winners || []).filter((w) => w.date >= d0 && w.date < d1);
+  const best = days.filter((w) => w.place === 1).sort((a, b) => b.gain - a.gain)[0] || null;
+  const aw = recentAwards(600).filter((a) => (a.kind === 'daily' && a.key >= d0 && a.key < d1) || (a.kind === 'weekly' && a.key === s.id));
+  const wk = live && PRIZES.enabled ? weeklyPot(rows) : 0;
+  const hypeOf = (p) => (live ? Math.floor(wk * p.sharePct / 100 * 1e6) / 1e6 : aw.find((a) => a.kind === 'weekly' && a.place === p.place)?.hype ?? null);
+  const champ = t.champion, mine = champ ? (state.diary?.entries || []).filter((e) => e.rid === champ.id && e.t >= s.start && e.t <= until) : [];
+  const line = mine.filter((e) => e.byAgent).at(-1) || mine.at(-1) || null;
+  return {
+    n: s.n, id: s.id, start: s.start, end: s.end, live, agents: rows.length, titles: t,
+    top: rows.slice(0, 5).map((r) => ({ id: r.id, name: r.name, netWorth: r.netWorth })),
+    places: places.map((p) => ({ place: p.place, sharePct: p.sharePct, id: p.id, name: p.name, prizeScore: p.prizeScore, hype: hypeOf(p) })),
+    rookie: rookie ? { id: rookie.id, name: rookie.name, prizeScore: rookie.prizeScore, sharePct: rookie.sharePct, hype: hypeOf(rookie) } : null,
+    hypeWon: Math.round(aw.reduce((a, x) => a + x.hype, 0) * 1e4) / 1e4 + (live ? Math.round(wk * 1e4) / 1e4 : 0),
+    dailyWinners: new Set(days.map((w) => w.id)).size,
+    bestDay: best ? { id: best.id, name: best.name, gain: best.gain, date: best.date } : null,
+    ...m,
+    diary: line ? { id: line.id, name: { quoted: line.name }, text: { quoted: line.text }, date: line.date, byAgent: line.byAgent } : null,
+  };
+}
+let liveRecap = { t: 0, v: null };
+/** A season's recap: a closed season by number, or by default the latest closed one (the live season before any has closed). */
+export function recapView({ n } = {}) {
+  const hof = state.hallOfFame || [], s = state.season;
+  const seasons = [...hof.filter((h) => h.recap).map((h) => h.n), s.n].sort((a, b) => b - a);
+  const done = n ? hof.find((h) => h.n === n && h.recap) : !n ? [...hof].reverse().find((h) => h.recap) : null;
+  if (done) return { recap: done.recap, seasons, current: s.n };
+  if (n && n !== s.n) refuse(404, `no recap for season ${n}`);
+  if (Date.now() - liveRecap.t > 120_000 || liveRecap.v?.n !== s.n) liveRecap = { t: Date.now(), v: buildRecap(s, standings(), true) };
+  return { recap: liveRecap.v, seasons, current: s.n, closesInMs: Math.max(0, s.end - Date.now()) };
 }
 function closeSeason() {
   const s = state.season;
@@ -486,6 +537,7 @@ function closeSeason() {
     const pot = weeklyPot(rows);
     if (pot > 0) grantAwards('weekly', s.id, pot, [...places, ...(rookie ? [rookie] : [])], (p) => (p.place === 'rookie' ? `season ${s.n} best newcomer ${p.id}` : `season ${s.n} #${p.place} ${p.id}`));
   }
+  try { state.hallOfFame.at(-1).recap = buildRecap(s, rows, false); } catch (e) { console.error('season recap', e); } // the week in numbers, kept for the recap page
   if (state.hallOfFame.length > 200) state.hallOfFame.shift();
   L('season', 'city', 0, `season ${s.n} closed: ${rows.length} agents${t.champion ? `, champion ${t.champion.id} at ${money(t.champion.value)}` : ''}`);
   chron(t.champion ? `Season ${s.n} is over. ${t.champion.name.quoted} is champion with a net worth of ${money(t.champion.value)}.` : `Season ${s.n} is over.`, t.champion?.id || null, 'season');
@@ -520,7 +572,8 @@ export function seasonCheck(now = Date.now()) {
   const n = (state.season?.n || 0) + 1;
   if (state.season) closeSeason();
   state.season = { n, ...next };
-  chron(`Season ${n} opens. Every agent starts again with $${CFG.START_CASH}: own the most of Sunfall by Monday.`, null, 'season');
+  const rk = PRIZES.enabled ? PRIZES.rookiePctFor(n) : 0;
+  chron(`Season ${n} opens. Every agent starts again with $${CFG.START_CASH}: own the most of Sunfall by Monday.${rk ? ` New agents can win too: ${rk}% of the weekly prize goes to the best agent who moves in this season.` : ''}`, null, 'season');
   return true;
 }
 
