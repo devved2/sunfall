@@ -3,7 +3,7 @@ import path from 'node:path';
 import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse, nameSkeleton } from './util.js';
 import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LEONIDA_FIRST, LEONIDA_LAST, LINES, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
-import { LIMITS } from './launch.js';
+import { LIMITS, LAUNCH } from './launch.js';
 import { dealHand } from './casino.js';
 import { footballTick } from './football.js';
 import { gridironTick } from './gridiron.js';
@@ -39,7 +39,23 @@ export const NIGHTFALL = { GAME_CROSS: 0.5, NIGHT_OUT: 0.05, CHARTER_OWNER_SHARE
 // The Leonida Islands: a beach city. Its residents go out in the afternoon more than anyone (BEACH_DAY: less chance of
 // staying in), cross for a game now and then (GAME_CROSS), and some lively residents of the other two cities take the
 // ferry over for a night on the Strip (NIGHT_OUT). Agents move there free while the islands are new (FREE_MOVE).
-export const LEONIDA = { GAME_CROSS: 0.4, NIGHT_OUT: 0.04, BEACH_DAY: 0.6, FREE_MOVE: true, OPEN_TO_AGENTS: false };
+export const LEONIDA = {
+  GAME_CROSS: 0.4, NIGHT_OUT: 0.04, BEACH_DAY: 0.6, FREE_MOVE: true,
+  SETTLERS: 25, SETTLER_GRANT: 250,   // the first agents to make the islands home get a welcome grant (kept out of the prize score)
+  // Open to agents from launch.json "leonidaOpensAt"; unset, the islands stay closed.
+  get OPEN_TO_AGENTS() { return LAUNCH.leonidaOpensAt != null && Date.now() >= LAUNCH.leonidaOpensAt; },
+};
+export const leonidaInfo = () => ({ open: LEONIDA.OPEN_TO_AGENTS, opensAt: LAUNCH.leonidaOpensAt ? new Date(LAUNCH.leonidaOpensAt).toISOString() : null,
+  settlerGrant: LEONIDA.SETTLER_GRANT, settlersLeft: Math.max(0, LEONIDA.SETTLERS - (state.leonidaSettlers || 0)) });
+/** The welcome grant for one of the first agents to move to (or join in) the Leonida Islands: once per agent. */
+export function settlerGrant(r) {
+  if (!r?.outside || r.leonidaSettler || (state.leonidaSettlers || 0) >= LEONIDA.SETTLERS || !LEONIDA.OPEN_TO_AGENTS) return 0;
+  const n = state.leonidaSettlers = (state.leonidaSettlers || 0) + 1, g = LEONIDA.SETTLER_GRANT;
+  r.leonidaSettler = n; r.cash += g; state.treasury -= g; r.season.grants = (r.season.grants || 0) + g;
+  L('grant', r.id, g, `Leonida settler #${n}: the islands' welcome grant`);
+  chron(`${r.name} is Leonida settler #${n} of ${LEONIDA.SETTLERS} and takes the $${g} welcome grant.`, r.id, 'arrival');
+  return g;
+}
 // Until the islands open to agents (OPEN_TO_AGENTS), agents can't live there, visit, take jobs, buy, rob or take over there.
 export const closedToAgents = (r, city) => Boolean(r?.outside) && city === 'leonida' && !LEONIDA.OPEN_TO_AGENTS;
 export const LEONIDA_CLOSED = "the Leonida Islands aren't open to agents yet";
@@ -557,6 +573,10 @@ function landHalf(half) {
       p.result[half] = 'closed by the storm';
       continue;
     }
+    if (half === 'night' && eventIs('blackout', v.district)) {
+      p.result[half] = 'closed by the blackout';
+      continue;
+    }
     if (v.type === 'casino' && decreeIs('curfew')) {
       p.result[half] = "closed by the Keeper's curfew";
       continue;
@@ -805,7 +825,7 @@ function nativesBuyBusinesses() {
     }
   }
   for (const v of Object.values(state.venues)) {
-    if (!v.isVenue || !v.forSale || VTYPES[v.type].cityOnly) continue;
+    if (!v.isVenue || !v.forSale || VTYPES[v.type].cityOnly || v.heldUntilDay > state.day) continue;   // relisted at a reset: held for everyone
     if (secureRandom() > 0.15) continue;
     const buyers = Object.values(state.residents).filter((r) => !r.outside && r.traits.risk > 0.5 && r.cash > v.salePrice * 1.1);
     if (!buyers.length) continue;
