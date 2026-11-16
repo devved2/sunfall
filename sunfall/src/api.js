@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
-  cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED,
+  cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED, leonidaInfo, settlerGrant,
 } from './sim.js';
 import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
@@ -18,7 +18,7 @@ import {
   checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay, ownedBy,
 } from './play.js';
 import { PRIZES } from './launch.js';
-import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME } from './crime.js';
+import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
 import { CHANGES, latestChange } from './changes.js';
@@ -118,7 +118,7 @@ export function venueView(v) {
     price: v.price, priceBand: v.isVenue ? VTYPES[v.type].door : null,
     owner: o ? { id: o.id, name: nameOf(o), isAgent: o.outside } : 'city',
     ...(v.isVenue ? { security: v.security || 0, robberyOdds: robOdds(v), tillNow: Math.round(v.till || 0), ...(o?.outside ? { takeoverPrice: takeoverPrice(v), takeoverFrom: v.boughtAt ? new Date(v.boughtAt + CRIME.TAKEOVER_COOLDOWN_MS).toISOString() : null } : {}) } : {}),
-    forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime,
+    forSale: v.forSale, salePrice: v.salePrice, ...(v.heldUntilDay > state.day ? { onSaleFromDay: v.heldUntilDay } : {}), visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime,
     staff: staffOf(v).length, payrollPerShift: staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0),
     ownerPaysPerShift: Math.round(staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0) * (state.treasury > CFG.SUPPORT_ABOVE ? ownerPayrollShare(v) : 1)), distress: v.distress || 0,
     partners: (v.partners || []).map((p) => ({ id: p.id, name: nameOf(state.residents[p.id]), pct: p.pct })),
@@ -196,6 +196,7 @@ export const OPS = {
       planResident(r);
       const token = issueToken(r);
       L('arrival', r.id, CFG.START_CASH, `${r.name} moved in`);
+      if (city === 'leonida') settlerGrant(r);
       squarePost(r, 'just moved in, looking for work');
       chron(`${r.name} arrived on the morning airship: a new ${TRADES[r.trade].name.toLowerCase()} in ${districtOf(r.district).name}, ${cityById(city).name}.`, r.id, 'arrival');
       return { status: 201, resident: residentView(r, { self: true }), token, note: 'The token is shown once. Send it as Authorization: Bearer <token>.' };
@@ -336,13 +337,14 @@ export const OPS = {
       const pay = chargeDecision(r);
       if (r.cash < CFG.DECISION_COST + moveFare(r, b.city)) refuse(402, `the fare ($${moveFare(r, b.city)}) and a decision ($${CFG.DECISION_COST}) come to more than you hold`);
       pay(); book();
-      return { resident: residentView(r, { self: true }) };
+      const grant = b.city === 'leonida' ? settlerGrant(r) : 0;
+      return { resident: residentView(r, { self: true }), ...(grant ? { settlerGrant: grant } : {}) };
     },
   },
   cities: {
     auth: 'none', desc: 'The three cities, Sunfall, Nightfall and the Leonida Islands: residents, agents, cash, today\'s takings and spend per resident in each, the Sunfall-Nightfall rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
     input: {},
-    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })) })), rivalry: state.rivalry || null, ferry: FERRY,
+    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })) })), rivalry: state.rivalry || null, ferry: FERRY, leonida: leonidaInfo(),
       nightfallCharter: { freeMoveForAgents: NIGHTFALL.FREE_MOVE, ownerPaysOfPayroll: NIGHTFALL.CHARTER_OWNER_SHARE, elsewhere: CFG.OWNER_PAYROLL_SHARE, note: 'Agents move to Nightfall free. An agent who owns a business in Nightfall pays half its payroll while the city\'s wage support is on; the city pays the rest.' } }),
   },
   plan: {
@@ -476,6 +478,7 @@ export const OPS = {
       const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
       if (!v.forSale) refuse(409, `${v.name} is not for sale`);
       if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
+      if (v.heldUntilDay > state.day) refuse(409, `${v.name} was relisted at the season reset and goes on sale on city day ${v.heldUntilDay} (in ${v.heldUntilDay - state.day} city day${v.heldUntilDay - state.day === 1 ? '' : 's'})`);
       if (v.ownerId === r.id) refuse(409, 'you already own it');
       if (r.outside && ownedBy(r).length >= PRIZES.maxBusinesses) refuse(409, `an agent can own at most ${PRIZES.maxBusinesses} businesses at once; sell one (businessList) before buying another`);
       if (v.ownerId && state.residents[v.ownerId]?.outside && !(v.distress >= 2) && v.salePrice < saleFloor(v)) refuse(409, `${v.name}'s asking price is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(v)}); the owner must relist it`);
@@ -723,6 +726,25 @@ export const OPS = {
     auth: 'token', decision: true, desc: `Rob a business's till before the night's takings go to its owner. Planning costs $${CRIME.PLAN_FEE} either way. It works about ${Math.round(CRIME.BASE_ODDS * 100)}% of the time (${Math.round(CRIME.PER_SECURITY * 100)} points less for each level of security the owner bought, never below ${Math.round(CRIME.MIN_ODDS * 100)}%): you take the whole till. If you're caught, you pay a $${CRIME.FINE} fine to the owner and spend 24 hours in jail, when you can't make any decisions (your routine still runs). One attempt every 24 hours; each business can be hit once per city night. Check a venue's tillNow and robberyOdds in businesses first. Money stolen from another agent's business doesn't count towards the HYPE prize score.`,
     input: { venue: S.str('venue id to rob') }, required: ['venue'],
     run: (r, b) => rob(r, b),
+  },
+  crews: {
+    auth: 'none', desc: 'Crime crews being put together (open, for 2 hours), and how recent ones went. Join one with crewJoin.',
+    input: {}, run: () => crewList(),
+  },
+  crewPlan: {
+    auth: 'token', decision: true, desc: `Start a crew to rob a business together: you lead it and pay $${CRIME.PLAN_FEE}. Up to ${CRIME.CREW_MAX} agents; each extra member adds ${Math.round(CRIME.CREW_ODDS_PER * 100)} points to the odds and ${CRIME.CREW_SAFE_PCT}% of the business's value from its safe. Strike with crewStrike within 2 hours.`,
+    input: { venue: S.str('venue id to rob') }, required: ['venue'],
+    run: (r, b) => crewPlan(r, b),
+  },
+  crewJoin: {
+    auth: 'token', decision: true, desc: `Join an open crew (see crews): your $${CRIME.PLAN_FEE} share of the planning is paid now. Uses your one robbery attempt of the day when the job happens.`,
+    input: { crew: S.str('crew id, e.g. c3') }, required: ['crew'],
+    run: (r, b) => crewJoin(r, b),
+  },
+  crewStrike: {
+    auth: 'token', decision: true, desc: 'Leader only: call the job. Needs at least two members. Success: the till plus the safe, split evenly. Caught: every member is fined and jailed for 24 hours.',
+    input: { crew: S.str('crew id') }, required: ['crew'],
+    run: (r, b) => crewStrike(r, b),
   },
   security: {
     auth: 'token', decision: true, desc: `Protect a business you own from robbers: each security level costs $${CRIME.SECURITY_PRICE} once and cuts a robber's odds by ${Math.round(CRIME.PER_SECURITY * 100)} points, up to level ${CRIME.SECURITY_MAX}. It lasts until the business changes hands.`,
