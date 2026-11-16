@@ -1,1 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Payouts · Sunfall</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<style>
+.key{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+.key input,.row input{font-family:var(--mono);font-size:13px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.key input{flex:1;min-width:240px}
+button{font-family:var(--mono);font-size:12px;letter-spacing:.6px;text-transform:uppercase;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer}
+button.go{background:var(--elybtn);border-color:#2a8aa5}
+button:disabled{opacity:.5;cursor:default}
+.grp{margin:26px 0 8px;font-family:var(--mono);font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#ffcf9a}
+.row{display:grid;grid-template-columns:1.2fr 2.2fr .8fr 2.4fr;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.row .w{font-family:var(--mono);font-size:12.5px;color:var(--dim);word-break:break-all}
+.row .h{font-family:var(--mono);font-size:16px;font-weight:600;color:var(--good)}
+.row .tx{display:flex;gap:8px}
+.row .tx input{flex:1;min-width:0}
+.cp{padding:4px 8px;font-size:10px;margin-left:6px}
+.msg{font-family:var(--mono);font-size:12px;margin-top:4px}
+.ok{color:var(--good)} .bad{color:#ff8a7a}
+.sum{font-family:var(--mono);font-size:13px;color:var(--dim);margin:10px 0}
+@media (max-width:760px){.row{grid-template-columns:1fr 1fr}.row .w,.row .tx{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/"><div class="mark"><img src="/logo.svg" alt="" width="41" height="34"><span>Sunfall</span></div><div class="chain">payouts</div></a>
+</header>
+<div class="wrap">
+  <h1>Prize <i>payouts</i>.</h1>
+  <p class="lede">Everyone who is owed HYPE. Send each amount from the Vault wallet, paste the transaction hash and press Mark paid: the prize then shows as paid on the Records and Vault pages, linked to the transaction.</p>
+  <div class="key"><input id="k" type="password" placeholder="Admin key (kept in this browser only)" autocomplete="off"><button class="go" id="load">Show what's due</button><button id="forget">Forget key</button></div>
+  <div id="out"></div>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const txt = (v) => (v && typeof v === 'object' ? (v.quoted ?? '') : v);
+const r6 = (n) => Math.round(n * 1e6) / 1e6;
+let KEY = ''; try { KEY = localStorage.getItem('sunfall-admin') || ''; } catch {}
+if (KEY) $('#k').value = KEY;
+const api = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', 'x-admin-key': KEY, ...(opts.headers || {}) } }); return { status: r.status, ...(await r.json()) }; };
+const copy = async (s, b) => { try { await navigator.clipboard.writeText(s); const t = b.textContent; b.textContent = 'copied'; setTimeout(() => (b.textContent = t), 1200); } catch { prompt('Copy', s); } };
+const label = (a) => a.kind === 'weekly' ? `Season prize · ${a.key}` : `Daily prize · ${a.key}`;
 
+async function load() {
+  KEY = $('#k').value.trim(); if (!KEY) return;
+  try { localStorage.setItem('sunfall-admin', KEY); } catch {}
+  $('#out').innerHTML = '<div class="sum">Loading…</div>';
+  const res = await api('/api/admin/payouts');
+  if (!res.ok) { $('#out').innerHTML = `<div class="msg bad">${esc(res.reason || 'refused')}</div>`; return; }
+  const due = res.due || [];
+  if (!due.length) { $('#out').innerHTML = '<div class="sum ok">Nothing due. Everyone has been paid.</div>'; return; }
+  const groups = {}; for (const a of due) (groups[label(a)] ||= []).push(a);
+  const total = r6(due.reduce((s, a) => s + a.hype, 0));
+  let html = `<div class="sum">${due.length} payout${due.length === 1 ? '' : 's'} due, <b class="ok">${total} HYPE</b> in all. <button class="cp" id="csv">copy all as wallet,amount</button></div>`;
+  for (const [g, list] of Object.entries(groups)) {
+    html += `<div class="grp">${esc(g)} · ${r6(list.reduce((s, a) => s + a.hype, 0))} HYPE</div>`;
+    for (const a of list.sort((x, y) => (x.place === 'rookie') - (y.place === 'rookie') || x.place - y.place)) {
+      html += `<div class="row" data-id="${esc(a.id)}">
+        <div>${a.place === 'rookie' ? '★ newcomer' : '#' + esc(a.place)} · <b>${esc(txt(a.name))}</b></div>
+        <div class="w">${esc(a.wallet)}<button class="cp" data-copy="${esc(a.wallet)}">copy</button></div>
+        <div class="h">${a.hype}<button class="cp" data-copy="${a.hype}">copy</button></div>
+        <div><div class="tx"><input placeholder="0x… transaction hash" spellcheck="false"><button class="go mark">Mark paid</button></div><div class="msg"></div></div>
+      </div>`;
+    }
+  }
+  $('#out').innerHTML = html;
+  $('#csv').onclick = (e) => copy(due.map((a) => `${a.wallet},${a.hype}`).join('\n'), e.target);
+  document.querySelectorAll('[data-copy]').forEach((b) => (b.onclick = () => copy(b.dataset.copy, b)));
+  document.querySelectorAll('.row').forEach((row) => {
+    const a = due.find((x) => x.id === row.dataset.id), btn = row.querySelector('.mark'), inp = row.querySelector('input'), msg = row.querySelector('.msg');
+    btn.onclick = async () => {
+      const tx = inp.value.trim();
+      if (!/^0x[0-9a-fA-F]{64}$/.test(tx)) { msg.className = 'msg bad'; msg.textContent = 'That is not a transaction hash (0x and 64 characters).'; return; }
+      btn.disabled = true; msg.className = 'msg'; msg.textContent = 'Recording…';
+      const out = await api('/api/admin/vault', { method: 'POST', body: JSON.stringify({ kind: 'out', use: 'prize', amount: a.hype, tx, award: a.id }) });
+      if (out.ok) { msg.className = 'msg ok'; msg.textContent = 'Marked paid.'; inp.disabled = true; }
+      else { btn.disabled = false; msg.className = 'msg bad'; msg.textContent = out.reason || 'Refused.'; }
+    };
+  });
+}
+$('#load').onclick = load;
+$('#k').addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
+$('#forget').onclick = () => { try { localStorage.removeItem('sunfall-admin'); } catch {} KEY = ''; $('#k').value = ''; $('#out').innerHTML = ''; };
+if (KEY) load();
+</script>
+</body>
+</html>
