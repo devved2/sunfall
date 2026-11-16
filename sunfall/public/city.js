@@ -2961,15 +2961,28 @@ function doHover() {
 // A storm parks dark cloud over its district and rains on it; a festival floats lanterns over the rooftops.
 const fx = { key: null, group: null, rain: null, rainPos: null, lant: null, lantPos: null, lantSpd: null, clouds: [], rect: null, flash: 0 };
 function setEventFX(ev) {
-  const key = ev && ev.district ? `${ev.kind}:${ev.district}:${ev.day}` : null;
+  const key = ev && ev.district ? `${ev.kind}:${ev.district}:${ev.day}` : ev && ev.kind === 'crimewave' ? `crimewave:${ev.day}` : null;
   if (key === fx.key) return;
   fx.key = key;
   if (fx.group) { scene.remove(fx.group); fx.group.traverse((o) => { o.geometry?.dispose?.(); if (o.material && !o.material.userData?.shared) o.material.dispose?.(); }); }
-  fx.group = fx.rain = fx.lant = null; fx.clouds = [];
-  if (!key || !['storm', 'festival'].includes(ev.kind)) return;
+  fx.group = fx.rain = fx.lant = fx.dark = fx.sirens = null; fx.clouds = [];
+  if (!key || !['storm', 'festival', 'blackout', 'crimewave'].includes(ev.kind)) return;
+  if (ev.kind === 'crimewave') { // police lights flashing red and blue over every business in the city
+    const g = new THREE.Group(); scene.add(g); fx.group = g;
+    const pts = [], col = [];
+    for (const v of S.venues || []) { if (!v.isVenue) continue; const p = W(v.x, v.y, 26 + (v.id.length % 3) * 4); pts.push(p.x, p.y, p.z); col.push(...(pts.length / 3 % 2 ? [1, 0.15, 0.2] : [0.2, 0.4, 1])); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    fx.sirens = new THREE.Points(geo, new THREE.PointsMaterial({ map: GLOW, size: 26, vertexColors: true, transparent: true, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }));
+    g.add(fx.sirens); return;
+  }
   const d = S.districts.find((x) => x.id === ev.district); if (!d) return;
   const [x, y, w, h] = d.rect; fx.rect = d.rect;
   const g = new THREE.Group(); scene.add(g); fx.group = g;
+  if (ev.kind === 'blackout') { // a pall of dark over the district at night: its lights are out
+    const c = W(x + w / 2, y + h / 2, 30);
+    fx.dark = new THREE.Mesh(new THREE.BoxGeometry(w, 60, h), new THREE.MeshBasicMaterial({ color: 0x02040a, transparent: true, opacity: 0, depthWrite: false }));
+    fx.dark.position.copy(c); g.add(fx.dark); return;
+  }
   const rnd = mulberry32(ev.day * 31 + x);
   if (ev.kind === 'storm') {
     const cm = new THREE.SpriteMaterial({ map: puffMats[0].map, transparent: true, depthWrite: false, color: 0x4a4f66, opacity: 0.95 });
@@ -3006,6 +3019,8 @@ function setEventFX(ev) {
 }
 function updateEventFX(t, dt) {
   if (!fx.group) return;
+  if (fx.dark) fx.dark.material.opacity = nightU.value * 0.62;
+  if (fx.sirens) fx.sirens.material.opacity = (Math.sin(t * 7) > 0 ? 0.9 : 0.25) * (0.35 + nightU.value * 0.65);
   for (const c of fx.clouds) { c.sp.position.x = c.base.x + Math.sin(t * 0.15 + c.ph) * 8; c.sp.position.y = c.base.y + Math.sin(t * 0.3 + c.ph) * 2; }
   if (fx.rain) {
     const p = fx.rainPos, top = 165, fall = 260 * dt;
