@@ -14,15 +14,18 @@ import { cityOfDistrict } from './world.js';
 import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
 import { rivalry, crimeRecord } from './life.js';
+import { eventIs } from './play.js';
 
 export const CRIME = {
   PLAN_FEE: 50, FINE: 100, JAIL_MS: 24 * 3600_000, ROB_EVERY_MS: 24 * 3600_000,
   BASE_ODDS: 0.4, PER_SECURITY: 0.1, MIN_ODDS: 0.1, SECURITY_MAX: 3, SECURITY_PRICE: 150,
   TAKEOVER_PREMIUM: 1.3, TAKEOVER_COOLDOWN_MS: 24 * 3600_000,
+  WAVE_BONUS: 0.15,                                 // a crime wave (city event) makes every robbery more likely to work
+  CREW_MAX: 4, CREW_ODDS_PER: 0.1, CREW_ODDS_MAX: 0.85, CREW_SAFE_PCT: 10, CREW_OPEN_MS: 2 * 3600_000,
 };
 const ownedBy = (r) => Object.values(state.venues).filter((v) => v.ownerId === r.id);
 export const jailedUntil = (r) => (r?.jailUntil && r.jailUntil > Date.now() ? r.jailUntil : null);
-export const robOdds = (v) => Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0));
+export const robOdds = (v) => Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0);
 
 export function rob(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
@@ -57,6 +60,98 @@ export function rob(r, { venue }) {
   L('rob', r.id, -fine, `caught robbing ${v.name}: fined and sent to Cinder Rock Prison for 24 hours`);
   chron(`${r.name} was caught trying to rob ${v.name}. Fined $${Math.round(fine)} and sent to Cinder Rock Prison for 24 hours.`, r.id, 'crime');
   return { robbery: { venue: v.id, name: v.name, success: false, fine, jailedUntil: new Date(r.jailUntil).toISOString(), odds } };
+}
+
+// ---------------------------------------------------------------- crews
+// A crew is up to four agents who rob one business together. The leader plans it ($50), others join (their $50 share
+// of the planning), and the leader strikes when ready. Each extra member adds to the odds, and a crew also cracks the
+// safe: on top of the till it takes 10% of the business's value per extra member, out of the owner's cash. The take
+// is split evenly. If it fails, every member is fined and jailed, as for a lone robbery. Unstruck crews break up after two hours.
+const crews = () => (state.crews ||= {});
+const crewView = (c) => ({ id: c.id, venue: c.venue, name: state.venues[c.venue]?.name, leader: c.leader, members: c.members.map((id) => ({ id, name: { quoted: state.residents[id]?.name } })),
+  odds: crewOdds(c), status: c.status, openUntil: new Date(c.t + CRIME.CREW_OPEN_MS).toISOString(), ...(c.result ? { result: c.result } : {}) });
+const crewOdds = (c) => Math.round(Math.min(CRIME.CREW_ODDS_MAX, robOdds(state.venues[c.venue]) + CRIME.CREW_ODDS_PER * (c.members.length - 1)) * 100) / 100;
+function tidyCrews() { for (const c of Object.values(crews())) { if (c.status === 'open' && Date.now() - c.t > CRIME.CREW_OPEN_MS) c.status = 'broke up'; if (c.status !== 'open' && Date.now() - c.t > 48 * 3600_000) delete crews()[c.id]; } }
+function robCheck(r, v) {
+  if (!r.outside) refuse(403, 'agents only');
+  if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
+  if (v.ownerId === r.id || (v.partners || []).some((p) => p.id === r.id)) refuse(409, "you can't rob your own business");
+  if (r.lastRob && Date.now() - r.lastRob < CRIME.ROB_EVERY_MS) refuse(429, `one robbery attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC`);
+}
+const myCrew = (r) => Object.values(crews()).find((c) => c.status === 'open' && c.members.includes(r.id));
+export function crewList() { tidyCrews(); return { crews: Object.values(crews()).sort((a, b) => b.t - a.t).slice(0, 30).map(crewView), rules: `Up to ${CRIME.CREW_MAX} agents. Each extra member adds ${Math.round(CRIME.CREW_ODDS_PER * 100)} points to the odds (max ${Math.round(CRIME.CREW_ODDS_MAX * 100)}%) and ${CRIME.CREW_SAFE_PCT}% of the business's value from its safe. Everyone pays $${CRIME.PLAN_FEE} to plan; the take is split evenly; if caught, everyone is fined and jailed. Crews break up if the leader hasn't struck within 2 hours.` }; }
+function payPlan(r, what) {
+  const pay = chargeDecision(r);
+  if (r.cash - CFG.DECISION_COST < CRIME.PLAN_FEE) refuse(402, `your share of planning costs $${CRIME.PLAN_FEE}; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
+  pay(); r.cash -= CRIME.PLAN_FEE; state.treasury += CRIME.PLAN_FEE;
+  L('rob', r.id, -CRIME.PLAN_FEE, what);
+}
+export function crewPlan(r, { venue }) {
+  tidyCrews();
+  const v = state.venues[venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
+  robCheck(r, v);
+  if (myCrew(r)) refuse(409, 'you are already in a crew; strike or wait for it to break up');
+  payPlan(r, `planned a crew job on ${v.name}`);
+  const id = `c${(state.counters.crew = (state.counters.crew || 0) + 1)}`;
+  const c = crews()[id] = { id, venue: v.id, leader: r.id, members: [r.id], t: Date.now(), status: 'open' };
+  chron(`Word on the street: ${r.name} is putting a crew together for a job. Two hours to sign up.`, r.id, 'crime');
+  return { crew: crewView(c) };
+}
+export function crewJoin(r, { crew }) {
+  tidyCrews();
+  const c = crews()[crew]; if (!c || c.status !== 'open') refuse(404, 'no open crew with that id (see crews)');
+  const v = state.venues[c.venue];
+  if (c.members.includes(r.id)) refuse(409, 'you are already in this crew');
+  if (c.members.length >= CRIME.CREW_MAX) refuse(409, `the crew is full (${CRIME.CREW_MAX})`);
+  if (myCrew(r)) refuse(409, 'you are already in another crew');
+  robCheck(r, v);
+  payPlan(r, `joined crew ${c.id} for a job on ${v.name}`);
+  c.members.push(r.id);
+  return { crew: crewView(c) };
+}
+export function crewStrike(r, { crew }) {
+  tidyCrews();
+  const c = crews()[crew]; if (!c || c.status !== 'open') refuse(404, 'no open crew with that id');
+  if (c.leader !== r.id) refuse(403, 'only the crew leader can call the job');
+  if (c.members.length < 2) refuse(409, 'a crew needs at least two members; rob alone with rob');
+  const v = state.venues[c.venue];
+  if (v.robbedDay === state.day) refuse(409, `${v.name} has already been hit tonight; its owner is on guard`);
+  if (!(v.till > 0)) refuse(409, `${v.name}'s till is empty right now; tills fill up through the night`);
+  const pay = chargeDecision(r); pay();
+  const team = c.members.map((id) => state.residents[id]).filter((m) => m && !(m.lastRob && Date.now() - m.lastRob < CRIME.ROB_EVERY_MS) && !jailedUntil(m) && v.ownerId !== m.id);
+  if (team.length < 2) { c.status = 'broke up'; refuse(409, 'too few members can still take part (cooldowns, jail or ownership changes); the crew broke up'); }
+  for (const m of team) m.lastRob = Date.now();
+  v.robbedDay = state.day;
+  const odds = Math.round(Math.min(CRIME.CREW_ODDS_MAX, robOdds(v) + CRIME.CREW_ODDS_PER * (team.length - 1)) * 100) / 100, owner = v.ownerId ? state.residents[v.ownerId] : null;
+  const names = team.map((m) => m.name).join(', ');
+  if (secureRandom() < odds) {
+    const till = Math.round(v.till * 100) / 100;
+    let safe = Math.round(venueValueNow(v) * CRIME.CREW_SAFE_PCT / 100 * (team.length - 1));
+    if (owner) { safe = Math.max(0, Math.min(safe, Math.floor(owner.cash))); owner.cash -= safe; } else { state.treasury -= safe; }
+    const take = till + safe, share = Math.floor(take / team.length * 100) / 100;
+    v.till = 0;
+    if (owner) L('rob', owner.id, -safe, `${v.name} was hit by a crew: till $${Math.round(till)} and $${safe} from the safe`);
+    for (const m of team) {
+      m.cash += share;
+      if (owner?.outside) m.season.agentRob = (m.season.agentRob || 0) + share;
+      L('rob', m.id, share, `robbed ${v.name} with crew ${c.id}: a ${team.length}-way share`);
+      crimeRecord(m, 'robbed'); if (owner?.outside) rivalry(m, owner, `robbed ${v.name}`);
+    }
+    if (owner?.outside) crimeRecord(owner, 'victim');
+    c.status = 'struck'; c.result = { success: true, take: Math.round(take), share, odds };
+    chron(`A crew of ${team.length} (${names}) hit ${v.name}: the till and the safe, $${Math.round(take)} split ${team.length} ways.`, r.id, 'crime');
+    return { crew: crewView(c) };
+  }
+  for (const m of team) {
+    const fine = Math.min(CRIME.FINE, Math.max(0, m.cash));
+    m.cash -= fine;
+    if (owner) { owner.cash += fine; L('rob', owner.id, fine, `fine paid by a caught robber at ${v.name}`); } else state.treasury += fine;
+    m.jailUntil = Date.now() + CRIME.JAIL_MS; crimeRecord(m, 'caught'); if (owner?.outside) rivalry(m, owner, `tried to rob ${v.name}`);
+    L('rob', m.id, -fine, `caught robbing ${v.name} with crew ${c.id}: fined and sent to Cinder Rock Prison for 24 hours`);
+  }
+  c.status = 'caught'; c.result = { success: false, odds };
+  chron(`A crew of ${team.length} (${names}) was caught trying to hit ${v.name}. All of them are on their way to Cinder Rock Prison.`, r.id, 'crime');
+  return { crew: crewView(c) };
 }
 
 export function security(r, { venue, level }) {
