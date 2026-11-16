@@ -12,7 +12,8 @@ import { stockGainOf } from './exchange.js';
 export const GAME = {
   LOAN_MIN: 20, LOAN_MAX: 2000, LOAN_RATE_MAX: 50, LOAN_DAYS_MAX: 14, LOANS_ACTIVE_MAX: 3, LOAN_OFFERS_MAX: 5,
   STAKE_MIN: 5, STAKE_TOTAL_MAX: 50,
-  EVENT_CHANCE: Number(process.env.EVENT_CHANCE ?? 0.55),
+  RELIST_HOLD_DAYS: 6,      // after a season reset, agents' old businesses stay off the market this many city days (3 hours), then sell at full value
+  EVENT_CHANCE: Number(process.env.EVENT_CHANCE ?? 0.8),
 };
 
 // ---------------------------------------------------------------- state defaults (also migrates older saves)
@@ -125,6 +126,8 @@ const money = (n) => `$${Math.round(n)}`;
 // Each day turn activates yesterday's forecast and rolls tomorrow's, so agents can plan around it.
 export const EVENT_KINDS = {
   storm: { icon: '⛈', title: (d) => `Storm over ${districtName(d)}`, blurb: 'Every venue in the district is shut for the day. Nobody is charged; jobs there are refunded.', district: true },
+  blackout: { icon: '🕯', title: (d) => `Blackout in ${districtName(d)}`, blurb: 'The power is out tonight: the district\'s venues are shut for the night half. Daytime is as usual.', district: true },
+  crimewave: { icon: '🚨', title: () => 'Crime wave', blurb: `Every robbery works more often today (15 points better odds). Owners: time for security.` },
   festival: { icon: '🏮', title: (d) => `Lantern festival in ${districtName(d)}`, blurb: 'Doors in the district are half price and the crowds come from all over the city.', district: true },
   boom: { icon: '⚙', title: () => 'Cloudworks boom', blurb: 'The city adds 25% on top of wages paid today, while its bonus fund lasts.' },
   crash: { icon: '📉', title: () => 'Market crash', blurb: 'Business values drop 40% for the day and the city dumps two venues at fire-sale prices.' },
@@ -134,7 +137,7 @@ export const EVENT_KINDS = {
 export const eventIs = (kind, district) => state.event && state.event.day === state.day && state.event.kind === kind && (!district || state.event.district === district);
 function rollForecast() {
   if (secureRandom() > GAME.EVENT_CHANCE) { state.forecast = null; return; }
-  const weights = { storm: 3, festival: 3, lucky: 2, cargo: 2, boom: 1, crash: 1 };
+  const weights = { storm: 3, festival: 3, lucky: 2, cargo: 2, boom: 1, crash: 1, blackout: 2, crimewave: 2 };
   let x = secureRandom() * Object.values(weights).reduce((a, b) => a + b, 0);
   const kind = Object.keys(weights).find((k) => (x -= weights[k]) <= 0) || 'festival';
   const district = EVENT_KINDS[kind].district ? pick(DISTRICTS).id : null;
@@ -352,14 +355,14 @@ export function standings() {
     const worth = netWorth(r), casino = Math.round(r.season.casino || 0), betting = Math.round(r.season.betting || 0);
     const team = PRIZES.teamAgents.includes(r.id), excluded = PRIZES.excluded.includes(r.id);
     const fromAgents = Math.round((r.season.agentJobs || 0) + (r.season.agentInterest || 0) + (r.season.agentRob || 0) + (r.season.agentTakeover || 0));
-    const bargains = bargainsOf(r), stocks = stockGainOf(r);
+    const bargains = bargainsOf(r), stocks = stockGainOf(r), grants = Math.round(r.season.grants || 0);
     return {
       id: r.id, name: { quoted: r.name }, runsOn: r.runsOn ? { quoted: r.runsOn } : null, wallet, team,
       netWorth: worth, cash: Math.round(r.cash), owns: ownedBy(r).length, stakes: stakesOf(r).length,
       interest: Math.round(r.season.interest), jobs: r.season.jobs, credit: r.credit,
       // Prizes reward play, not luck: casino and football winnings this season don't count towards the prize score.
       // Nor does money paid in by other agents (their jobs and their loan interest).
-      casino, betting, fromAgents, bargains, stocks, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains - Math.max(0, stocks)),
+      casino, betting, fromAgents, bargains, stocks, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains - Math.max(0, stocks) - grants),
       prizeEligible: Boolean(wallet) && !team && !excluded, excluded: excluded || undefined,
       badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
     };
@@ -555,7 +558,8 @@ function closeSeason() {
     if (v.ownerId && agentIds.has(v.ownerId)) {
       const base = PLACES.find((p) => p[0] === v.id)?.[6];
       v.ownerId = null; v.partners = []; v.distress = 0; v.price = VTYPES[v.type].price;
-      v.forSale = true; v.salePrice = base || Math.round((VTYPES[v.type].value * 0.7) / 10) * 10;
+      // Back on sale at full value, and only after a few city days: no one can scoop the city's businesses in the first minutes of a season.
+      v.forSale = true; v.salePrice = Math.max(base || 0, Math.round(VTYPES[v.type].value / 10) * 10); v.heldUntilDay = state.day + GAME.RELIST_HOLD_DAYS;
     }
   }
   for (const r of agents) {
