@@ -2593,6 +2593,7 @@ const feedOpenLines = new Set();
 let evOpen = false;
 function renderFeed() {
   const feed = $('#feed'); if (!feed || !S) return;
+  checkMoments();
   const rows = S.chronicle.slice(0, feedOpen ? (LITE ? 4 : 7) : 0);
   const byName = S.venues.filter((v) => v.isVenue || v.type === 'stadium' || v.type === 'field');
   feed.className = 'glass' + (feedOpen ? '' : ' shut');
@@ -2605,6 +2606,79 @@ function renderFeed() {
       return `<div class="fl click ${IMPORTANT.has(c.kind) ? 'imp' : ''} ${open ? 'open' : ''}" data-fl="${esc(key)}"><span>day ${c.day}</span>${esc(c.text)}${extra}</div>`;
     }).join('');
   if (feed._h !== html) { feed._h = html; feed.innerHTML = html; } // only touch the DOM when something changed, so clicks land
+}
+// ---------------------------------------------------------------- live map moments
+// When something worth watching happens (a robbery, a crew job, an arrest, a business changing hands, a big win, a
+// city event, a new arrival), a beacon lights up over the spot and a card pops up with a Watch button that flies the
+// camera there. "Auto" (remembered in this browser) flies there by itself, for leaving the city on in the background.
+const MOMENT = {
+  crime: { icon: '🚨', col: 0xff4a5a, label: 'Crime' }, business: { icon: '🏷', col: 0xffc857, label: 'Business' },
+  casino: { icon: '🎰', col: 0xffc857, label: 'Big win' }, event: { icon: '⚡', col: 0x5ff6ff, label: 'City event' },
+  season: { icon: '🏆', col: 0xffd36e, label: 'Season' }, keeper: { icon: '👑', col: 0xb58bff, label: 'Sky Keep' },
+  arrival: { icon: '✺', col: 0x5ff6ff, label: 'New arrival' },
+};
+let momentSeen = null, momentQ = [], momentNow = null, momentT = 0, lastTouch = 0, momentAuto = false;
+try { momentAuto = localStorage.getItem('sf_auto') === '1'; } catch {}
+controls.addEventListener('start', () => { lastTouch = performance.now(); });
+const beacons = [];
+(() => {
+  const st = document.createElement('style');
+  st.textContent = `#moment{position:fixed;left:50%;top:94px;transform:translate(-50%,-14px);opacity:0;pointer-events:none;z-index:30;max-width:min(560px,calc(100vw - 32px));display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:rgba(6,22,28,.88);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12);box-shadow:0 10px 30px rgba(0,0,0,.35);transition:opacity .35s,transform .35s;font:500 13.5px/1.4 Inter,system-ui,sans-serif;color:#e8eef0}
+  #moment.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+  #moment .mi{font-size:22px;line-height:1}#moment .mt{flex:1;min-width:0}#moment .mk{font:600 10.5px/1 'JetBrains Mono',monospace;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px}
+  #moment button{font:600 11px/1 'JetBrains Mono',monospace;letter-spacing:.6px;text-transform:uppercase;padding:8px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#e8eef0;cursor:pointer;white-space:nowrap}
+  #moment .mw{background:#1f7f99;border-color:#2a8aa5}#moment .ma.on{color:#8fd47a;border-color:rgba(143,212,122,.5)}#moment .mx{padding:8px 9px}
+  @media (max-width:860px){#moment{top:auto;bottom:128px}#moment .ma{display:none}}`;
+  document.head.appendChild(st);
+  const el = document.createElement('div'); el.id = 'moment'; el.setAttribute('role', 'status'); document.body.appendChild(el);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.classList.contains('mw') && momentNow?.at) watchMoment(momentNow);
+    if (b.classList.contains('ma')) { momentAuto = !momentAuto; try { localStorage.setItem('sf_auto', momentAuto ? '1' : '0'); } catch {} b.classList.toggle('on', momentAuto); b.textContent = momentAuto ? 'Auto: on' : 'Auto: off'; }
+    if (b.classList.contains('mx')) { momentT = 0; }
+  });
+})();
+function momentPlace(c) {
+  const v = S.venues.filter((x) => x.isVenue || x.type === 'stadium' || x.type === 'field').find((x) => c.text.includes(x.name));
+  if (v) return W(v.x, v.y);
+  const p = c.who && people.find((x) => x.r[0] === c.who);
+  return p ? (p.world ? p.world.clone() : W(p.H[0], p.H[1])) : null;
+}
+function checkMoments() {
+  const rows = S.chronicle || [];
+  const newest = rows.reduce((m, c) => Math.max(m, c.t), 0);
+  if (momentSeen == null) { momentSeen = newest; return; } // don't replay what happened before the page opened
+  const fresh = rows.filter((c) => c.t > momentSeen && MOMENT[c.kind]).sort((a, b) => a.t - b.t);
+  momentSeen = Math.max(momentSeen, newest);
+  for (const c of fresh) momentQ.push({ ...c, at: momentPlace(c), m: MOMENT[c.kind] });
+  if (momentQ.length > 3) momentQ = momentQ.slice(-3);
+}
+function watchMoment(mo) {
+  const w = mo.at; lastTouch = 0;
+  if (iso) frameOn(w, ISO_OFF, 3.2); else flyTo(w.clone().add(new THREE.Vector3(0, 8, 0)), w.clone().add(new THREE.Vector3(70, 150, 250)));
+}
+function beaconAt(w, col) {
+  const g = new THREE.Group(); g.position.copy(w);
+  const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 4, 160, 16, 1, true).translate(0, 80, 0), mat); g.add(beam);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(6, 8, 40).rotateX(-Math.PI / 2), mat.clone()); ring.position.y = 1.5; g.add(ring);
+  scene.add(g); beacons.push({ g, ring, age: 0, life: 14 });
+}
+function updateMoments(dt) {
+  for (let i = beacons.length - 1; i >= 0; i--) {
+    const b = beacons[i]; b.age += dt; const k = b.age / b.life;
+    const s = 1 + (b.age % 1.6) * 3; b.ring.scale.set(s, 1, s); b.ring.material.opacity = 0.7 * (1 - (b.age % 1.6) / 1.6) * (1 - k);
+    b.g.children[0].material.opacity = 0.5 * (1 - k);
+    if (k >= 1) { scene.remove(b.g); b.g.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); beacons.splice(i, 1); }
+  }
+  const el = document.getElementById('moment'); if (!el) return;
+  if (momentNow) { momentT -= dt; if (momentT <= 0) { momentNow = null; el.classList.remove('on'); } return; }
+  if (!momentQ.length || document.hidden) return;
+  const mo = momentNow = momentQ.shift(); momentT = 9;
+  const hex = '#' + mo.m.col.toString(16).padStart(6, '0');
+  el.innerHTML = `<div class="mi">${mo.m.icon}</div><div class="mt"><div class="mk" style="color:${hex}">${mo.m.label} · day ${mo.day}</div>${esc(mo.text.length > 170 ? mo.text.slice(0, 167) + '…' : mo.text)}</div>${mo.at ? '<button class="mw" type="button">Watch</button>' : ''}<button class="ma ${momentAuto ? 'on' : ''}" type="button">Auto: ${momentAuto ? 'on' : 'off'}</button><button class="mx" type="button" aria-label="Dismiss">✕</button>`;
+  el.classList.add('on');
+  if (mo.at) { beaconAt(mo.at, mo.m.col); if (momentAuto && performance.now() - lastTouch > 20000 && !$('#drawer').classList.contains('open')) watchMoment(mo); }
 }
 $('#feed').addEventListener('click', (e) => {
   if (e.target.closest('.fcol') || (e.target.closest('.fh') && !feedOpen)) { feedOpen = !feedOpen; try { localStorage.setItem('sf_feed', feedOpen ? '1' : '0'); } catch {} renderFeed(); return; }
@@ -3018,6 +3092,7 @@ function setEventFX(ev) {
   }
 }
 function updateEventFX(t, dt) {
+  updateMoments(dt);
   if (!fx.group) return;
   if (fx.dark) fx.dark.material.opacity = nightU.value * 0.62;
   if (fx.sirens) fx.sirens.material.opacity = (Math.sin(t * 7) > 0 ? 0.9 : 0.25) * (0.35 + nightU.value * 0.65);
