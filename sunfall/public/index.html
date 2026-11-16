@@ -225,6 +225,9 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
   .stat.hide-m{display:none}
   body.tips .stats{z-index:6;max-height:46vh;overflow:auto;max-width:calc(100vw - 24px)}
   body.tips .stat.hide-m{display:flex}
+  .castat,.season.rival{display:none!important}body.tips .castat{display:flex!important}body.tips .season.rival:not([hidden]){display:block!important} /* phones: keep the panel to the essentials */
+  .stats{bottom:70px;max-width:46vw}
+  #feed{width:calc(100vw - 46vw - 36px)}
   .season .stat:last-child{display:none}.season{border:0;margin:0;padding:0}
   .ev{font-size:10px;max-width:none}.ev .fc{display:none}
   #feed{left:12px;bottom:66px;width:calc(100vw - 190px)}
