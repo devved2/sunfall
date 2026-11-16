@@ -34,6 +34,8 @@ export const LAUNCH = {
   // How every HYPE that reaches the Vault is split, e.g. {"prize":70,"buyback":30}; must add up to 100.
   vaultPolicy: cfg.vaultPolicy && typeof cfg.vaultPolicy === 'object' && Object.values(cfg.vaultPolicy).every((n) => Number.isFinite(n) && n >= 0)
     && Math.abs(Object.values(cfg.vaultPolicy).reduce((a, b) => a + b, 0) - 100) < 0.001 ? Object.entries(cfg.vaultPolicy).map(([k, n]) => `${k}:${n}`).join(',') : null,
+  // When the Leonida Islands open to agents (ISO time). Unset: closed. Set a future time and the site counts down to it.
+  leonidaOpensAt: Number.isFinite(Date.parse(cfg.leonidaOpensAt)) ? Date.parse(cfg.leonidaOpensAt) : null,
 };
 const split = Array.isArray(cfg.prizeSplit) && cfg.prizeSplit.length && cfg.prizeSplit.every((n) => Number.isFinite(n) && n > 0) && Math.abs(cfg.prizeSplit.reduce((a, b) => a + b, 0) - 100) < 0.001 ? cfg.prizeSplit : [50, 30, 20];
 // "prizesFrom" (an ISO time, e.g. "2026-11-12T00:00:00Z") switches prizes on by itself at that moment; the first
