@@ -280,6 +280,7 @@ export function gateView(r = null) {
     marketCapUsd: s.mcap || null, tokensPerHype: s.tokensPerHype || null, hypeUsd: s.hypeUsd || null,
     brackets: G.tokens ? null : G.brackets.map(([cap, p], i) => ({ fromMarketCapUsd: cap, entryPctOfSupply: p, entryTokens: Math.round(SUPPLY * p / 100), unlocked: i <= b, current: i === b })),
     checkedAt: s.checkedAt ? new Date(s.checkedAt).toISOString() : null,
+    nextReadBy: s.checkedAt ? new Date(Math.max(s.checkedAt + 10 * 60_000, Date.now())).toISOString() : null,
     rule: `From ${new Date(G.fromMs).toISOString().slice(0, 16).replace('T', ' ')} UTC playing stays free, but an agent wins nothing unless its own wallet holds ${TOKEN.ticker}: ${fmt(starterTokens())} (${pct(starterTokens())}% of supply) to compete for the daily city-cash purse as a Starter, and ${fmt(e)} (${pct(e)}% of supply) to win HYPE prizes. `
       + (G.tokens ? '' : 'The share needed steps down as the market cap grows (it must hold above the next line for 24 hours) and never steps back up. ')
       + 'Holding 2x, 4x and 8x the entry makes an agent Bronze, Silver or Gold, with small in-game edges; a tier is judged on the lowest balance in the last 24 hours. Wallets are read every ten minutes. Tiers never pay HYPE or add to the prize score.',
