@@ -6,7 +6,7 @@
 //    Bundesliga, Ligue 1, Champions League). Bets close at the real kick-off and settle on the 90-minute result.
 // Bets are in city cash. The Arena is the bookmaker: stakes go into its till, winnings come out of it (then the
 // treasury). Football winnings don't count towards the HYPE prize score, the same as the casino.
-import { state, L, chron, CFG, payFromVenue } from './sim.js';
+import { state, L, chron, CFG, payFromVenue, book as bookVenue } from './sim.js';
 import { DISTRICTS, LAST, cityOfDistrict, cityById } from './world.js';
 import { secureRandom, mulberry32, pick, clamp, refuse, ut } from './util.js';
 import { footballPlays, liveFeed } from './playbyplay.js';
@@ -267,7 +267,7 @@ export function placeBet(r, { match, pick: side, stake, reason, confidence }) {
   if (r.cash < stake + CFG.DECISION_COST) refuse(402, `a $${stake} slip and the $${CFG.DECISION_COST} decision need $${stake + CFG.DECISION_COST}; you hold $${r.cash.toFixed(2)}`);
   return () => {
     r.cash -= stake;
-    const arena = state.venues[m.venue || ARENA]; arena.till += stake; arena.takingsToday += stake; arena.lifetime.takings += stake;
+    const arena = state.venues[m.venue || ARENA]; arena.till += stake; arena.takingsToday += stake; arena.lifetime.takings += stake; bookVenue(arena, 'takings', stake);
     const b = { id: 'b' + ++f.counters.b, t: Date.now(), rid: r.id, name: r.name, agent: Boolean(r.outside), kind: m.kind, match: m.id, matchName: matchLabel(m), pick: side, pickName: pickLabel(m, side), stake, odds: m.odds[side], status: 'open', payout: 0, comp: compOf(m), ...(r.outside ? { reason: String(reason).trim(), confidence } : {}) };
     f.bets.push(b); f.totals.bets++; f.totals.staked += stake;
     if (f.bets.length > 2000) f.bets.splice(0, f.bets.length - 2000);
@@ -290,13 +290,13 @@ export function settle(matchId, result) {
     const r = state.residents[b.rid];
     if (!r) { b.status = 'void'; continue; }
     if (result === 'void') {
-      const back = payFromVenue(arena, b.stake);
+      const back = payFromVenue(arena, b.stake, 'payouts');
       r.cash += back; b.status = 'void'; b.payout = back;
       if (r.outside) L('bet', r.id, back, `stake back: ${m ? matchLabel(m) : matchId} was called off`);
       continue;
     }
     if (b.pick === result) {
-      const paid = payFromVenue(arena, r2(b.stake * b.odds));
+      const paid = payFromVenue(arena, r2(b.stake * b.odds), 'payouts');
       r.cash += paid; b.status = 'won'; b.payout = paid; f.totals.paid += paid; nWin++;
       if (r.season) r.season.betting = (r.season.betting || 0) + paid - b.stake;
       if (r.outside) { L('bet', r.id, paid, `won ${b.id}: ${pickLabel(m, b.pick)}, ${matchLabel(m)}`); chron(`${r.name} won $${Math.round(paid)} backing ${pickLabel(m, b.pick)} (${matchLabel(m)}).`, r.id, 'football'); }
@@ -326,7 +326,7 @@ export function nativesBet(m, p = probs(m.home, m.away)) {
     f.totals.bets++; f.totals.staked += stake;
   }
   if (total) {
-    const arena = state.venues[m.venue || ARENA]; arena.till += total; arena.takingsToday += total; arena.lifetime.takings += total;
+    const arena = state.venues[m.venue || ARENA]; arena.till += total; arena.takingsToday += total; arena.lifetime.takings += total; bookVenue(arena, 'takings', total);
     L('bet', m.venue || ARENA, total, `${n} residents bet on ${matchLabel(m)}`);
   }
 }
