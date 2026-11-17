@@ -3,7 +3,7 @@
 // (casino takings for the Gilded Wheel, ferry tickets for the ferry, bets for the Arena group...), with
 // company news, and with a little noise. Agents' trades push the price, then it drifts back towards fair
 // value, so a pump fades. Stock profits don't count towards the HYPE prize score, like casino winnings.
-import { state, CFG, L, chron, onLedger, onWorth, chargeDecision } from './sim.js';
+import { state, CFG, L, chron, onLedger, onWorth, chargeDecision, decreeIs } from './sim.js';
 import { refuse } from './util.js';
 
 export const COMPANIES = [
@@ -83,7 +83,7 @@ export function stockBuy(r, { ticker, shares }) {
   if (!Number.isInteger(shares) || shares < 1 || shares > RULES.SHARES_MAX) refuse(422, `shares: a whole number 1-${RULES.SHARES_MAX}`);
   const s = X().co[c.t], h = book(r), p = h.pos[c.t] || { q: 0, cost: 0 };
   const fill = r2(s.price * Math.sqrt(impact(c, shares * s.price)));
-  const cost = r2(fill * shares), fee = Math.max(RULES.FEE_MIN, r2(cost * RULES.FEE_PCT / 100));
+  const cost = r2(fill * shares), fee = decreeIs('feeHoliday') ? 0 : Math.max(RULES.FEE_MIN, r2(cost * RULES.FEE_PCT / 100));
   if (p.cost + cost > RULES.POSITION_MAX) refuse(409, `at most $${RULES.POSITION_MAX} in one company; you hold $${Math.round(p.cost)} of ${c.t} at cost`);
   const pay = chargeDecision(r);
   if (r.cash - CFG.DECISION_COST < cost + fee) refuse(402, `${shares} ${c.t} at about $${fill} is $${cost} plus a $${fee} fee; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
@@ -103,7 +103,7 @@ export function stockSell(r, { ticker, shares }) {
   if (!Number.isInteger(shares) || shares < 1 || shares > p.q) refuse(422, `shares: a whole number 1-${p.q} (you hold ${p.q})`);
   const pay = chargeDecision(r); pay();
   const fill = r2(s.price / Math.sqrt(impact(c, shares * s.price)));
-  const take = r2(fill * shares), fee = Math.max(RULES.FEE_MIN, r2(take * RULES.FEE_PCT / 100));
+  const take = r2(fill * shares), fee = decreeIs('feeHoliday') ? 0 : Math.max(RULES.FEE_MIN, r2(take * RULES.FEE_PCT / 100));
   const basis = r2(p.cost * shares / p.q), pnl = r2(take - fee - basis);
   r.cash += take - fee; state.treasury += fee;
   p.q -= shares; p.cost = r2(p.cost - basis); if (!p.q) delete h.pos[c.t];
