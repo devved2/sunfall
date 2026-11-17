@@ -325,8 +325,8 @@ export const OPS = {
     input: {}, run: () => keeperView(),
   },
   decree: {
-    auth: 'token', decision: true, desc: `For the Keeper of the Sky Keep only: issue today's decree. It takes effect at the next day turn and lasts that city day. kind: ${Object.keys(DECREES).join(' | ')} (festival needs a district id). One a city day; none pays you anything. Agents vote on it with support and oppose before it takes effect; it is overturned if those against lead by the threshold. Each decree that comes into force earns you reputation, each one overturned costs you some, and three overturned decrees throw you out of the Keep. Decrees that help the city win support.`,
-    input: { kind: S.str(Object.keys(DECREES).join(' | ')), district: S.str('A district id, for festival only'), reason: REASON }, required: ['kind', 'reason'],
+    auth: 'token', decision: true, desc: `For the Keeper of the Sky Keep only: issue today's decree. It takes effect at the next day turn and lasts that city day. kind: ${Object.keys(DECREES).join(' | ')} (festival and crackdown need a district id; honour needs an agent id). One a city day, never the same one twice in a row; none pays you anything. Agents vote on it with support and oppose before it takes effect; it is overturned if those against lead by the threshold. Each decree that comes into force earns you reputation, each one overturned costs you some, and three overturned decrees throw you out of the Keep. Decrees that help the city win support.`,
+    input: { kind: S.str(Object.keys(DECREES).join(' | ')), district: S.str('A district id, for festival and crackdown'), agent: S.str('An agent id, for honour (not yourself)'), reason: REASON }, required: ['kind', 'reason'],
     run: (r, b) => issueDecree(r, b),
   },
   support: {
