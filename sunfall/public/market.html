@@ -140,15 +140,101 @@ async function loadAgents() {
 }
 $('#agent').addEventListener('change', refresh); $('#text').addEventListener('input', refresh);
 
+// Wallet helper: finds every wallet in the browser (EIP-6963), lets the person pick one when there are several, and
+// signs with the same wallet it connected to. Several wallet extensions fighting over window.ethereum is the usual
+// cause of "the requested account and/or method has not been authorized".
+const SFW = (() => {
+  const found = [];
+  window.addEventListener('eip6963:announceProvider', (e) => { const d = e.detail; if (d?.provider && !found.some((x) => x.info.uuid === d.info.uuid)) found.push(d); });
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+  let chosen = null;
+  const store = { get: () => { try { return localStorage.getItem('sfWallet'); } catch { return null; } }, set: (v) => { try { localStorage.setItem('sfWallet', v); } catch {} } };
+  function chooser(list) {
+    return new Promise((res, rej) => {
+      const bg = document.createElement('div');
+      bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#0d1b20;border:1px solid #2a4650;border-radius:12px;padding:18px;max-width:340px;width:100%;color:#e8f1f2;font:14px system-ui,sans-serif';
+      box.innerHTML = '<div style="font-weight:600;margin-bottom:10px">Which wallet?</div>';
+      for (const w of list) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;margin:6px 0;padding:10px;border-radius:8px;border:1px solid #2a4650;background:#13262c;color:inherit;cursor:pointer;font:inherit';
+        const img = document.createElement('img'); img.src = w.info.icon || ''; img.width = 22; img.height = 22; img.alt = '';
+        const t = document.createElement('span'); t.textContent = w.info.name || 'Wallet';
+        b.append(img, t); b.onclick = () => { bg.remove(); res(w); }; box.append(b);
+      }
+      const x = document.createElement('button'); x.type = 'button'; x.textContent = 'Cancel';
+      x.style.cssText = 'margin-top:8px;background:none;border:0;color:#8fb3ba;cursor:pointer;font:inherit';
+      x.onclick = () => { bg.remove(); rej(Object.assign(new Error('cancelled'), { code: 4001 })); };
+      box.append(x); bg.append(box); document.body.append(bg);
+    });
+  }
+  async function provider() {
+    if (chosen) return chosen;
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+    await new Promise((r) => setTimeout(r, 150));
+    if (found.length > 1) {
+      const last = store.get(), keep = found.find((w) => w.info.rdns === last);
+      const w = keep || await chooser(found);
+      store.set(w.info.rdns); chosen = w.provider;
+    } else chosen = found[0]?.provider || window.ethereum || null;
+    if (!chosen) throw Object.assign(new Error('No wallet found in this browser. Open this page in MetaMask or Rabby (or their in-app browser on your phone).'), { code: 'none' });
+    return chosen;
+  }
+  async function connect() {
+    const p = await provider();
+    let accts = await p.request({ method: 'eth_requestAccounts' });
+    if (!accts?.length) { await p.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] }); accts = await p.request({ method: 'eth_accounts' }); }
+    if (!accts?.length) throw Object.assign(new Error('unauthorized'), { code: 4100 });
+    return accts[0];
+  }
+  const hex = (s) => '0x' + Array.from(new TextEncoder().encode(s), (b) => b.toString(16).padStart(2, '0')).join('');
+  async function sign(text, addr) {
+    const p = await provider();
+    try { return await p.request({ method: 'personal_sign', params: [hex(text), addr] }); }
+    catch (e) {
+      if (e?.code !== 4100) throw e;
+      // The wallet hasn't given this site that account: ask again, then sign with the account it hands back.
+      await p.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+      const [a] = await p.request({ method: 'eth_accounts' });
+      if (!a || a.toLowerCase() !== addr.toLowerCase()) throw Object.assign(new Error('switched'), { code: 'switched', addr: a });
+      return await p.request({ method: 'personal_sign', params: [hex(text), a] });
+    }
+  }
+  function explain(e) {
+    const c = e?.code;
+    if (c === 'none') return e.message;
+    if (c === 4001 || /reject|denied|cancel/i.test(e?.message || '')) return 'You cancelled in your wallet. Try again when you are ready.';
+    if (c === 4100) return 'Your wallet hasn\'t let sunfall.world use this account. Unlock your wallet, connect sunfall.world to the account that owns your agent (in MetaMask: the site icon at the top, then Connect), and try again. Several wallet extensions installed? Turn off the ones you are not using.';
+    if (c === -32002) return 'A wallet pop-up is already waiting: open your wallet and finish it.';
+    if (c === 'switched') return 'Your wallet connected a different account. Pick the account that owns your agent in your wallet and try again.';
+    return e?.message || 'Something went wrong with the wallet.';
+  }
+  // Make sure the wallet will sign with `want`: it may be connected under another account.
+  async function use(want) {
+    const p = await provider(), lo = want.toLowerCase();
+    let accts = await p.request({ method: 'eth_requestAccounts' });
+    if (!(accts || []).some((a) => a.toLowerCase() === lo)) { await p.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] }); accts = await p.request({ method: 'eth_accounts' }); }
+    const a = (accts || []).find((x) => x.toLowerCase() === lo);
+    if (!a) throw Object.assign(new Error('switched'), { code: 'switched' });
+    return a;
+  }
+  const forget = () => { chosen = null; try { localStorage.removeItem('sfWallet'); } catch {} };
+  return { provider, connect, use, sign, explain, forget };
+})();
+
 async function wallet() {
-  if (!window.ethereum) throw new Error('No wallet found in this browser. Install MetaMask or Rabby, or burn from any wallet and claim with the transaction hash below.');
-  const [from] = await window.ethereum.request({ method: 'eth_requestAccounts' });
+  let eth;
+  try { eth = await SFW.provider(); } catch { throw new Error('No wallet found in this browser. Install MetaMask or Rabby, or burn from any wallet and claim with the transaction hash below.'); }
+  window.__eth = eth;
+  const from = await SFW.connect();
   const want = '0x' + Number(M.chain.id).toString(16);
-  if ((await window.ethereum.request({ method: 'eth_chainId' })) !== want) {
-    try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: want }] }); }
+  if ((await window.__eth.request({ method: 'eth_chainId' })) !== want) {
+    try { await window.__eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: want }] }); }
     catch (e) {
       if (e.code !== 4902) throw e;
-      await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{ chainId: want, chainName: M.chain.name, nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, rpcUrls: [M.chain.rpc], blockExplorerUrls: M.chain.explorer ? [M.chain.explorer] : [] }] });
+      await window.__eth.request({ method: 'wallet_addEthereumChain', params: [{ chainId: want, chainName: M.chain.name, nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, rpcUrls: [M.chain.rpc], blockExplorerUrls: M.chain.explorer ? [M.chain.explorer] : [] }] });
     }
   }
   return from;
@@ -172,7 +258,7 @@ $('#go').addEventListener('click', async () => {
     const from = await wallet();
     const amount = (BigInt(it.price) * 10n ** BigInt(M.decimals)).toString(16).padStart(64, '0');
     const data = '0xa9059cbb' + M.burnTo.slice(2).toLowerCase().padStart(64, '0') + amount;
-    const tx = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from, to: M.tokenAddress, data }] });
+    const tx = await window.__eth.request({ method: 'eth_sendTransaction', params: [{ from, to: M.tokenAddress, data }] });
     $('#txin').value = tx;
     await claim(tx);
   } catch (e) { msg(e.message || String(e), 'bad'); }
