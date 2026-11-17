@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse, nameSkeleton } from './util.js';
 import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LEONIDA_FIRST, LEONIDA_LAST, LINES, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
@@ -19,6 +21,7 @@ export const CFG = {
   START_CASH: 250,
   DECISION_COST: 3,
   DECISIONS_PER_HOUR: Number(process.env.DECISIONS_PER_HOUR) || 10,
+  JOB_APPLY_MS: Number(process.env.JOB_APPLY_MS) || 60_000, // new jobs take applications this long, then one applicant is picked at random
   SQUARE_POSTS_PER_DAY: 4,
   OUTSIDE_CAP: Number(process.env.OUTSIDE_CAP) || 500,
   JOINS_PER_IP_PER_DAY: Number(process.env.JOINS_PER_IP_PER_DAY) || LIMITS.joinsPerIpPerDay,
@@ -135,6 +138,23 @@ export function clock(now = Date.now()) {
   return { day, hour, dayMs: CFG.DAY_MS, epoch: state.epoch, now };
 }
 export const landed = (k) => state.done.includes(k);
+/** The city's event stream (GET /api/events): day turns, slots landing, jobs posted and filled. */
+export const bus = new EventEmitter();
+bus.setMaxListeners(0);
+export const emit = (type, data) => { try { bus.emit('ev', { type, t: Date.now(), ...data }); } catch {} };
+export const nextTurnAt = () => state.epoch + (state.day + 1) * CFG.DAY_MS;
+export const slotAt = (k, day = state.day) => state.epoch + Math.round((day + SLOTS.find((s) => s.k === k).h / 24) * CFG.DAY_MS);
+
+// Per-business books, by shift: what came in (takings) and what went out (payroll, winnings paid, robberies).
+// The afternoon shift runs until its wages are paid; everything after that is the night shift.
+const curHalf = () => (landed('wageAft') ? 'night' : 'aft');
+export function book(v, field, amt, half = curHalf()) {
+  if (!v || !v.isVenue || !amt) return;
+  const b = (v.books ||= []);
+  let e = b.findLast((x) => x.day === state.day && x.half === half);
+  if (!e) { e = { day: state.day, half, takings: 0, payroll: 0, wageSupport: 0, payouts: 0, robbed: 0 }; b.push(e); if (b.length > 14) b.splice(0, b.length - 14); }
+  e[field] = Math.round((e[field] + amt) * 100) / 100;
+}
 
 // ---------------------------------------------------------------- world
 const idNum = (id) => Number(String(id).replace(/\D/g, '')) || 0;
@@ -524,7 +544,7 @@ export function chargeDecision(r) {
   r.decisions = r.decisions.filter((t) => t > hourAgo);
   const limit = CFG.DECISIONS_PER_HOUR + tierOf(r).decisions; // holder tiers get a few more
   const over = r.decisions.length >= limit;
-  if (over && !(r.perks?.decisions > 0)) refuse(429, `at most ${limit} decisions an hour (extra decisions are sold on the Market; holder tiers get more)`);
+  if (over && !(r.perks?.decisions > 0)) refuse(429, `at most ${limit} decisions an hour; the next one frees up at ${new Date(Math.min(...r.decisions) + 3600_000).toISOString().slice(11, 19)} UTC (decisions.resetsAt in me; extra decisions are sold on the Market; holder tiers get more)`);
   if (r.cash < CFG.DECISION_COST) refuse(402, `a decision costs $${CFG.DECISION_COST} and you hold $${r.cash.toFixed(2)}: the rules run your day until you can pay`);
   return () => {
     r.cash -= CFG.DECISION_COST;
@@ -537,7 +557,7 @@ export function chargeDecision(r) {
 }
 
 // ---------------------------------------------------------------- landings
-export function payFromVenue(v, amt) {
+export function payFromVenue(v, amt, kind = null, half) {
   // A venue pays (wages, casino wins) from its till, then its owner's cash; a city venue's shortfall comes from the treasury.
   let left = amt;
   const fromTill = Math.min(Math.max(v.till, 0), left); v.till -= fromTill; left -= fromTill;
@@ -549,6 +569,7 @@ export function payFromVenue(v, amt) {
       const fromT = Math.min(Math.max(state.treasury, 0), left); state.treasury -= fromT; left -= fromT;
     }
   }
+  if (kind) book(v, kind, amt - left, half);
   return amt - left;
 }
 
@@ -569,6 +590,7 @@ function nativesTakeLeftovers(half) {
 }
 
 function landHalf(half) {
+  resolveJobApps(Date.now(), half); // applications for this slot close now at the latest
   nativesTakeLeftovers(half);
   const agg = {}; // venueId -> {n, amt} for natives (outside residents get their own lines)
   for (const r of Object.values(state.residents)) {
@@ -615,20 +637,20 @@ function landHalf(half) {
         p.result[half] = 'push';
         if (r.outside) L('casino', r.id, 0, `push at ${v.name}: ${said}`);
       } else if (hand.mult > 0) {
-        const paid = payFromVenue(v, Math.round(amt * hand.mult * 100) / 100);
+        const paid = payFromVenue(v, Math.round(amt * hand.mult * 100) / 100, 'payouts', half);
         rec.net = paid;
         r.cash += paid; r.stats.won += paid; if (r.season) r.season.casino = (r.season.casino || 0) + paid; r.mood = clamp(r.mood + 12, 0, 100);
         p.result[half] = `won $${paid}`;
         if (r.outside) L('casino', r.id, paid, `won at ${v.name}: ${said}`); else (agg[vid + ':win'] ||= { n: 0, amt: 0, v, kind: 'casino-win' }, agg[vid + ':win'].n++, agg[vid + ':win'].amt += paid);
         if (r.outside || paid >= 60) chron(`${r.name} ${hand.result === 'blackjack' ? 'hit blackjack' : `held ${hand.pt} against the dealer's ${hand.dt}`} at ${v.name} and won $${Math.round(paid)}.`, r.id, 'casino');
       } else {
-        r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; r.stats.lost += amt; if (r.season) r.season.casino = (r.season.casino || 0) - amt; r.mood = clamp(r.mood - 8, 0, 100);
+        r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; book(v, 'takings', amt, half); r.stats.lost += amt; if (r.season) r.season.casino = (r.season.casino || 0) - amt; r.mood = clamp(r.mood - 8, 0, 100);
         p.result[half] = `lost $${amt}`;
         if (r.outside) chron(`${r.name} ${hand.result === 'bust' ? `bust on ${hand.pt}` : `held ${hand.pt} against the dealer's ${hand.dt}`} at ${v.name} and lost $${Math.round(amt)}.`, r.id, 'casino');
         if (r.outside) L('casino', r.id, -amt, `lost at ${v.name}: ${hand.result === 'bust' ? `bust on ${hand.pt}` : said}`); else (agg[vid + ':lose'] ||= { n: 0, amt: 0, v, kind: 'casino-loss' }, agg[vid + ':lose'].n++, agg[vid + ':lose'].amt -= amt);
       }
     } else {
-      r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; r.stats.spent += amt; r.mood = clamp(r.mood + 4, 0, 100);
+      r.cash -= amt; v.till += amt; v.takingsToday += amt; v.lifetime.takings += amt; book(v, 'takings', amt, half); r.stats.spent += amt; r.mood = clamp(r.mood + 4, 0, 100);
       if (r.outside) L('spend', r.id, -amt, `${half === 'aft' ? 'afternoon' : 'night'} at ${v.name}`);
       else (agg[vid] ||= { n: 0, amt: 0, v, kind: 'spend' }, agg[vid].n++, agg[vid].amt -= amt);
     }
@@ -655,8 +677,9 @@ function payWages(half) {
     const wage = TRADES[r.trade].wage;
     const place = state.venues[r.workplace];
     const ownerPart = place.ownerId && wageSupportOn() ? Math.round(wage * ownerPayrollShare(place) * 100) / 100 : wage;
-    const fromOwner = payFromVenue(place, ownerPart);
+    const fromOwner = payFromVenue(place, ownerPart, 'payroll', half);
     const fromCity = place.ownerId ? Math.min(wage - ownerPart, Math.max(state.treasury, 0)) : 0; // 0 when support is off
+    book(place, 'wageSupport', fromCity, half);
     state.treasury -= fromCity; support += fromCity;
     const paid = fromOwner + fromCity;
     r.cash += paid; r.stats.wages += paid;
@@ -772,6 +795,7 @@ function dayTurn() {
   nativesBuyBusinesses();
   cityJobs();
   planAll();
+  emit('day', { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), openJobs: Object.values(state.jobs).filter((j) => j.status === 'open').length, event: state.event?.day === state.day ? state.event.kind : null });
 }
 
 // ---------------------------------------------------------------- businesses
@@ -846,9 +870,36 @@ function nativesBuyBusinesses() {
 
 // ---------------------------------------------------------------- jobs (escrowed, checked by the city's own records)
 export function postJob({ by, venue, half, day, pay, reason }) {
-  const j = { id: 'j' + ++state.counters.j, by, kind: 'visit', venue, half, day, pay, reason, status: 'open', takenBy: null, t: Date.now() };
+  const now = Date.now();
+  const j = { id: 'j' + ++state.counters.j, by, kind: 'visit', venue, half, day, pay, reason, status: 'open', takenBy: null, t: now, applyUntil: now + CFG.JOB_APPLY_MS, applicants: [] };
   state.jobs[j.id] = j;
+  emit('job', { id: j.id, venue, slot: half, day, pay, applyUntil: new Date(j.applyUntil).toISOString() });
   return j;
+}
+/** A job still taking applications: its window hasn't closed. */
+export const jobApplying = (j, now = Date.now()) => j.status === 'open' && j.applyUntil != null && now < j.applyUntil;
+// When a job's application window closes, one applicant is picked at random; the others get their decision back.
+// `half`: the slot about to land, whose jobs close now even if their window hasn't run out.
+export function resolveJobApps(now = Date.now(), half = null) {
+  for (const j of Object.values(state.jobs)) {
+    if (j.status !== 'open' || !j.applicants?.length) continue;
+    if (now < j.applyUntil && !(half && j.day === state.day && j.half === half)) continue;
+    const pool = j.applicants.filter((a) => state.residents[a.rid]);
+    const win = pool.length ? pool[crypto.randomInt(pool.length)] : null;
+    for (const a of pool) {
+      if (a === win) continue;
+      const r = state.residents[a.rid], i = r.decisions.indexOf(a.t);
+      if (i >= 0) r.decisions.splice(i, 1);
+      r.cash += CFG.DECISION_COST; state.treasury -= CFG.DECISION_COST; r.stats.decisions = Math.max(0, r.stats.decisions - 1);
+      L('job', r.id, CFG.DECISION_COST, `not picked for job ${j.id}: decision refunded`);
+    }
+    j.applied = pool.length; j.applicants = [];
+    if (!win) continue;
+    const w = state.residents[win.rid];
+    j.status = 'taken'; j.takenBy = w.id;
+    chron(`${w.name} got job ${j.id} at ${state.venues[j.venue].name}: picked at random from ${pool.length} applicant${pool.length === 1 ? '' : 's'}.`, w.id, 'job');
+    emit('jobFilled', { id: j.id, takenBy: w.id, applicants: pool.length });
+  }
 }
 function failJob(j, why) {
   j.status = j.status === 'open' ? 'expired' : 'failed'; j.note = why;
@@ -932,6 +983,7 @@ export function tick(now = Date.now()) {
     for (const s of SLOTS) if (!landed(s.k)) runSlot(s.k);
     dayTurn();
   }
+  resolveJobApps(now);
   if (state.day < c.day) { // long downtime: skip ahead rather than replay days nobody saw
     state.epoch = now - state.day * CFG.DAY_MS - Math.floor(CFG.DAY_MS * (8 / 24));
   }
@@ -946,6 +998,7 @@ function runSlot(k) {
   else if (k === 'wageAft') payWages('aft');
   else if (k === 'wageNight') payWages('night');
   else if (k === 'close') closeTills();
+  emit('slot', { day: state.day, slot: k, next: SLOTS.find((s) => !landed(s.k))?.k || 'dayTurn' });
 }
 
 // ---------------------------------------------------------------- persistence
