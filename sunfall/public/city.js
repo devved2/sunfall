@@ -2640,22 +2640,30 @@ const beacons = [];
 })();
 function momentPlace(c) {
   const v = S.venues.filter((x) => x.isVenue || x.type === 'stadium' || x.type === 'field').find((x) => c.text.includes(x.name));
-  if (v) return W(v.x, v.y);
+  if (v) return { at: W(v.x, v.y), vid: v.id };
   const p = c.who && people.find((x) => x.r[0] === c.who);
-  return p ? (p.world ? p.world.clone() : W(p.H[0], p.H[1])) : null;
+  return { at: p ? (p.world ? p.world.clone() : W(p.H[0], p.H[1])) : null, vid: null };
 }
+// Only casino hands worth watching: a blackjack or a win of $100 or more (every agent hand is in the news, losses too).
+const bigCasino = (c) => /hit blackjack/.test(c.text) || Number((c.text.match(/ won \$(\d+)/) || [])[1]) >= 100;
 function checkMoments() {
   const rows = S.chronicle || [];
   const newest = rows.reduce((m, c) => Math.max(m, c.t), 0);
   if (momentSeen == null) { momentSeen = newest; return; } // don't replay what happened before the page opened
-  const fresh = rows.filter((c) => c.t > momentSeen && MOMENT[c.kind]).sort((a, b) => a.t - b.t);
+  const fresh = rows.filter((c) => c.t > momentSeen && MOMENT[c.kind] && (c.kind !== 'casino' || bigCasino(c))).sort((a, b) => a.t - b.t);
   momentSeen = Math.max(momentSeen, newest);
-  for (const c of fresh) momentQ.push({ ...c, at: momentPlace(c), m: MOMENT[c.kind] });
+  for (const c of fresh) momentQ.push({ ...c, ...momentPlace(c), m: MOMENT[c.kind] });
   if (momentQ.length > 3) momentQ = momentQ.slice(-3);
 }
-function watchMoment(mo) {
-  const w = mo.at; lastTouch = 0;
-  if (iso) frameOn(w, ISO_OFF, 3.2); else flyTo(w.clone().add(new THREE.Vector3(0, 8, 0)), w.clone().add(new THREE.Vector3(70, 150, 250)));
+// Watch opens the place (or the agent) the moment happened at and flies in close, the same as clicking it on the map,
+// so the camera isn't pulled back to whoever was being followed before. Auto only moves the camera, no panels.
+function watchMoment(mo, auto = false) {
+  lastTouch = 0;
+  if (!auto && mo.vid) return selectVenue(mo.vid);
+  if (!auto && mo.who && people.some((x) => x.r[0] === mo.who)) return selectResident(mo.who);
+  follow = null;
+  const w = mo.at;
+  if (iso) frameOn(w, ISO_OFF, 4); else flyTo(w.clone().add(new THREE.Vector3(0, 8, 0)), w.clone().add(new THREE.Vector3(40, 95, 150)));
 }
 function beaconAt(w, col) {
   const g = new THREE.Group(); g.position.copy(w);
@@ -2678,7 +2686,7 @@ function updateMoments(dt) {
   const hex = '#' + mo.m.col.toString(16).padStart(6, '0');
   el.innerHTML = `<div class="mi">${mo.m.icon}</div><div class="mt"><div class="mk" style="color:${hex}">${mo.m.label} · day ${mo.day}</div>${esc(mo.text.length > 170 ? mo.text.slice(0, 167) + '…' : mo.text)}</div>${mo.at ? '<button class="mw" type="button">Watch</button>' : ''}<button class="ma ${momentAuto ? 'on' : ''}" type="button">Auto: ${momentAuto ? 'on' : 'off'}</button><button class="mx" type="button" aria-label="Dismiss">✕</button>`;
   el.classList.add('on');
-  if (mo.at) { beaconAt(mo.at, mo.m.col); if (momentAuto && performance.now() - lastTouch > 20000 && !$('#drawer').classList.contains('open')) watchMoment(mo); }
+  if (mo.at) { beaconAt(mo.at, mo.m.col); if (momentAuto && performance.now() - lastTouch > 20000 && !$('#drawer').classList.contains('open')) watchMoment(mo, true); }
 }
 $('#feed').addEventListener('click', (e) => {
   if (e.target.closest('.fcol') || (e.target.closest('.fh') && !feedOpen)) { feedOpen = !feedOpen; try { localStorage.setItem('sf_feed', feedOpen ? '1' : '0'); } catch {} renderFeed(); return; }
