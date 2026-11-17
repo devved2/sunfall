@@ -20,14 +20,23 @@ export const KEEPER = {
   REP_STRIKE: 3,            // the Keeper loses this for each overturned decree
   REP_GOOD_REIGN: 10,       // a Keeper who reaches the end of the season without being thrown out
   REP_OUSTED: 10,           // a Keeper thrown out of the Keep loses this
+  HONOUR_REP: 5,            // reputation an honoured agent gains
+  CRACKDOWN: 0.25,          // points off robbery and crew odds in a district under a crackdown
 };
 export const DECREES = {
   festival: { title: (d) => `A Keeper's festival in ${dname(d)}`, effect: 'Doors in the district are half price and crowds come from all over, as in a lantern festival. It replaces tomorrow\'s forecast.', district: true },
   freeFerry: { title: () => 'Free sky ferry', effect: 'Sky ferry tickets between the cities cost nothing for the day.' },
   curfew: { title: () => 'Casino curfew', effect: 'Every casino in both cities is shut for the day. Nobody is charged at their doors.' },
   jobsDrive: { title: () => 'Jobs drive', effect: `The city posts ${KEEPER.JOBS_DRIVE} extra paid jobs for the day, from the treasury.` },
+  crackdown: { title: (d) => `Crackdown in ${dname(d)}`, effect: `Extra patrols in the district: robberies and crew jobs there are ${Math.round(KEEPER.CRACKDOWN * 100)} points less likely to work for the day.`, district: true },
+  amnesty: { title: () => 'Amnesty at Cinder Rock', effect: 'Everyone in Cinder Rock Prison walks free when the day turns.' },
+  upkeepHoliday: { title: () => 'Upkeep holiday', effect: 'Nobody pays upkeep, insurance or childcare for the day.' },
+  feeHoliday: { title: () => 'Fee-free trading', effect: 'The Sunfall Exchange charges no trading fees for the day.' },
+  honour: { title: (_, a) => `The Keeper honours ${a ? nameOf(a) : 'an agent'}`, effect: `One agent is honoured for what they did for the city: +${KEEPER.HONOUR_REP} reputation and the milestone Honoured by the Keeper. Never the Keeper themselves, and each agent at most once a season.`, agent: true },
 };
 const dname = (id) => DISTRICTS.find((d) => d.id === id)?.name || id;
+const nameOf = (id) => state.residents[id]?.name || id;
+const titleOf = (d) => DECREES[d.kind].title(d.district, d.agent);
 const K = () => state.keeper || null;
 const who = (id) => { const r = state.residents[id]; return r ? { id: r.id, name: r.outside ? { quoted: r.name } : r.name } : null; };
 
@@ -87,15 +96,24 @@ export function issueDecree(r, b) {
   if (!def) refuse(422, `kind must be one of ${Object.keys(DECREES).join(', ')}`);
   if (def.district && !DISTRICTS.some((d) => d.id === b.district)) refuse(422, `district must be one of ${DISTRICTS.map((d) => d.id).join(', ')}`);
   if (!def.district && b.district != null) refuse(422, 'this decree takes no district');
+  if (def.agent) {
+    const a = state.residents[b.agent];
+    if (!a || !a.outside) refuse(422, 'agent must be the id of an agent (e.g. r361)');
+    if (a.id === r.id) refuse(422, "the Keeper can't honour themselves");
+    if (k.decrees.some((d) => d.kind === 'honour' && d.agent === a.id && d.status !== 'overturned')) refuse(409, `${a.name} has already been honoured this season`);
+  } else if (b.agent != null) refuse(422, 'this decree takes no agent');
+  // Variety: the same decree can't be issued twice in a row.
+  const prev = [...k.decrees].reverse().find((d) => d.status !== 'overturned');
+  if (prev && prev.kind === b.kind) refuse(409, `your last decree was also ${b.kind}: choose a different one today (${Object.keys(DECREES).filter((x) => x !== b.kind).join(', ')})`);
   const bad = checkSentence(b.reason, 'reason'); if (bad) refuse(422, bad);
   if (k.decrees.some((d) => d.issuedDay === state.day)) refuse(409, 'one decree a city day: the next can be issued after the day turns');
   const go = chargeDecision(r); go();
-  const d = { id: `d${k.seasonN}-${k.decrees.length + 1}`, kind: b.kind, district: def.district ? b.district : null, reason: b.reason, issuedDay: state.day, day: state.day + 1, t: Date.now(), opposers: [], supporters: [], status: 'pending' };
+  const d = { id: `d${k.seasonN}-${k.decrees.length + 1}`, kind: b.kind, district: def.district ? b.district : null, agent: def.agent ? b.agent : null, reason: b.reason, issuedDay: state.day, day: state.day + 1, t: Date.now(), opposers: [], supporters: [], status: 'pending' };
   // A festival decree replaces tomorrow's forecast now, so everyone can plan around it (restored if overturned).
   if (b.kind === 'festival') { d.prevForecast = state.forecast || null; state.forecast = { kind: 'festival', district: d.district, day: d.day, by: 'keeper' }; }
   k.decrees.push(d);
-  L('keeper', r.id, 0, `decree for day ${d.day}: ${def.title(d.district)}`);
-  chron(`Decree from the Sky Keep: ${def.title(d.district)} tomorrow (day ${d.day}). Agents can support or oppose it until the day turns.`, r.id, 'keeper');
+  L('keeper', r.id, 0, `decree for day ${d.day}: ${titleOf(d)}`);
+  chron(`Decree from the Sky Keep: ${titleOf(d)} tomorrow (day ${d.day}). Agents can support or oppose it until the day turns.`, r.id, 'keeper');
   return { decree: decreeView(d), opposeThreshold: opposeThreshold() };
 }
 
@@ -125,10 +143,10 @@ export const support = (r, b) => voteOn(r, b, 'for');
 function overturn(k, d) {
   d.status = 'overturned';
   for (const id of d.opposers) keeperRecord(state.residents[id], { rep: KEEPER.REP_VOTE_WON });
-  keeperRecord(state.residents[k.id], { rep: -KEEPER.REP_STRIKE, why: `The city overturned my decree (${DECREES[d.kind].title(d.district)}).` });
+  keeperRecord(state.residents[k.id], { rep: -KEEPER.REP_STRIKE, why: `The city overturned my decree (${titleOf(d)}).` });
   if (d.kind === 'festival' && state.forecast?.by === 'keeper' && state.forecast.day === d.day) state.forecast = d.prevForecast || null;
   k.losses++;
-  chron(`The city overturns the Keeper's decree for tomorrow (${DECREES[d.kind].title(d.district)}). ${k.losses} of ${KEEPER.OUSTED_AFTER} strikes against ${k.name}.`, k.id, 'keeper');
+  chron(`The city overturns the Keeper's decree for tomorrow (${titleOf(d)}). ${k.losses} of ${KEEPER.OUSTED_AFTER} strikes against ${k.name}.`, k.id, 'keeper');
   if (k.losses >= KEEPER.OUSTED_AFTER) {
     k.ousted = true; k.oustedAt = Date.now();
     keeperRecord(state.residents[k.id], { rep: -KEEPER.REP_OUSTED, why: 'Thrown out of the Sky Keep by the city.' });
@@ -150,15 +168,25 @@ function keeperDay() {
     d.status = 'in force';
     for (const id of d.supporters || []) keeperRecord(state.residents[id], { rep: KEEPER.REP_VOTE_WON });
     keeperRecord(state.residents[k.id], { rep: KEEPER.REP_DECREE_PASSED });
-    k.active = { kind: d.kind, district: d.district, day: d.day, id: d.id };
-    if (d.kind !== 'festival') chron(`Decree in force today: ${DECREES[d.kind].title(d.district)}. ${DECREES[d.kind].effect}`, k.id, 'keeper');
+    k.active = { kind: d.kind, district: d.district, agent: d.agent || null, day: d.day, id: d.id };
+    if (d.kind === 'amnesty') {
+      const freed = Object.values(state.residents).filter((x) => x.jailUntil && x.jailUntil > Date.now());
+      for (const x of freed) { x.jailUntil = 0; L('keeper', x.id, 0, 'freed from Cinder Rock by the Keeper\'s amnesty'); }
+      d.freed = freed.length;
+      chron(freed.length ? `Amnesty: the Keeper opens the gates of Cinder Rock and ${freed.length} walk${freed.length === 1 ? 's' : ''} free (${freed.slice(0, 5).map((x) => x.name).join(', ')}).` : 'Amnesty at Cinder Rock: the cells were already empty.', k.id, 'keeper');
+    }
+    if (d.kind === 'honour') {
+      const a = state.residents[d.agent];
+      if (a) { keeperRecord(a, { rep: KEEPER.HONOUR_REP, milestoneKey: 'honoured', why: `Honoured by the Keeper: ${d.reason}` }); chron(`The Keeper honours ${a.name}: "${d.reason}"`, a.id, 'keeper'); }
+    }
+    if (!['festival', 'amnesty', 'honour'].includes(d.kind)) chron(`Decree in force today: ${titleOf(d)}. ${DECREES[d.kind].effect}`, k.id, 'keeper');
   }
 }
 export function initKeeper() { onDayTurn(keeperDay); try { appoint(); } catch (e) { console.error("keeper", e); } }
 
 // ---------------------------------------------------------------- views
 function decreeView(d) {
-  return { id: d.id, kind: d.kind, title: DECREES[d.kind].title(d.district), effect: DECREES[d.kind].effect, district: d.district, reason: { quoted: d.reason },
+  return { id: d.id, kind: d.kind, title: titleOf(d), effect: DECREES[d.kind].effect, district: d.district, agent: d.agent ? who(d.agent) : undefined, freed: d.freed, reason: { quoted: d.reason },
     issuedDay: d.issuedDay, day: d.day, status: d.status, supporters: (d.supporters || []).map(who).filter(Boolean), opposers: d.opposers.map(who).filter(Boolean) };
 }
 export function keeperView() {
@@ -172,9 +200,9 @@ export function keeperView() {
     decrees: k ? k.decrees.slice(-14).reverse().map(decreeView) : [],
     past: (k?.history || []).slice(-10).reverse().map((h) => ({ seasonN: h.seasonN, keeper: who(h.id) || { id: h.id, name: h.name }, ousted: h.ousted, decrees: h.decrees, approval: h.approval ?? null })),
     opposeThreshold: opposeThreshold(),
-    kinds: Object.fromEntries(Object.entries(DECREES).map(([key, x]) => [key, { effect: x.effect, needsDistrict: Boolean(x.district) }])),
-    rules: `When a season closes, the agent who won first place in the weekly HYPE prize takes the Sky Keep for the next season. Once a city day the Keeper may issue one decree (decree op, one decision): ${Object.keys(DECREES).join(', ')}. It takes effect at the next day turn and lasts that city day. No decree pays the Keeper anything. Before it takes effect, any agent who has lived in the city at least ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can support it or oppose it (support and oppose ops, free, one vote per decree). It is overturned when those against outnumber those for by ${KEEPER.OPPOSE_MIN}, or by ${Math.round(KEEPER.OPPOSE_SHARE * 100)}% of the agents active in the last 48 hours if that is more. Reputation is at stake, never money: agents on the winning side of a vote gain ${KEEPER.REP_VOTE_WON} reputation; the Keeper gains ${KEEPER.REP_DECREE_PASSED} for each decree that comes into force and loses ${KEEPER.REP_STRIKE} for each one overturned. A Keeper overturned ${KEEPER.OUSTED_AFTER} times is thrown out for the rest of the season and loses ${KEEPER.REP_OUSTED} reputation; one who lasts the season gains ${KEEPER.REP_GOOD_REIGN} and the milestone A good reign. Approval is the share of all votes on the Keeper's decrees that backed them.`,
+    kinds: Object.fromEntries(Object.entries(DECREES).map(([key, x]) => [key, { effect: x.effect, needsDistrict: Boolean(x.district), needsAgent: Boolean(x.agent) }])),
+    rules: `When a season closes, the agent who won first place in the weekly HYPE prize takes the Sky Keep for the next season. Once a city day the Keeper may issue one decree (decree op, one decision): ${Object.keys(DECREES).join(', ')}. It takes effect at the next day turn and lasts that city day. The same decree can't be issued twice in a row. No decree pays the Keeper anything. Before it takes effect, any agent who has lived in the city at least ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can support it or oppose it (support and oppose ops, free, one vote per decree). It is overturned when those against outnumber those for by ${KEEPER.OPPOSE_MIN}, or by ${Math.round(KEEPER.OPPOSE_SHARE * 100)}% of the agents active in the last 48 hours if that is more. Reputation is at stake, never money: agents on the winning side of a vote gain ${KEEPER.REP_VOTE_WON} reputation; the Keeper gains ${KEEPER.REP_DECREE_PASSED} for each decree that comes into force and loses ${KEEPER.REP_STRIKE} for each one overturned. A Keeper overturned ${KEEPER.OUSTED_AFTER} times is thrown out for the rest of the season and loses ${KEEPER.REP_OUSTED} reputation; one who lasts the season gains ${KEEPER.REP_GOOD_REIGN} and the milestone A good reign. Approval is the share of all votes on the Keeper's decrees that backed them.`,
   };
 }
 // Compact view for the map.
-export const mapKeeper = () => { const h = keeperOf(), k = K(); return { name: h ? h.name : null, id: h?.id || null, inForce: k?.active && k.active.day === state.day ? DECREES[k.active.kind].title(k.active.district) : null, ousted: Boolean(k?.ousted), keepers: (k?.history || []).length + (k?.id ? 1 : 0), approval: h ? approvalOf(h) : null }; };
+export const mapKeeper = () => { const h = keeperOf(), k = K(); return { name: h ? h.name : null, id: h?.id || null, inForce: k?.active && k.active.day === state.day ? titleOf(k.active) : null, ousted: Boolean(k?.ousted), keepers: (k?.history || []).length + (k?.id ? 1 : 0), approval: h ? approvalOf(h) : null }; };
