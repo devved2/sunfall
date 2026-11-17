@@ -2659,6 +2659,8 @@ function checkMoments() {
 // so the camera isn't pulled back to whoever was being followed before. Auto only moves the camera, no panels.
 function watchMoment(mo, auto = false) {
   lastTouch = 0;
+  if (!auto && mo.kind === 'casino') replayHand(mo); // deal the actual hand again, card by card
+
   if (!auto && mo.vid) return selectVenue(mo.vid);
   if (!auto && mo.who && people.some((x) => x.r[0] === mo.who)) return selectResident(mo.who);
   follow = null;
@@ -2684,7 +2686,7 @@ function updateMoments(dt) {
   if (!momentQ.length || document.hidden) return;
   const mo = momentNow = momentQ.shift(); momentT = 9;
   const hex = '#' + mo.m.col.toString(16).padStart(6, '0');
-  el.innerHTML = `<div class="mi">${mo.m.icon}</div><div class="mt"><div class="mk" style="color:${hex}">${mo.m.label} · day ${mo.day}</div>${esc(mo.text.length > 170 ? mo.text.slice(0, 167) + '…' : mo.text)}</div>${mo.at ? '<button class="mw" type="button">Watch</button>' : ''}<button class="ma ${momentAuto ? 'on' : ''}" type="button">Auto: ${momentAuto ? 'on' : 'off'}</button><button class="mx" type="button" aria-label="Dismiss">✕</button>`;
+  el.innerHTML = `<div class="mi">${mo.m.icon}</div><div class="mt"><div class="mk" style="color:${hex}">${mo.m.label} · day ${mo.day}</div>${esc(mo.text.length > 170 ? mo.text.slice(0, 167) + '…' : mo.text)}</div>${mo.at ? `<button class="mw" type="button">${mo.kind === 'casino' ? 'Watch hand' : 'Watch'}</button>` : ''}<button class="ma ${momentAuto ? 'on' : ''}" type="button">Auto: ${momentAuto ? 'on' : 'off'}</button><button class="mx" type="button" aria-label="Dismiss">✕</button>`;
   el.classList.add('on');
   if (mo.at) { beaconAt(mo.at, mo.m.col); if (momentAuto && performance.now() - lastTouch > 20000 && !$('#drawer').classList.contains('open')) watchMoment(mo, true); }
 }
@@ -3155,6 +3157,13 @@ function checkCasino() {
   casinoMore += Math.max(0, fresh.length - 3);
   if (!casinoTimer) nextCasino();
 }
+/** The hand behind a casino moment (same agent, dealt closest to the news line), dealt again in the casino pop-up. */
+function replayHand(mo) {
+  const hs = (S.casino || []).filter((h) => h.rid === mo.who);
+  if (!hs.length) { if (mo.who) window.open('/casino?agent=' + encodeURIComponent(mo.who), '_blank'); return; }
+  const h = hs.reduce((a, b) => (Math.abs(b.t - mo.t) < Math.abs(a.t - mo.t) ? b : a));
+  casinoQ.unshift({ ...h, replay: true }); nextCasino();
+}
 function nextCasino() {
   const el = $('#cpop');
   clearTimeout(casinoTimer); casinoTimer = 0;
@@ -3175,7 +3184,7 @@ function nextCasino() {
     <a href="/casino?agent=${encodeURIComponent(h.rid)}">Watch the hand →</a>${more ? `<small>+${more} more agent${more === 1 ? '' : 's'} at the tables</small>` : ''}`;
   el.querySelector('button').onclick = nextCasino;
   el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
-  casinoTimer = setTimeout(nextCasino, (dEnd + 6) * 1000);
+  casinoTimer = setTimeout(nextCasino, (dEnd + (h.replay ? 14 : 6)) * 1000); // a hand someone asked to watch stays up longer
 }
 
 // ------------------------------------------------------------------ loop
