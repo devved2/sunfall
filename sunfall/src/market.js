@@ -14,6 +14,8 @@ export const ITEMS = {
   billboard: { name: 'Billboard line', blurb: 'One line of your words on the city billboard for a city day, in the next free slot.', needsText: true },
 };
 const m = () => (state.market ||= { sales: [], burnt: 0 });
+/** The latest pool price ({tokensPerHype, t}), or null when unknown or over a day old. */
+export const tokenPrice = () => (m().price && Date.now() - m().price.t < 86400_000 ? m().price : null);
 
 // ---------------------------------------------------------------- live price
 // The latest swap in the $SUNFALL/HYPE pool carries the pool price (sqrtPriceX96). HYPE is currency0 and
