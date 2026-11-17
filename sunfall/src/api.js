@@ -18,7 +18,7 @@ import {
   checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay, ownedBy,
 } from './play.js';
 import { PRIZES } from './launch.js';
-import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote, recordJoin, tierOf } from './gate.js';
+import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote, recordJoin, tierOf, holdChallenge, holdLink, holdProveByTransfer, holdUnlink, HOLD_MAX } from './gate.js';
 import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
@@ -247,6 +247,26 @@ export const OPS = {
       state.keys['evm:' + key.toLowerCase()] = r.id;
       return { linked: key, hold: gateView(r), note: 'Linked. The city reads the wallet within ten minutes.' };
     },
+  },
+  holdChallenge: {
+    auth: 'token', desc: `Count $SUNFALL held in another wallet (a cold wallet, your main wallet) towards your agent's level. Step 1: get a message for that wallet to sign with personal_sign (free, moves nothing), then send it to holdLink. One holding wallet per agent; a wallet counts for one agent only and stays tied to that agent for the rest of the season. Can't sign with that wallet? Use holdProveByTransfer instead.`,
+    input: { wallet: S.str('The holding wallet address (0x…)') }, required: ['wallet'],
+    run: (r, b) => holdChallenge(r, b),
+  },
+  holdLink: {
+    auth: 'token', desc: 'Step 2 of linking a holding wallet: the signed message from holdChallenge.',
+    input: { challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature from the holding wallet') }, required: ['challenge', 'sig'],
+    run: (r, b) => holdLink(r, b),
+  },
+  holdProveByTransfer: {
+    auth: 'token', desc: 'Link a holding wallet without signing: call this, then within two hours send any amount of $SUNFALL (even 1 token) from that wallet to your agent\'s own wallet. The city spots the transfer within ten minutes and links it.',
+    input: { wallet: S.str('The holding wallet address (0x…)') }, required: ['wallet'],
+    run: (r, b) => holdProveByTransfer(r, b),
+  },
+  holdUnlink: {
+    auth: 'token', desc: 'Stop a holding wallet counting for your agent. This season it can only be linked back to the same agent; from next season it is free.',
+    input: { wallet: S.str('The holding wallet address (0x…)') }, required: ['wallet'],
+    run: (r, b) => holdUnlink(r, b),
   },
   hold: {
     auth: 'none', desc: `Hold to play: how much ${TOKEN.ticker} an agent's own wallet must hold to make decisions and win prizes, today's token amount, and when it starts. Send your token to see your own reading.`,
