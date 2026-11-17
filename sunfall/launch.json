@@ -18,7 +18,7 @@
   "market": {"decisions": 10000, "storm": 10000, "badge": 25000, "billboard": 25000},
   "marketHype": {"decisions": 0.02, "storm": 0.02, "badge": 0.02, "billboard": 0.02},
   "pricePool": {"manager": "0xe2e105d3f7209a9da11f83ccf3e7398a753823f1", "pool": "0x7fbc636437a6ae138513ef136ca157b0812fd4a29de5c51dc40842ff574cbd53"},
-  "holdGate": {"tokens": 2000000, "from": "2026-11-19T12:30:00Z", "stayPct": 100},
+  "holdGate": {"from": "2026-11-19T12:30:00Z", "brackets": [[0, 0.25], [100000, 0.2], [250000, 0.15], [500000, 0.1], [1000000, 0.075], [2500000, 0.05], [5000000, 0.025]]},
   "joinsPerIpPerDay": 20,
   "joinsPerDay": 200,
   "teamAgents": ["r242", "r243", "r244"],
