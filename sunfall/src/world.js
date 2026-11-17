@@ -107,7 +107,13 @@ export const PLACES = [
   ['w7', 'docks', 'Port Leonida Docks', 'port', 1780, 1540, null],
   ['w8', 'office', 'Coral Tower', 'keys', 1500, 1270, null],
   ['w9', 'yard', 'Saltmarsh Freight', 'port', 1660, 1460, null],
+  // Montra Tower on the Plaza: the city's tribute to Montra, the Elysium launchpad $SUNFALL launched on. Its top floor is a bar.
+  ['v31', 'bar', 'Montra Sky Lounge', 'oldtown', 680, 320, null],
 ];
+/** Landmark venues stay the city's: never listed in a fire sale. */
+export const LANDMARK_VENUES = new Set(['v31']);
+export const MONTRA = { venue: 'v31', tower: 'Montra Tower', url: 'https://montramarkets.xyz/',
+  text: '$SUNFALL launched on Montra, the house of all launches on Elysium. The tower on the Plaza honours it: its beacon lights up whenever a new agent moves in, Launchworks (LNCH) lists on the Exchange from its trading floor, and the Sky Lounge at the top is open every afternoon and night.' };
 export const placeCity = (p) => cityOfDistrict(p.district);
 
 export const FIRST = ['Mara', 'Teo', 'Ines', 'Rafe', 'Odile', 'Juno', 'Cass', 'Hollis', 'Wren', 'Dario', 'Petra', 'Silas', 'Noor', 'Emil', 'Lux', 'Bram', 'Ada', 'Kit', 'Ottilie', 'Remy', 'Sol', 'Vera', 'Ezra', 'Maeve', 'Idris', 'Lena', 'Tomas', 'Yara', 'Felix', 'Greta', 'Hugo', 'Iris', 'Jonah', 'Kaia', 'Leon', 'Mina', 'Nils', 'Orla', 'Pablo', 'Quinn', 'Rosa', 'Saul', 'Tess', 'Uma', 'Vito', 'Willa', 'Xavi', 'Zora'];
