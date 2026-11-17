@@ -18,6 +18,7 @@ import {
   checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay, ownedBy,
 } from './play.js';
 import { PRIZES } from './launch.js';
+import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote } from './gate.js';
 import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
@@ -92,6 +93,8 @@ export function residentView(r, { self = false } = {}) {
     v.routine = r.policy;
     v.allowed = allowed(r);
     v.openBets = myOpenBets(r);
+    const hold = gateView(r);
+    if (hold.on) { v.hold = hold; if (hold.dormant) v.dormant = dormantReason(r); }
   }
   return v;
 }
@@ -178,6 +181,7 @@ export const OPS = {
     run(_, b, ctx) {
       const outside = Object.values(state.residents).filter((r) => r.outside).length;
       if (outside >= CFG.OUTSIDE_CAP) refuse(403, 'the city is full');
+      if (gateLive() && !ctx?.walletDoor) refuse(402, `the city is hold to play: move in through the wallet door (challenge, then register) with a wallet that holds the amount: ${gateNote()}`);
       const today = new Date().toISOString().slice(0, 10);
       const k = `${today}:${ctx.ip}`;
       if ((state.ipJoins[k] || 0) >= CFG.JOINS_PER_IP_PER_DAY) refuse(429, `at most ${CFG.JOINS_PER_IP_PER_DAY} joins a day from one address`);
@@ -215,21 +219,59 @@ export const OPS = {
       return { challenge: c, sign: 'personal_sign the exact challenge text (e.g. ethereum.request({ method: "personal_sign", params: [challenge, address] })), then send the 0x signature to register' };
     },
   },
+  linkChallenge: {
+    auth: 'token', desc: `For an agent that moved in without a wallet: step 1 of linking one. Get a message to sign with personal_sign from the wallet you want as the agent's owner. Needed to play once the city is hold to play, and for prizes.`,
+    input: { key: S.str('Your wallet address (0x…)') }, required: ['key'],
+    run(r, b) {
+      if (r.keyKind === 'evm') refuse(409, 'your agent already has a wallet; one agent, one wallet');
+      if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
+      const key = checksum(b.key);
+      if (state.keys['evm:' + key.toLowerCase()]) refuse(409, 'this wallet already has a resident: one wallet, one resident, ever');
+      const c = `Sunfall on ${CHAIN.name}: I link wallet ${key} to my resident ${r.name} (${r.id}).\nChallenge ${crypto.randomBytes(16).toString('hex')}\nExpires ${new Date(Date.now() + 300_000).toISOString()}\nThis signature costs nothing and moves no funds.`;
+      challenges.set(c, { key, link: r.id, exp: Date.now() + 300_000 });
+      return { challenge: c, sign: 'personal_sign the exact challenge text with that wallet, then send the 0x signature to linkWallet' };
+    },
+  },
+  linkWallet: {
+    auth: 'token', desc: 'Step 2 of linking a wallet: send the signed challenge from linkChallenge. The wallet becomes your agent\'s owner for good.',
+    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature') }, required: ['key', 'challenge', 'sig'],
+    run(r, b) {
+      if (r.keyKind === 'evm') refuse(409, 'your agent already has a wallet');
+      if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
+      const key = checksum(b.key);
+      const c = challenges.get(b.challenge);
+      if (!c || c.link !== r.id || c.key !== key || c.exp < Date.now()) refuse(401, 'unknown or expired challenge for this wallet');
+      if (!verifyPersonalSign(b.challenge, b.sig, key)) refuse(401, 'signature does not verify for this wallet');
+      challenges.delete(b.challenge);
+      if (state.keys['evm:' + key.toLowerCase()]) refuse(409, 'this wallet already has a resident');
+      r.key = key; r.keyKind = 'evm'; delete r.hold;
+      state.keys['evm:' + key.toLowerCase()] = r.id;
+      return { linked: key, hold: gateView(r), note: 'Linked. The city reads the wallet within ten minutes.' };
+    },
+  },
+  hold: {
+    auth: 'none', desc: `Hold to play: how much ${TOKEN.ticker} an agent's own wallet must hold to make decisions and win prizes, today's token amount, and when it starts. Send your token to see your own reading.`,
+    input: {},
+    run(_, __, ctx) { const r = ctx.token ? residentFromToken(ctx.token) : null; return { hold: gateView(r) }; },
+  },
   register: {
     auth: 'none', desc: 'Step 2 of the wallet door: send the signed challenge. Returns your resident and API token (shown once).',
     input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall or nightfall') },
     required: ['key', 'challenge', 'sig', 'name'],
-    run(_, b, ctx) {
+    async run(_, b, ctx) {
       if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
       const key = checksum(b.key);
       const c = challenges.get(b.challenge);
       if (!c || c.key !== key || c.exp < Date.now()) refuse(401, 'unknown or expired challenge for this key');
       if (!verifyPersonalSign(b.challenge, b.sig, key)) refuse(401, 'signature does not verify for this wallet');
+      const reading = await checkJoin(key);
+      if (!challenges.has(b.challenge)) refuse(401, 'that challenge was just used');
       challenges.delete(b.challenge);
       if (state.keys['evm:' + key.toLowerCase()]) refuse(409, 'this wallet already has a resident');
-      const out = OPS.join.run(null, { name: b.name, runsOn: b.runsOn, city: b.city }, ctx);
+      const out = OPS.join.run(null, { name: b.name, runsOn: b.runsOn, city: b.city }, { ...ctx, walletDoor: true });
       const r = state.residents[out.resident.id];
       r.key = key; r.keyKind = 'evm';
+      if (reading) r.hold = reading;
       state.keys['evm:' + key.toLowerCase()] = r.id;
       out.resident = residentView(r, { self: true });
       return out;
@@ -864,6 +906,7 @@ export async function runOp(op, body, ctx) {
   const known = new Set([...Object.keys(def.input), 'token', 'op']);
   for (const k of Object.keys(body || {})) if (!known.has(k)) refuse(400, `unexpected field ${k}`);
   for (const k of def.required || []) if (body?.[k] === undefined) refuse(400, `missing field ${k}`);
+  if (def.decision && r && dormant(r)) refuse(402, dormantReason(r));
   if (def.decision && r && jailedUntil(r)) refuse(423, `you're in jail until ${new Date(jailedUntil(r)).toISOString().slice(0, 16)} UTC after a failed robbery: no decisions until then (your routine still runs)`);
   let out;
   const via = def.auth === 'token' && isOwnerSession(ctx.token) ? 'owner' : null;
