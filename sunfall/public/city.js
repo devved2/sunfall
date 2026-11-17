@@ -254,7 +254,7 @@ const ISLANDS = [
 const SHORE = { sand: 26, lagoon: 40, lip: 6 };
 // Cinder Rock: the prison island floating off the city's west edge. Agents caught robbing a business spend 24 hours here.
 const PRISON = { x0: -660, y0: 190, x1: -250, y1: 510, cx: -455, cy: 350, lift: -30, yard: [-380, 350], yardR: 30 };
-const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'The Plaza', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
+const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'Montra Tower', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
   { name: 'Cinder Rock Prison', x: -560, y: 350, h: PRISON.lift + 262, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true },
   { name: 'LEONIDA ISLANDS', x: 1420, y: 1320, h: 250, big: true }, { name: 'Ferry to Leonida', x: 960, y: 735, h: 14 }, { name: 'Ferry to Leonida', x: 1700, y: 700, h: 14 },
   { name: 'Ferry to Sunfall', x: 1180, y: 955, h: 14 }, { name: 'Ferry to Nightfall', x: 1700, y: 955, h: 14 }, { name: 'Leonida Beach', x: 1300, y: 1690, h: 10 }, { name: 'Gator Swamp', x: 1000, y: 1620, h: 10 }, { name: 'The Keys', x: 760, y: 1900, h: 10 }, { name: 'Leonida Wheel', x: 1420, y: 985, h: 84 }, { name: 'Sunset Marina', x: 1900, y: 1160, h: 10 }];
@@ -1855,7 +1855,7 @@ function buildLandmarks(rnd, parkCells, trees, palms, benches) {
     const [x, y] = plazaAt;
     slab(x, y, 30, 0.9, 30, '#8f857a');
     for (let i = -12; i <= 12; i += 4) slab(x + i, y, 0.25, 0.92, 30, '#7c7368');
-    loadModel('pavement-fountain', (geo, mat) => { const f = new THREE.Mesh(geo, mat); f.scale.set(13, 10, 13); f.position.copy(W(x, y, 0.9)); f.receiveShadow = f.castShadow = true; scene.add(f); });
+    if (!S.venues.some((v) => v.id === MONTRA_VID)) loadModel('pavement-fountain', (geo, mat) => { const f = new THREE.Mesh(geo, mat); f.scale.set(13, 10, 13); f.position.copy(W(x, y, 0.9)); f.receiveShadow = f.castShadow = true; scene.add(f); });
     palms.push([x - 12, y - 12, 0.85], [x + 12, y - 12, 0.85], [x - 12, y + 12, 0.85], [x + 12, y + 12, 0.85]);
     benches.push([x - 9, y, Math.PI / 2], [x + 9, y, Math.PI / 2], [x, y - 9, 0], [x, y + 9, 0]);
   }
@@ -2066,6 +2066,47 @@ function neonTexture(text, col) {
 }
 function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 
+// Montra Tower: the city's tribute to Montra, the Elysium launchpad $SUNFALL launched on. A slim dark spire on the
+// Plaza with light running up its corners, the Sky Lounge (a bar, venue v31) as a glass ring near the top, and a
+// beacon that flares whenever a new agent moves in (S.montra.lastLaunch).
+const MONTRA_VID = 'v31';
+let montraFX = null;
+function buildMontraTower(grp, add, std, v) {
+  const dark = std(0x0b0b0e, { metalness: 0.55, roughness: 0.3 });
+  const glass = std(0x15161c, { metalness: 0.7, roughness: 0.18 });
+  const light = new THREE.MeshStandardMaterial({ color: 0xfff3ea, emissive: 0xfff0e6, emissiveIntensity: 0.9, roughness: 0.4 });
+  const tag = (m) => { m.userData.vid = v.id; m.castShadow = m.receiveShadow = true; grp.add(m); venueMeshes.push(m); return m; };
+  add(dark, 20, 2.4, 20); add(dark, 15, 3, 15, 0, 2.4);
+  add(glass, 9, 150, 9, 0, 5.4, 0, true);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) add(light, 0.5, 150, 0.5, sx * 4.7, 5.4, sz * 4.7);
+  add(dark, 11, 2, 11, 0, 60); add(dark, 11, 2, 11, 0, 100);
+  // the Sky Lounge: a glass ring with a warm glow inside, and its deck
+  const deck = tag(new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 1.2, 40), dark)); deck.position.y = 128;
+  const ring = tag(new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 7, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x2a2228, emissive: 0xffb38a, emissiveIntensity: 0.35, metalness: 0.3, roughness: 0.2, transparent: true, opacity: 0.85, side: THREE.DoubleSide }))); ring.position.y = 132.7;
+  const roof = tag(new THREE.Mesh(new THREE.CylinderGeometry(9, 12, 2, 40), dark)); roof.position.y = 137.2;
+  const glowRing = new THREE.Points(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 28 }, (_, i) => new THREE.Vector3(Math.cos(i / 28 * Math.PI * 2) * 12.2, 129.2, Math.sin(i / 28 * Math.PI * 2) * 12.2))),
+    new THREE.PointsMaterial({ map: GLOW, size: 4, color: 0xffd2b8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  grp.add(glowRing); nightGlows.push(glowRing.material);
+  add(dark, 6, 18, 6, 0, 155.4); add(light, 6.4, 0.6, 6.4, 0, 173.4);
+  const spire = tag(new THREE.Mesh(new THREE.ConeGeometry(2.2, 28, 12), dark)); spire.position.y = 188;
+  // the beacon and its beam
+  const core = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 203, 0)]),
+    new THREE.PointsMaterial({ map: GLOW, size: 34, color: 0xffe4ec, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+  grp.add(core);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 9, 520, 18, 1, true).translate(0, 260, 0),
+    new THREE.MeshBasicMaterial({ color: 0xffe0ea, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  beam.position.y = 202; grp.add(beam);
+  montraFX = { core, beam };
+  return 204;
+}
+function montraTick(t, night) {
+  if (!montraFX) return;
+  const since = S.montra?.lastLaunch ? Date.now() - S.montra.lastLaunch : Infinity;
+  const flare = since < 120_000 ? (1 - since / 120_000) * (0.6 + 0.4 * Math.sin(t * 6)) : 0;   // a new agent moved in: flare for two minutes
+  montraFX.core.material.opacity = 0.35 + night * 0.5 + flare * 0.5;
+  montraFX.core.material.size = 34 + flare * 40;
+  montraFX.beam.material.opacity = night * 0.06 + flare * 0.22;
+}
 function buildVenue(v, rnd) {
   const grp = new THREE.Group();
   grp.position.copy(W(v.x, v.y, 0.8));
@@ -2077,7 +2118,8 @@ function buildVenue(v, rnd) {
   };
   const accent = new THREE.MeshStandardMaterial({ color: 0xff8a3d, emissive: 0xff8a3d, emissiveIntensity: 0.2, roughness: 0.5 });
   let top = 20;
-  switch (v.type) {
+  if (v.id === MONTRA_VID) top = buildMontraTower(grp, add, std, v);
+  else switch (v.type) {
     case 'bar': {
       add(std(0x5a2f2a), 24, 16, 20, 0, 0, 0, true); add(accent, 24, 1, 5, 0, 5, 12);
       for (const tx of [-8, 0, 8]) { const tb = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.3, 10), std(0x3b2a20)); tb.position.set(tx, 2.6, 17); tb.castShadow = true; grp.add(tb); const lg = new THREE.Mesh(BOX, std(0x2a2020)); lg.scale.set(0.3, 2.5, 0.3); lg.position.set(tx, 0, 17); grp.add(lg); }
@@ -2539,6 +2581,7 @@ function updateSky(h) {
   if (canalMat) canalMat.color.copy(WATER_NIGHT).lerp(new THREE.Color(0x2d6a80), day);
   if (pondMat) pondMat.color.copy(WATER_NIGHT).lerp(new THREE.Color(0x4a9ab0), day);
   for (const b of beams) b.m.material.opacity = night * (b.prison ? 0.16 : 0.07);
+  montraTick(performance.now() / 1000, night);
   if (tailLights) tailLights.material.opacity = 0.25 + night * 0.75;
   if (bloom) { bloom.strength = 0.06 + night * 0.38; bloom.threshold = 3.0 - night * 1.75; bloom.radius = 0.32; }
   if (carLights) carLights.material.opacity = night;
@@ -2929,7 +2972,7 @@ function selectVenue(vid) {
   const v = S.venues.find((x) => x.id === vid); if (!v) return;
   venueOpen = vid;
   const c = W(v.x, v.y);
-  const tall = { casino: 60, office: 120, docks: 40, stadium: 70, field: 70 }[v.type] || 0;
+  const tall = v.id === MONTRA_VID ? 140 : { casino: 60, office: 120, docks: 40, stadium: 70, field: 70 }[v.type] || 0;
   $('#drawer').classList.add('open');
   frameOn(c, new THREE.Vector3(30, 150 + tall * 1.6, 115), tall > 80 ? 2.2 : 3.4);
   renderVenue(vid, null);
@@ -2944,6 +2987,7 @@ function renderVenue(vid, d) {
   $('#dbody').innerHTML = `
     <div class="kicker">${v.isVenue ? esc(v.type) : 'workplace'} · ${esc(dist?.name || '')}${dist?.city === 'nightfall' ? ' · Nightfall' : dist?.city === 'leonida' ? ' · Leonida Islands' : ''}</div>
     <h3>${esc(v.name)}</h3>
+    ${D?.landmark ? `<div style="margin:8px 0 10px;padding:10px 12px;border:1px solid rgba(255,224,234,.25);border-radius:10px;background:rgba(255,224,234,.05)"><b>${esc(D.landmark.name)}</b><div class="dim" style="margin-top:4px">${esc(D.landmark.text)}</div>${D.landmark.lastLaunch ? `<div class="dim" style="margin-top:4px">Beacon last lit: ${esc(D.landmark.lastLaunch.slice(0, 16).replace('T', ' '))} UTC</div>` : ''}<div style="margin-top:6px">${D.landmark.links.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ↗</a>`).join(' · ')} · <a href="/exchange">LNCH on the Exchange</a></div></div>` : ''}
     <div class="dim">Owner: ${owner}${(D?.partners || []).length ? ` · partners ${D.partners.map((p) => `<button class="lk" data-who="${esc(p.id)}">${esc(txt(p.name))}</button> ${p.pct}%`).join(', ')}` : ''}${v.forSale ? `<br><span style="color:#ffd36e">${v.fireSale ? 'Fire sale' : 'For sale'} at ${money(v.salePrice)}</span>` : ''}</div>
     ${v.isVenue ? `<div class="tiles">
       ${tile('Takings today', money(v.takingsToday), 'takings')}
