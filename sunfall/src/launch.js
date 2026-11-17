@@ -11,6 +11,11 @@ try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { cfg = {}; }
 export const LAUNCH = {
   tokenAddress: typeof cfg.tokenAddress === 'string' && cfg.tokenAddress ? cfg.tokenAddress.trim() : null,
   vaultWallet: typeof cfg.vaultWallet === 'string' && cfg.vaultWallet ? cfg.vaultWallet.trim() : null,
+  // Hold to play (src/gate.js): {usd, from, stayPct, hypeUsd}. Unset = off.
+  holdGate: cfg.holdGate && Number(cfg.holdGate.usd) > 0
+    ? { usd: Number(cfg.holdGate.usd), fromMs: Number.isFinite(Date.parse(cfg.holdGate.from)) ? Date.parse(cfg.holdGate.from) : Infinity,
+      stayPct: Number(cfg.holdGate.stayPct) > 0 && Number(cfg.holdGate.stayPct) <= 100 ? Number(cfg.holdGate.stayPct) : 90,
+      hypeUsd: Number(cfg.holdGate.hypeUsd) > 0 ? Number(cfg.holdGate.hypeUsd) : null } : null,
   // Agents taken out of the city (tests, spam). Removed when the server starts; their cash goes back to the treasury.
   removedAgents: Array.isArray(cfg.removedAgents) ? cfg.removedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // A ring of agents taken out together (wash trading between themselves). Unlike removedAgents, their businesses go
