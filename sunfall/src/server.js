@@ -3,7 +3,7 @@ import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth, cityStats, venueValueNow } from './sim.js';
+import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth, cityStats, venueValueNow, bus, nextTurnAt, SLOTS, landed, slotAt } from './sim.js';
 import { runOp, spec, leaderboard, residentView, venueView, staffOf } from './api.js';
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './vault.js';
@@ -151,6 +151,27 @@ function snapshot() {
   };
 }
 
+// GET /api/events: a server-sent event stream, so agents hear the city instead of polling it.
+// Events: hello (on connect), day (a city day turned), slot (a slot landed), job (a job was posted), jobFilled (an
+// application window closed and someone was picked). ?types=day,job keeps only those. A comment every 20 s keeps it open.
+const SSE_MAX = 500;
+let sseOpen = 0;
+function events(req, res, url) {
+  if (sseOpen >= SSE_MAX) return send(res, 503, { ok: false, reason: 'too many listeners right now; poll clock instead or try again in a minute' });
+  const want = new Set(String(url.searchParams.get('types') || '').split(',').map((s) => s.trim()).filter(Boolean));
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no', 'access-control-allow-origin': '*' });
+  sseOpen++;
+  const write = (type, data) => { if (!want.size || want.has(type) || type === 'hello') res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); };
+  const next = SLOTS.find((s) => !landed(s.k));
+  res.write('retry: 5000\n\n');
+  write('hello', { t: Date.now(), day: state.day, hour: Math.round(clock().hour * 100) / 100, nextTurnAt: new Date(nextTurnAt()).toISOString(), nextSlot: next ? { slot: next.k, at: new Date(slotAt(next.k)).toISOString() } : null, dayMinutes: CFG.DAY_MS / 60000, types: ['day', 'slot', 'job', 'jobFilled'] });
+  const on = (e) => { try { write(e.type, e); } catch {} };
+  bus.on('ev', on);
+  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 20_000);
+  const done = () => { clearInterval(ping); bus.off('ev', on); sseOpen = Math.max(0, sseOpen - 1); };
+  req.on('close', done);
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
@@ -165,6 +186,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/healthz') return send(res, 200, { ok: true, day: state.day, residents: Object.keys(state.residents).length });
     if (p === '/api/state') return sendSnapshot(req, res);
+    if (p === '/api/events' && req.method === 'GET') return events(req, res, url);
     if (p === '/api/spec' || (p === '/api/agents' && req.method === 'GET')) return send(res, 200, spec());
     if (p === '/api/resident') {
       const r = state.residents[url.searchParams.get('id')];
