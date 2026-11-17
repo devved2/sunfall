@@ -11,11 +11,13 @@ try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { cfg = {}; }
 export const LAUNCH = {
   tokenAddress: typeof cfg.tokenAddress === 'string' && cfg.tokenAddress ? cfg.tokenAddress.trim() : null,
   vaultWallet: typeof cfg.vaultWallet === 'string' && cfg.vaultWallet ? cfg.vaultWallet.trim() : null,
-  // Hold to play (src/gate.js): {tokens} (a fixed amount) or {usd} (set daily from the price), plus from, stayPct, hypeUsd. Unset = off.
-  holdGate: cfg.holdGate && (Number(cfg.holdGate.tokens) > 0 || Number(cfg.holdGate.usd) > 0)
-    ? { tokens: Number(cfg.holdGate.tokens) > 0 ? Math.round(Number(cfg.holdGate.tokens)) : null, usd: Number(cfg.holdGate.usd) > 0 ? Number(cfg.holdGate.usd) : null, fromMs: Number.isFinite(Date.parse(cfg.holdGate.from)) ? Date.parse(cfg.holdGate.from) : Infinity,
-      stayPct: Number(cfg.holdGate.stayPct) > 0 && Number(cfg.holdGate.stayPct) <= 100 ? Number(cfg.holdGate.stayPct) : 90,
-      hypeUsd: Number(cfg.holdGate.hypeUsd) > 0 ? Number(cfg.holdGate.hypeUsd) : null } : null,
+  // Hold to play with tiers (src/gate.js): {from, brackets: [[marketCapUsd, pctOfSupply], ...] (first line 0), tokens (a
+  // fixed entry instead of brackets)}. Unset = off.
+  holdGate: cfg.holdGate && typeof cfg.holdGate === 'object'
+    ? { fromMs: Number.isFinite(Date.parse(cfg.holdGate.from)) ? Date.parse(cfg.holdGate.from) : Infinity,
+      tokens: Number(cfg.holdGate.tokens) > 0 ? Math.round(Number(cfg.holdGate.tokens)) : null,
+      brackets: Array.isArray(cfg.holdGate.brackets) && cfg.holdGate.brackets.length && cfg.holdGate.brackets.every((x) => Array.isArray(x) && x[0] >= 0 && x[1] > 0)
+        ? [...cfg.holdGate.brackets].sort((a, b) => a[0] - b[0]) : [[0, 0.25], [100_000, 0.2], [250_000, 0.15], [500_000, 0.1], [1_000_000, 0.075], [2_500_000, 0.05], [5_000_000, 0.025]] } : null,
   // Agents taken out of the city (tests, spam). Removed when the server starts; their cash goes back to the treasury.
   removedAgents: Array.isArray(cfg.removedAgents) ? cfg.removedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
   // A ring of agents taken out together (wash trading between themselves). Unlike removedAgents, their businesses go
