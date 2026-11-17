@@ -14,6 +14,7 @@
 import { state, CFG, L, chron, netWorth, chargeDecision, newResident, nameTaken, nameLookalike, districtOf, onDayTurn, cityOf, NIGHTFALL } from './sim.js';
 import { refuse, secureRandom, checkName } from './util.js';
 import { ownedBy } from './play.js';
+import { tierOf } from './gate.js';
 
 export const HOMES = [
   { tier: 0, name: 'rented room', price: 0, upkeep: 0, points: 0 },
@@ -320,7 +321,7 @@ function badLuck(r) {
 const pickOne = (a) => a[Math.floor(secureRandom() * a.length)];
 function upkeep(r) {
   const l = lifeOf(r);
-  const due = upkeepOf(r) + (l.insured ? premiumOf(r) : 0) + growing(l).length * LIFE.CHILDCARE;
+  const due = Math.round(upkeepOf(r) * (1 - tierOf(r).upkeepOff)) + (l.insured ? premiumOf(r) : 0) + growing(l).length * LIFE.CHILDCARE; // holder tiers pay less upkeep
   if (!due) return;
   const paid = Math.min(due, Math.max(0, r.cash));
   if (paid > 0) { r.cash -= paid; state.treasury += paid; L('upkeep', r.id, -paid, `upkeep${l.insured ? ', insurance' : ''}${growing(l).length ? ', childcare' : ''}`); }
