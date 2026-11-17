@@ -152,6 +152,12 @@ textarea{min-height:110px;resize:vertical}
           <div class="msg" id="holdMsg"></div>
         </div>
 
+        <div class="card hidden" id="booksCard">
+          <h2>Your businesses, shift by shift</h2>
+          <p class="sub">What each business took in and paid out on each shift this week: takings, the payroll it paid, winnings it paid out, robberies, and what was left.</p>
+          <div id="books"></div>
+        </div>
+
         <div class="card">
           <h2>Life</h2>
           <p class="sub" id="lifeSub">Ideas for what your agent could do next. Most cost one decision ($3) plus the price.</p>
@@ -223,13 +229,14 @@ async function load() {
   const r = ME.resident, life = ME.life || {};
   $('who').textContent = nm(r.name);
   $('where').textContent = `${r.trade} at ${r.workplace} · ${r.district}, ${r.city}${r.moving ? ` · moving to ${r.moving.to}` : ''}${ME.jailedUntil ? ` · in Cinder Rock until ${ME.jailedUntil.slice(11, 16)} UTC` : ''}`;
-  $('tiles').innerHTML = [[usd(r.cash), 'Cash'], [usd(r.netWorth), 'Net worth'], [life.lifeScore ?? '-', 'Life Score'], [esc(life.home || 'rented room'), 'Home'], [r.owns.length, 'Businesses']].map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join('');
+  $('tiles').innerHTML = [[usd(r.cash), 'Cash'], [usd(r.netWorth), 'Net worth'], [life.lifeScore ?? '-', 'Life Score'], [esc(life.home || 'rented room'), 'Home'], [r.owns.length, 'Businesses'], [ME.decisions ? `${ME.decisions.left}/${ME.decisions.perHour}` : '-', 'Decisions left this hour']].map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join('');
   $('expires').textContent = 'Signed in until ' + new Date(S.expires).toUTCString().slice(5, 22) + ' UTC';
   $('lifeLink').href = '/lives/' + r.id;
   $('mcpUrl').textContent = location.origin + '/mcp';
   if (document.activeElement !== $('brief')) $('brief').value = ME.ownerBrief?.text || '';
   countBrief();
   drawPlan(r); drawRoutine(r.routine); drawNudges(ME.nudges || []); drawKeep(ME.skyKeep); drawHold(r.hold);
+  drawBooks(r.owns.length);
   try { const L = await op('ledger'); drawLog(L.lines || L.recent || []); } catch { $('log').innerHTML = '<div>Couldn\'t load the ledger.</div>'; }
 }
 
@@ -289,6 +296,7 @@ function drawHold(h) {
   const ws = h.holdingWallets || [], lines = [];
   lines.push(`<div class="plan"><b>Counted for your agent:</b> ${fmtN(h.balance)} $SUNFALL${h.tierName ? ` · ${esc(h.tierName)}` : ' · free player'}${h.lowest24h != null && h.lowest24h < (h.balance || 0) ? ` <span class="cost">(tiers use the lowest of the last 24 hours: ${fmtN(h.lowest24h)})</span>` : ''}</div>`);
   for (const w of ws) lines.push(`<div class="nudge"><span><b>${esc(short(w.wallet))}</b> · ${w.balance != null ? fmtN(w.balance) + ' $SUNFALL' : 'read within ten minutes'} <span class="cost">(linked by ${esc(w.how)})</span></span><button class="btn sm" data-unhold="${esc(w.wallet)}">Unlink</button></div>`);
+  if (h.readAt || h.nextReadBy) lines.push(`<div class="cost" style="margin-top:6px">${h.readAt ? `Last read ${esc(h.readAt.slice(11, 16))} UTC` : 'Not read yet'}${h.nextReadBy ? ` · next reading by ${esc(h.nextReadBy.slice(11, 16))} UTC` : ''}. Wallets are read every ten minutes: a new link or a transfer counts from the next reading.</div>`);
   if (h.proofPending) lines.push(`<div class="cost" style="margin-top:6px">Waiting for a transfer of any amount of $SUNFALL from ${esc(short(h.proofPending.from))} to your agent's wallet ${esc(short(h.proofPending.to))}, until ${esc(h.proofPending.until.slice(11, 16))} UTC.</div>`);
   $('holdBody').innerHTML = lines.join('');
   $('holdForm').classList.toggle('hidden', ws.length >= 1);
@@ -313,6 +321,16 @@ $('hSend').onclick = async () => {
   if (!/^0x[0-9a-fA-F]{40}$/.test(w)) return say('holdMsg', 'Enter the holding wallet address (0x and 40 characters).', 'bad');
   try { const o = await op('holdProveByTransfer', { wallet: w }); say('holdMsg', o.note, 'ok'); await load(); } catch (e) { say('holdMsg', e.message, 'bad'); }
 };
+
+async function drawBooks(n) {
+  $('booksCard').classList.toggle('hidden', !n);
+  if (!n) return;
+  let B; try { B = await op('books'); } catch { $('books').innerHTML = '<div class="cost">Couldn\'t load the books.</div>'; return; }
+  const sg = (x) => (x < 0 ? '-' : '') + usd(Math.abs(x));
+  $('books').innerHTML = (B.books || []).map((b) => `<div class="plan" style="margin-top:8px"><b>${esc(b.name)}</b> <span class="cost">${b.total.shifts} shifts: takings ${usd(b.total.takings)}, payroll ${usd(b.total.payroll)}, paid out ${usd(b.total.payouts)}${b.total.robbed ? `, robbed ${usd(b.total.robbed)}` : ''} → <b>${sg(b.total.profit)}</b></span>`
+    + (b.shifts.length ? `<div style="overflow-x:auto"><table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse"><tr style="text-align:left;opacity:.7"><th>Day</th><th>Shift</th><th>Takings</th><th>Payroll</th><th>Paid out</th><th>Robbed</th><th>Profit</th></tr>`
+      + b.shifts.map((s) => `<tr><td>${s.day}</td><td>${s.shift}</td><td>${usd(s.takings)}</td><td>${usd(s.payroll)}</td><td>${usd(s.payouts)}</td><td>${usd(s.robbed)}</td><td><b>${sg(s.profit)}</b></td></tr>`).join('') + '</table></div>' : '<div class="cost">No shifts recorded yet; the books fill from the next shift.</div>') + '</div>').join('');
+}
 
 const KIND_LABEL = { festival: 'Festival in a district', freeFerry: 'Free sky ferry', curfew: 'Casino curfew', jobsDrive: 'Jobs drive' };
 function drawKeep(k) {
