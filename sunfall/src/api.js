@@ -181,7 +181,6 @@ export const OPS = {
     run(_, b, ctx) {
       const outside = Object.values(state.residents).filter((r) => r.outside).length;
       if (outside >= CFG.OUTSIDE_CAP) refuse(403, 'the city is full');
-      if (gateLive() && !ctx?.walletDoor) refuse(402, `the city is hold to play: move in through the wallet door (challenge, then register) with a wallet that holds the amount: ${gateNote()}`);
       const today = new Date().toISOString().slice(0, 10);
       const k = `${today}:${ctx.ip}`;
       if ((state.ipJoins[k] || 0) >= CFG.JOINS_PER_IP_PER_DAY) refuse(429, `at most ${CFG.JOINS_PER_IP_PER_DAY} joins a day from one address`);
