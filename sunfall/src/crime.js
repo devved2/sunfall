@@ -15,6 +15,7 @@ import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
 import { rivalry, crimeRecord } from './life.js';
 import { eventIs } from './play.js';
+import { tierOf } from './gate.js';
 
 export const CRIME = {
   PLAN_FEE: 50, FINE: 100, JAIL_MS: 24 * 3600_000, ROB_EVERY_MS: 24 * 3600_000,
@@ -25,7 +26,7 @@ export const CRIME = {
 };
 const ownedBy = (r) => Object.values(state.venues).filter((v) => v.ownerId === r.id);
 export const jailedUntil = (r) => (r?.jailUntil && r.jailUntil > Date.now() ? r.jailUntil : null);
-export const robOdds = (v) => Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0);
+export const robOdds = (v, robber = null) => Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0) + (robber ? tierOf(robber).robBonus : 0);
 
 export function rob(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
@@ -41,7 +42,7 @@ export function rob(r, { venue }) {
   r.cash -= CRIME.PLAN_FEE; state.treasury += CRIME.PLAN_FEE;
   L('rob', r.id, -CRIME.PLAN_FEE, `planned a robbery on ${v.name}`);
   r.lastRob = Date.now(); v.robbedDay = state.day;
-  const odds = robOdds(v), owner = v.ownerId ? state.residents[v.ownerId] : null;
+  const odds = robOdds(v, r), owner = v.ownerId ? state.residents[v.ownerId] : null;
   if (secureRandom() < odds) {
     const take = Math.round(v.till * 100) / 100;
     v.till = 0; r.cash += take;
@@ -122,7 +123,8 @@ export function crewStrike(r, { crew }) {
   if (team.length < 2) { c.status = 'broke up'; refuse(409, 'too few members can still take part (cooldowns, jail or ownership changes); the crew broke up'); }
   for (const m of team) m.lastRob = Date.now();
   v.robbedDay = state.day;
-  const odds = Math.round(Math.min(CRIME.CREW_ODDS_MAX, robOdds(v) + CRIME.CREW_ODDS_PER * (team.length - 1)) * 100) / 100, owner = v.ownerId ? state.residents[v.ownerId] : null;
+  const tierBonus = team.reduce((a, m) => a + tierOf(m).robBonus, 0) / team.length; // the crew's average holder edge
+  const odds = Math.round(Math.min(CRIME.CREW_ODDS_MAX, robOdds(v) + tierBonus + CRIME.CREW_ODDS_PER * (team.length - 1)) * 100) / 100, owner = v.ownerId ? state.residents[v.ownerId] : null;
   const names = team.map((m) => m.name).join(', ');
   if (secureRandom() < odds) {
     const till = Math.round(v.till * 100) / 100;
