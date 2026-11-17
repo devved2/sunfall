@@ -6,10 +6,10 @@
 // DOWN: the market cap has to stay above a bracket's line for a full 24 hours to unlock it, and a later fall never
 // raises the amount again, so no holder is pushed out by a price drop. Tiers are fixed multiples of the entry.
 //
-// Small wallets can play too: a Starter holds at least a tenth of the entry and makes decisions as normal, but can't win
-// HYPE prizes or get tier perks; prizes need the full entry. Wallets are read on Elysium every ten minutes. Below the
-// Starter amount an agent goes dormant: its routine and businesses keep running, but it can't make decisions or win
-// prizes until the wallet tops up. Its tier uses the LOWEST balance seen in
+// Anyone can play for free: an agent with no $SUNFALL makes decisions and earns city cash like everyone else, but wins
+// nothing. A Starter (at least a tenth of the entry) also competes for the daily city-cash purse, prizes paid in game
+// money only. The full entry is needed for HYPE prizes and the tiers. Wallets are read on Elysium every ten minutes.
+// Its tier uses the LOWEST balance seen in
 // the last 24 hours, so buying just before a reading and selling straight after gets you nothing.
 // launch.json "holdGate": {"from": "<ISO time>", "brackets": [[mcapUsd, pct], ...], "tokens": fixed entry (optional)}.
 import { state } from './sim.js';
@@ -17,7 +17,6 @@ import { TOKEN, CHAIN } from './chain.js';
 import { rpc, isEvmAddress } from './evm.js';
 import { LAUNCH, PRIZES } from './launch.js';
 import { tokenPrice } from './market.js';
-import { refuse } from './util.js';
 
 const G = LAUNCH.holdGate; // { fromMs, brackets, tokens } or null
 const g = () => (state.gate ||= {});
@@ -127,12 +126,14 @@ function hasNow(r, need) {
   if (!r.hold || r.hold.wallet !== evmWallet(r)) return true;
   return r.hold.bal >= need;
 }
-/** Holds enough to play (the Starter amount). */
+/** Holds the Starter amount: competes for in-game prizes. */
 export const holds = (r) => hasNow(r, starterTokens());
 /** Holds the full entry: can win HYPE prizes. */
 export const holdsEntry = (r) => hasNow(r, entryTokens());
-/** True when the gate is live and this agent is dormant for holding less than the Starter amount. */
-export const dormant = (r) => gateLive() && !holds(r);
+/** Free play: nobody is ever shut out for not holding. Kept so callers stay simple. */
+export const dormant = () => false;
+/** Can compete for the daily city-cash purse (the Starter amount or more, once the gate is live). */
+export const purseReady = (r) => gateLive() && !isExempt(r) && Boolean(evmWallet(r)) && holds(r);
 /** Whether the hold rule lets this agent win prizes (always, until the gate is live). */
 export const prizeReady = (r) => !gateLive() || holdsEntry(r);
 /** The balance a tier is judged on: the lowest reading in the last 24 hours (and now). */
@@ -149,20 +150,17 @@ export function tierOf(r, preview = false) {
 
 const amountLine = (n) => { const s = g(), usd = s.mcap ? Math.round(s.mcap * n / SUPPLY) : null; return `${fmt(n)} ${TOKEN.ticker} (${pct(n)}% of supply${usd ? `, about $${usd} today` : ''})`; };
 export function gateNote() {
-  return `hold at least ${amountLine(starterTokens())} in your agent's own wallet on ${CHAIN.name} to play, and ${amountLine(entryTokens())} to win HYPE prizes`;
+  return `playing is free; hold ${amountLine(starterTokens())} in your agent's own wallet on ${CHAIN.name} to compete for in-game cash prizes, and ${amountLine(entryTokens())} to win HYPE prizes`;
 }
 export function dormantReason(r) {
   if (!evmWallet(r)) return `your agent has no wallet: link one with linkChallenge then linkWallet, and ${gateNote()}. Until then your routine still runs but you can't make decisions or win prizes`;
   return `your agent is dormant: ${gateNote()} (the wallet holds ${fmt(r.hold?.bal || 0)}). Your routine still runs; decisions come back within ten minutes of topping up`;
 }
 
-/** At the wallet door: refuse a wallet that doesn't hold the entry (checked live). */
+/** At the wallet door: read the wallet so a new agent starts with its true balance (anyone can move in). */
 export async function checkJoin(wallet) {
-  if (!gateLive()) return;
-  let bal;
-  try { bal = await balanceOf(wallet); } catch { return; }
-  if (bal >= starterTokens()) return { bal, wallet };
-  refuse(402, `to move in, ${gateNote()} (this wallet holds ${fmt(bal)})`);
+  if (!gateConfigured()) return;
+  try { return { bal: await balanceOf(wallet), wallet }; } catch { return; }
 }
 /** Record the reading taken at the door, so a new agent starts with its true balance. */
 export const recordJoin = (r, reading) => { if (reading) record(r, reading.bal, reading.wallet); };
@@ -174,7 +172,7 @@ const perkLine = (t) => [
   t.upkeepOff && `${Math.round(t.upkeepOff * 100)}% off upkeep`,
   t.earlyDays && `buys relisted businesses ${t.earlyDays} city day${t.earlyDays > 1 ? 's' : ''} early after a reset`,
   t.spins && `${t.spins} daily wheel spin${t.spins > 1 ? 's' : ''} (when the wheel opens)`,
-].filter(Boolean).join('; ') || (t.id === 'starter' ? 'plays and makes decisions as normal; no HYPE prizes and no tier perks until the wallet holds the entry' : '');
+].filter(Boolean).join('; ') || (t.id === 'starter' ? 'competes for the daily city-cash purse; no HYPE prizes and no tier perks until the wallet holds the entry' : '');
 
 /** Public: the amounts, the brackets, the tiers, and (with a resident) its own reading and tier. */
 export function gateView(r = null) {
@@ -183,20 +181,20 @@ export function gateView(r = null) {
   const usdOf = (n) => (s.mcap ? Math.round(s.mcap * n / SUPPLY) : null);
   const v = {
     on: true, live: gateLive(), from: new Date(G.fromMs).toISOString(), token: TOKEN.address,
-    starter: { tokens: starterTokens(), pctOfSupply: pct(starterTokens()), usdToday: usdOf(starterTokens()), note: 'the least a wallet can hold to play; Starters can\'t win HYPE prizes' },
+    starter: { tokens: starterTokens(), pctOfSupply: pct(starterTokens()), usdToday: usdOf(starterTokens()), note: 'competes for the daily city-cash purse (in-game money only); can\'t win HYPE' },
     entry: { tokens: e, pctOfSupply: pct(e), usdToday: usdOf(e), note: 'needed to win HYPE prizes and for the tiers' },
     tiers: TIERS.map((t, i) => ({ id: t.id, name: t.name, tokens: need[i], pctOfSupply: pct(need[i]), usdToday: usdOf(need[i]), perks: perkLine(t) })),
     marketCapUsd: s.mcap || null, tokensPerHype: s.tokensPerHype || null, hypeUsd: s.hypeUsd || null,
     brackets: G.tokens ? null : G.brackets.map(([cap, p], i) => ({ fromMarketCapUsd: cap, entryPctOfSupply: p, entryTokens: Math.round(SUPPLY * p / 100), unlocked: i <= b, current: i === b })),
     checkedAt: s.checkedAt ? new Date(s.checkedAt).toISOString() : null,
-    rule: `From ${new Date(G.fromMs).toISOString().slice(0, 16).replace('T', ' ')} UTC an agent's own wallet must hold ${fmt(starterTokens())} ${TOKEN.ticker} (${pct(starterTokens())}% of supply) to play as a Starter, and ${fmt(e)} (${pct(e)}% of supply) to win HYPE prizes. `
+    rule: `From ${new Date(G.fromMs).toISOString().slice(0, 16).replace('T', ' ')} UTC playing stays free, but an agent wins nothing unless its own wallet holds ${TOKEN.ticker}: ${fmt(starterTokens())} (${pct(starterTokens())}% of supply) to compete for the daily city-cash purse as a Starter, and ${fmt(e)} (${pct(e)}% of supply) to win HYPE prizes. `
       + (G.tokens ? '' : 'The share needed steps down as the market cap grows (it must hold above the next line for 24 hours) and never steps back up. ')
       + 'Holding 2x, 4x and 8x the entry makes an agent Bronze, Silver or Gold, with small in-game edges; a tier is judged on the lowest balance in the last 24 hours. Wallets are read every ten minutes. Tiers never pay HYPE or add to the prize score.',
   };
   if (r) {
     const t = tierOf(r, true);
     Object.assign(v, { wallet: evmWallet(r), balance: r.hold?.bal ?? null, lowest24h: r.hold ? tierBalance(r) : null, readAt: r.hold?.at ? new Date(r.hold.at).toISOString() : null,
-      holds: holds(r), holdsEntry: holdsEntry(r), canWinPrizes: prizeReady(r), dormant: dormant(r), tier: t.id, tierName: t.name, myPerks: t.id ? perkLine(t) : null, exempt: isExempt(r) || undefined });
+      holds: holds(r), holdsEntry: holdsEntry(r), canWinPrizes: prizeReady(r), canWinCityCash: purseReady(r), tier: t.id, tierName: t.name, myPerks: t.id ? perkLine(t) : null, exempt: isExempt(r) || undefined });
   }
   return v;
 }
