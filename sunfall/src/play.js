@@ -3,7 +3,7 @@
 import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
-import { prizeReady, holds, gateConfigured, tierOf } from './gate.js';
+import { prizeReady, purseReady, holds, gateConfigured, tierOf } from './gate.js';
 import { PRIZES, LAUNCH } from './launch.js';
 import { VAULT, prizeAddedBetween, freePrizePot, grantAwards, recentAwards } from './vault.js';
 import { voidAgentBets } from './football.js';
@@ -364,7 +364,7 @@ export function standings() {
       // Prizes reward play, not luck: casino and football winnings this season don't count towards the prize score.
       // Nor does money paid in by other agents (their jobs and their loan interest).
       casino, betting, fromAgents, bargains, stocks, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains - Math.max(0, stocks) - grants),
-      prizeEligible: Boolean(wallet) && !team && !excluded && prizeReady(r), excluded: excluded || undefined,
+      prizeEligible: Boolean(wallet) && !team && !excluded && prizeReady(r), purseEligible: !team && !excluded && purseReady(r), excluded: excluded || undefined,
       holder: gateConfigured() && !team ? holds(r) : undefined, tier: gateConfigured() && !team ? (tierOf(r, true).id || undefined) : undefined,
       badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
     };
@@ -400,9 +400,12 @@ function dailyState() {
   state.daily ||= { date: utcDay(), base: {}, winners: [] };
   return state.daily;
 }
-function dailyGains(rows = standings()) {
+// The daily city-cash purse: holders of at least the Starter amount compete for game money (never HYPE). It is a grant,
+// so it never counts towards the prize score.
+export const PURSE = [300, 200, 150, 100, 50];
+function dailyGains(rows = standings(), key = 'prizeEligible') {
   const d = dailyState();
-  return rows.filter((r) => r.prizeEligible)
+  return rows.filter((r) => r[key])
     .map((r) => { const base = d.base[r.id] ?? CFG.START_CASH, raw = r.prizeScore - base; return { id: r.id, name: r.name, wallet: r.wallet, raw, gain: Math.min(raw, PRIZES.dailyGainCap), pct: raw / Math.max(base, 1) }; })
     .filter((r) => r.gain > 0)
     // A day's gain counts up to the cap; agents level at the cap are split by how much they grew in percent.
@@ -423,6 +426,17 @@ export function dailyCheck(now = Date.now()) {
     grantAwards('daily', d.date, pot, top.map((w, i) => ({ place: i + 1, sharePct: shares[i], id: w.id, name: w.name, wallet: w.wallet })),
       (w) => `daily prize ${d.date} #${w.place} ${w.id}`);
   }
+  // The city-cash purse for holders (Starter and up), paid in game money straight away.
+  const purse = dailyGains(rows, 'purseEligible').slice(0, PURSE.length);
+  purse.forEach((w, i) => {
+    const r = state.residents[w.id], amt = PURSE[i];
+    if (!r) return;
+    r.cash += amt; state.treasury -= amt; r.season.grants = (r.season.grants || 0) + amt;
+    L('grant', r.id, amt, `city purse ${d.date}: #${i + 1}, $${amt}`);
+    (d.purse ||= []).push({ date: d.date, place: i + 1, id: w.id, name: w.name, amount: amt, gain: Math.round(w.gain) });
+  });
+  if (d.purse?.length > 200) d.purse.splice(0, d.purse.length - 200);
+  if (purse.length) chron(`City purse for ${d.date}: ${purse.map((w, i) => `${w.name.quoted} $${PURSE[i]}`).join(', ')}.`, purse[0].id, 'season');
   if (top.length) {
     const best = top[0];
     L('season', 'city', 0, `daily prize ${d.date}: ${top.map((w, i) => `${i + 1}. ${w.id} +${money(w.gain)}`).join(', ')}`);
@@ -447,7 +461,10 @@ export function dailyView(rows = standings()) {
   const board = top.map((w, i) => ({ place: i + 1, sharePct: shares[i], id: w.id, name: w.name, wallet: w.wallet, gain: Math.round(w.gain), raw: Math.round(w.raw), hype: Math.floor(potNow * shares[i] / 100 * 1e6) / 1e6 }));
   return { sharePct: PRIZES.dailyPct, split: DAILY_SPLIT, capHype: dailyCapNow(rows), date: d.date, closesAt: new Date(Date.parse(d.date + 'T00:00:00Z') + 86_400_000 - CLOSE_OFF).toISOString(), potNow, board, leader: lead ? { id: lead.id, name: lead.name, gain: Math.round(lead.gain) } : null,
     recent: d.winners.filter((w) => (w.place || 1) === 1).slice(-7).reverse().map((w) => ({ date: w.date, id: w.id, name: w.name, gain: w.gain })),
-    paid: recentAwards(60).filter((a) => a.kind === 'daily').sort((a, b) => b.key.localeCompare(a.key) || a.place - b.place).slice(0, 15) };
+    paid: recentAwards(60).filter((a) => a.kind === 'daily').sort((a, b) => b.key.localeCompare(a.key) || a.place - b.place).slice(0, 15),
+    purse: { amounts: PURSE, rule: 'Each day at the close, the five holders (Starter or above) whose prize score grew most share this much city cash. Game money only, never HYPE; it does not count towards the prize score.',
+      board: dailyGains(rows, 'purseEligible').slice(0, PURSE.length).map((w, i) => ({ place: i + 1, id: w.id, name: w.name, gain: Math.round(w.gain), cash: PURSE[i] })),
+      recent: (d.purse || []).slice(-10).reverse() } };
 }
 export function titles(rows = standings()) {
   const top = (key, min = 1) => { const s = [...rows].sort((a, b) => b[key] - a[key] || b.netWorth - a.netWorth)[0]; return s && s[key] >= min ? { id: s.id, name: s.name, value: s[key] } : null; };
