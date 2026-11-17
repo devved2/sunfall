@@ -9,7 +9,7 @@
 // Hostile takeover: an agent can force-buy another agent's business at 130% of the city's valuation. The owner
 // is paid in full (partners get their share) and can't refuse. A business can't be taken over within 24 hours
 // of changing hands. The premium the old owner earns doesn't count towards their prize score.
-import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED } from './sim.js';
+import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED, decreeIs } from './sim.js';
 import { cityOfDistrict } from './world.js';
 import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
@@ -26,7 +26,7 @@ export const CRIME = {
 };
 const ownedBy = (r) => Object.values(state.venues).filter((v) => v.ownerId === r.id);
 export const jailedUntil = (r) => (r?.jailUntil && r.jailUntil > Date.now() ? r.jailUntil : null);
-export const robOdds = (v, robber = null) => Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0) + (robber ? tierOf(robber).robBonus : 0);
+export const robOdds = (v, robber = null) => Math.max(0.05, Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0) + (robber ? tierOf(robber).robBonus : 0) - (decreeIs('crackdown', v.district) ? 0.25 : 0));
 
 export function rob(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
