@@ -34,7 +34,7 @@ const r4 = (x) => Math.round(x * 1e4) / 1e4;
 const amt = (e) => e.amount ?? e.sol ?? 0;
 
 /** Record a flow. kind 'in' needs a source; kind 'out' needs a use (a bucket). Amounts in HYPE. */
-export function recordFlow({ kind, source, use, amount, sol, tx, note, award, to, overdraw }) {
+export function recordFlow({ kind, source, use, amount, sol, tx, note, award, to, overdraw, payee }) {
   amount ??= sol; // older clients sent `sol`
   if (kind !== 'in' && kind !== 'out') refuse(422, 'kind must be in or out');
   if (!(typeof amount === 'number' && amount > 0 && amount < 1e7)) refuse(422, 'amount must be a positive number of HYPE');
@@ -57,7 +57,7 @@ export function recordFlow({ kind, source, use, amount, sol, tx, note, award, to
     if (aw.tx) refuse(409, `award ${award} is already paid (tx ${aw.tx})`);
     if (Math.abs(amount - aw.hype) > 1e-6) refuse(422, `award ${award} is ${aw.hype} HYPE, not ${amount}`);
   }
-  const e = { i: ++v().n, t: Date.now(), day: state.day, kind, source: source || null, use: use || null, to: to || null, amount: r4(amount), tx, note: note || (aw ? aw.label : null), award: aw ? aw.id : null };
+  const e = { i: ++v().n, t: Date.now(), day: state.day, kind, source: source || null, use: use || null, to: to || null, amount: r4(amount), tx, note: note || (aw ? aw.label : null), award: aw ? aw.id : null, ...(payee ? { payee } : {}) };
   v().entries.push(e);
   if (aw) { aw.tx = tx; aw.paidAt = e.t; }
   L('vault', 'vault', kind === 'in' ? e.amount : -e.amount, `${kind === 'in' ? `in: ${source}` : `out: ${use}`} ${e.amount} HYPE, tx ${tx.slice(0, 14)}`);
@@ -135,6 +135,7 @@ export function grantAwards(kind, key, pot, winners, labelOf) {
   const unpaid = awards().filter((a) => !a.tx), paid = awards().filter((a) => a.tx);
   if (paid.length > 600) v().awards = [...paid.slice(-600), ...unpaid];
   if (made.length) L('vault', 'vault', 0, `${kind} prizes ${key}: ${made.map((a) => `${a.rid} ${a.hype} HYPE`).join(', ')}`);
+  if (made.length) linkEarlyPayments(); // paid before the city named the winners
   return made;
 }
 export const dueAwards = () => awards().filter((a) => !a.tx);
@@ -167,6 +168,7 @@ export async function scanOutflows() {
   scanningOut = true;
   let added = 0;
   try {
+    linkEarlyPayments();
     const st = (v().outScan ||= { nonce: os.fromNonce, block: null });
     const W = VAULT.wallet.toLowerCase();
     const nonceAt = async (b) => parseInt(await rpc(CHAIN.rpc, 'eth_getTransactionCount', [VAULT.wallet, hx(b)]), 16);
@@ -197,8 +199,28 @@ function recordOut(tx) {
   const aw = awards().find((a) => !a.tx && a.wallet.toLowerCase() === to && Math.abs(a.hype - value) <= Math.max(1e-5, a.hype * 0.01));
   if (aw) { recordFlow({ kind: 'out', use: 'prize', amount: aw.hype, tx: tx.hash, award: aw.id }); return 1; }
   const label = (LAUNCH.outScan.labels || {})[to] || `sent to ${to.slice(0, 6)}…${to.slice(-4)}`;
-  recordFlow({ kind: 'out', use: 'ops', amount: value, tx: tx.hash, note: `${label} (recorded automatically)`, overdraw: true });
+  recordFlow({ kind: 'out', use: 'ops', amount: value, tx: tx.hash, note: `${label} (recorded automatically)`, overdraw: true, payee: to });
   return 1;
+}
+
+/**
+ * Prizes are often paid the moment a day or week ends, a few minutes before the city formally closes it and names the
+ * winners. Such a payment is first recorded as team spending; once the award exists, this finds it (same wallet,
+ * same HYPE, sent from 3 days before the award to any time after) and moves it over: the prize shows as paid with
+ * its transaction, and the HYPE counts against the prize pot instead of the team's share.
+ */
+export function linkEarlyPayments() {
+  let n = 0;
+  for (const aw of awards().filter((a) => !a.tx)) {
+    const w = (aw.wallet || '').toLowerCase(), short = `sent to ${w.slice(0, 6)}…${w.slice(-4)}`;
+    const e = v().entries.find((x) => x.kind === 'out' && x.use === 'ops' && !x.award && x.t >= (aw.t || 0) - 3 * 86400_000
+      && (x.payee ? x.payee === w : (x.note || '').startsWith(short)) && Math.abs(x.amount - aw.hype) <= Math.max(1e-5, aw.hype * 0.01));
+    if (!e) continue;
+    e.use = 'prize'; e.award = aw.id; e.note = `${aw.label} (matched automatically)`;
+    aw.tx = e.tx; aw.paidAt = e.t; n++;
+    L('vault', 'vault', 0, `matched ${e.tx.slice(0, 14)} to ${aw.id}: ${aw.hype} HYPE, prize not team spending`);
+  }
+  return n;
 }
 
 export async function scanFeeClaims() {
