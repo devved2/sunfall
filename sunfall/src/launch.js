@@ -54,6 +54,12 @@ const nx = cfg.prizeSplitNext && typeof cfg.prizeSplitNext === 'object' ? cfg.pr
 const next = nx && Number.isInteger(nx.fromSeason) && nx.fromSeason > 0 && Array.isArray(nx.split) && nx.split.length && nx.split.every((n) => Number.isFinite(n) && n > 0)
   && Number.isFinite(nx.rookiePct ?? 0) && (nx.rookiePct ?? 0) >= 0 && (nx.rookiePct ?? 0) < 50
   && Math.abs(nx.split.reduce((a, b) => a + b, 0) + (nx.rookiePct ?? 0) - 100) < 0.001 ? { fromSeason: nx.fromSeason, split: nx.split, rookiePct: nx.rookiePct ?? 0 } : null;
+// Bigger prizes from a later season (launch.json "prizeBoost": {fromSeason, dailyPrizeCapHype, weeklyPrizePct,
+// weeklyPrizeCapHype}). play.js tells this file which season is running.
+let seasonNow = () => 1;
+export const setPrizeSeason = (f) => { seasonNow = f; };
+const pb = cfg.prizeBoost && Number.isInteger(cfg.prizeBoost.fromSeason) ? cfg.prizeBoost : null;
+const boosted = (key) => (pb && seasonNow() >= pb.fromSeason && Number(pb[key]) > 0 ? Number(pb[key]) : null);
 const fromMs = typeof cfg.prizesFrom === 'string' && Number.isFinite(Date.parse(cfg.prizesFrom)) ? Date.parse(cfg.prizesFrom) : null;
 export const PRIZES = {
   get enabled() { return process.env.PRIZES_ENABLED ? process.env.PRIZES_ENABLED === 'true' : cfg.prizesEnabled === true || (fromMs != null && Date.now() >= fromMs); },
@@ -66,10 +72,11 @@ export const PRIZES = {
   rookiePctFor: (n) => (next && n >= next.fromSeason ? next.rookiePct : 0),
   dailyPct: Number.isFinite(cfg.dailyPrizePct) && cfg.dailyPrizePct >= 0 && cfg.dailyPrizePct <= 50 ? cfg.dailyPrizePct : 10,
   // Most HYPE paid out in daily prizes on any one day; anything over it stays in the pot for the weekly top 10. null = no cap.
-  dailyCapHype: Number.isFinite(cfg.dailyPrizeCapHype) && cfg.dailyPrizeCapHype > 0 ? cfg.dailyPrizeCapHype : null,
+  get dailyCapHype() { return boosted('dailyPrizeCapHype') ?? (Number.isFinite(cfg.dailyPrizeCapHype) && cfg.dailyPrizeCapHype > 0 ? cfg.dailyPrizeCapHype : null); },
   // Each Monday the weekly top 10 share this % of the free prize pot, up to weeklyCapHype; the rest rolls over, so the pot lasts.
-  weeklyPct: Number.isFinite(cfg.weeklyPrizePct) && cfg.weeklyPrizePct > 0 && cfg.weeklyPrizePct <= 100 ? cfg.weeklyPrizePct : 100,
-  weeklyCapHype: Number.isFinite(cfg.weeklyPrizeCapHype) && cfg.weeklyPrizeCapHype > 0 ? cfg.weeklyPrizeCapHype : null,
+  get weeklyPct() { return boosted('weeklyPrizePct') ?? (Number.isFinite(cfg.weeklyPrizePct) && cfg.weeklyPrizePct > 0 && cfg.weeklyPrizePct <= 100 ? cfg.weeklyPrizePct : 100); },
+  get weeklyCapHype() { return boosted('weeklyPrizeCapHype') ?? (Number.isFinite(cfg.weeklyPrizeCapHype) && cfg.weeklyPrizeCapHype > 0 ? cfg.weeklyPrizeCapHype : null); },
+  boost: pb ? { fromSeason: pb.fromSeason, dailyCapHype: Number(pb.dailyPrizeCapHype) || null, weeklyPct: Number(pb.weeklyPrizePct) || null, weeklyCapHype: Number(pb.weeklyPrizeCapHype) || null } : null,
   // Prizes grow with the field: each cap above is also limited to this much HYPE per agent that can win. null = no limit.
   // The hour (UTC) each prize day closes and its winners are named, e.g. 22 for 22:00 UTC.
   // The most of one agent's gain that counts in a day's race, so one big earner can't run away with it every day.
