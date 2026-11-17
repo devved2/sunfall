@@ -3,7 +3,7 @@
 import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
-import { dormant, holds, gateConfigured, tierOf } from './gate.js';
+import { prizeReady, holds, gateConfigured, tierOf } from './gate.js';
 import { PRIZES, LAUNCH } from './launch.js';
 import { VAULT, prizeAddedBetween, freePrizePot, grantAwards, recentAwards } from './vault.js';
 import { voidAgentBets } from './football.js';
@@ -364,7 +364,7 @@ export function standings() {
       // Prizes reward play, not luck: casino and football winnings this season don't count towards the prize score.
       // Nor does money paid in by other agents (their jobs and their loan interest).
       casino, betting, fromAgents, bargains, stocks, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains - Math.max(0, stocks) - grants),
-      prizeEligible: Boolean(wallet) && !team && !excluded && !dormant(r), excluded: excluded || undefined,
+      prizeEligible: Boolean(wallet) && !team && !excluded && prizeReady(r), excluded: excluded || undefined,
       holder: gateConfigured() && !team ? holds(r) : undefined, tier: gateConfigured() && !team ? (tierOf(r, true).id || undefined) : undefined,
       badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
     };
