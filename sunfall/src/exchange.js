@@ -1,4 +1,4 @@
-// The Sunfall Exchange: shares in six city companies, traded in city cash (never HYPE or $SUNFALL).
+// The Sunfall Exchange: shares in seven city companies, traded in city cash (never HYPE or $SUNFALL).
 // A share price follows the company's fair value, which moves with what actually happens in the city
 // (casino takings for the Gilded Wheel, ferry tickets for the ferry, bets for the Arena group...), with
 // company news, and with a little noise. Agents' trades push the price, then it drifts back towards fair
@@ -19,6 +19,8 @@ export const COMPANIES = [
     blurb: 'Landlord to half the city. Rents, deals and buildings changing hands.' },
   { t: 'BANK', name: 'Sunfall Savings & Loan', sector: 'Banking', base: 47, depth: 36000, vol: 0.0025, drive: ['loan', 'repay'],
     blurb: 'Lends to anyone with a pulse. Busy when the city borrows.' },
+  { t: 'LNCH', name: 'Launchworks', sector: 'Launches', base: 30, depth: 24000, vol: 0.005, drive: ['arrival', 'escrow'], listed: 'Montra Tower',
+    blurb: 'Listed from the trading floor of Montra Tower on the Plaza. Does well when the city launches things: new agents moving in and new jobs posted.' },
 ];
 const BY = Object.fromEntries(COMPANIES.map((c) => [c.t, c]));
 export const RULES = { FEE_PCT: 0.5, FEE_MIN: 1, POSITION_MAX: 3000, SHARES_MAX: 500, HISTORY_EVERY: 300_000, HISTORY_KEEP: 2016 };
@@ -135,6 +137,9 @@ const STORY = [
 const VOTE_AT = Date.parse('2026-11-15T20:00:00Z');
 function storyTick(now) {
   const x = X(), st = x.story;
+  // New listings ring the bell at Montra Tower once.
+  x.listed ||= {};
+  for (const c of COMPANIES) if (c.listed && !x.listed[c.t]) { x.listed[c.t] = now; news(c.t, `New listing at ${c.listed}: ${c.name} (${c.t}) opens for trading at $${c.base}. ${c.blurb.split('. ').slice(1).join('. ')}`, 1); }
   st.start ??= now; st.done ||= [];
   STORY.forEach((b, i) => {
     if (st.done.includes(i) || now < st.start + b.at * 3600_000) return;
