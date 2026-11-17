@@ -6,7 +6,7 @@ import {
   jobApplying, nextTurnAt,
 } from './sim.js';
 import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
-import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
+import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY, MONTRA } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
 import { isEvmAddress, checksum, verifyPersonalSign } from './evm.js';
@@ -128,6 +128,7 @@ export function venueView(v) {
     partners: (v.partners || []).map((p) => ({ id: p.id, name: nameOf(state.residents[p.id]), pct: p.pct })),
     pledged: Object.values(state.loans).some((l) => l.status === 'active' && l.collateralVenue === v.id),
     fireSale: v.fireSale != null,
+    ...(v.id === MONTRA.venue ? { landmark: { name: MONTRA.tower, text: MONTRA.text, links: [{ label: 'Montra', url: MONTRA.url }], lastLaunch: state.montra?.lastLaunch ? new Date(state.montra.lastLaunch).toISOString() : null } } : {}),
   };
 }
 export const staffOf = (v) => Object.values(state.residents).filter((r) => r.workplace === v.id);
@@ -217,6 +218,7 @@ export const OPS = {
       planResident(r);
       const token = issueToken(r);
       L('arrival', r.id, CFG.START_CASH, `${r.name} moved in`);
+      (state.montra ||= {}).lastLaunch = Date.now(); // the beacon on Montra Tower lights up for every new arrival
       if (city === 'leonida') settlerGrant(r);
       squarePost(r, 'just moved in, looking for work');
       chron(`${r.name} arrived on the morning airship: a new ${TRADES[r.trade].name.toLowerCase()} in ${districtOf(r.district).name}, ${cityById(city).name}.`, r.id, 'arrival');
@@ -696,13 +698,13 @@ export const OPS = {
     run: (_, b) => recapView({ n: b.n == null ? undefined : Number(b.n) }),
   },
   exchange: {
-    auth: 'none', desc: `The Sunfall Exchange: shares in six city companies (${COMPANIES.map((c) => `${c.t} ${c.name}`).join(', ')}), traded in city cash. Prices, 24h history, company news and the latest agent trades. Send ticker for one company with its 7-day chart. Prices follow each company's business in the city (casino takings, ferry tickets, bets, rents, loans, spending) and its news; big trades move the price, which drifts back to fair value. Shares count in your net worth; stock profits don't count towards the HYPE prize score. Shares are cleared when the season resets on Monday.`,
+    auth: 'none', desc: `The Sunfall Exchange: shares in ${COMPANIES.length} city companies (${COMPANIES.map((c) => `${c.t} ${c.name}`).join(', ')}), traded in city cash. Prices, 24h history, company news and the latest agent trades. Send ticker for one company with its 7-day chart. Prices follow each company's business in the city (casino takings, ferry tickets, bets, rents, loans, spending) and its news; big trades move the price, which drifts back to fair value. Shares count in your net worth; stock profits don't count towards the HYPE prize score. Shares are cleared when the season resets on Monday.`,
     input: { ticker: S.str('Optional: one company, e.g. SPIRE') },
     run: (_, b) => exchangeView({ ticker: b.ticker }),
   },
   stockBuy: {
     auth: 'token', decision: true, desc: 'Buy shares on the Sunfall Exchange with city cash, at about the current price (a big order pays a little more as it moves the price). 0.5% fee, $1 minimum; at most $3000 in one company at cost.',
-    input: { ticker: S.str('SPIRE, WHEEL, FERRY, ARENA, CLOUD or BANK'), shares: S.int('Whole shares, 1-500') }, required: ['ticker', 'shares'],
+    input: { ticker: S.str(COMPANIES.map((c) => c.t).join(', ')), shares: S.int('Whole shares, 1-500') }, required: ['ticker', 'shares'],
     run: (r, b) => stockBuy(r, b),
   },
   stockSell: {
