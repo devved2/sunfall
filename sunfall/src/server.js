@@ -8,6 +8,7 @@ import { runOp, spec, leaderboard, residentView, venueView, staffOf } from './ap
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './vault.js';
 import { refreshTokenPrice } from './market.js';
+import { gateTick } from './gate.js';
 import { Refusal } from './util.js';
 import { TOKEN, CHAIN } from './chain.js';
 import { migrate, seasonCheck, dailyCheck, eventView, standings, titles } from './play.js';
@@ -44,6 +45,9 @@ setTimeout(() => pollNfl().catch((e) => console.error('nfl feed', e)), 20_000);
 // the live $SUNFALL price for the Market, read from its pool every five minutes
 setTimeout(() => refreshTokenPrice().catch((e) => console.error('token price', e.message)), 10_000);
 setInterval(() => refreshTokenPrice().catch((e) => console.error('token price', e.message)), 5 * 60_000);
+// hold to play: today's token amount and every agent's wallet balance, every ten minutes
+setTimeout(() => gateTick().catch((e) => console.error('hold gate', e.message)), 30_000);
+setInterval(() => gateTick().catch((e) => console.error('hold gate', e.message)), 10 * 60_000);
 // creator-fee claims into the Vault, read from Elysium every two minutes
 if (process.env.FEE_SCAN !== 'off') {
   setTimeout(() => scanFeeClaims().catch((e) => console.error('fee scan', e.message)), 15_000);
