@@ -179,6 +179,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 #toast.on{opacity:1;transform:translate(-50%,0)}
 #cpop{position:fixed;right:18px;bottom:100px;width:290px;z-index:6;padding:12px 14px;display:grid;gap:8px;opacity:0;transform:translateY(16px);pointer-events:none;transition:opacity .3s,transform .3s;background:radial-gradient(ellipse at 50% 0%,rgba(20,81,63,.96),rgba(8,40,32,.96));border:1px solid rgba(255,211,110,.35);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.45)}
 #cpop.on{opacity:1;transform:none;pointer-events:auto}
+@media (min-width:861px){body:has(#drawer.open) #cpop{right:400px}} /* beside an open side panel, not under it */
 #cpop .ch{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:#ffd36e}
 #cpop .ch button{background:none;border:0;color:rgba(244,234,210,.7);font-size:18px;line-height:1;cursor:pointer;padding:0 2px}
 #cpop .cn{font-size:13px;color:rgba(244,234,210,.85)}#cpop .cn b{color:var(--agent);font-weight:600}
