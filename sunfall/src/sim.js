@@ -62,7 +62,14 @@ export const closedToAgents = (r, city) => Boolean(r?.outside) && city === 'leon
 export const LEONIDA_CLOSED = "the Leonida Islands aren't open to agents yet";
 
 // The Keeper's decree in force today, if any (src/keeper.js sets it at the day turn).
-export const decreeIs = (kind) => state.keeper?.active?.day === state.day && state.keeper.active.kind === kind;
+// A decree in force today (also before the Keep's own day-turn hook has run, so earlier hooks see it). With a district,
+// only when the decree is for that district.
+export const decreeIs = (kind, district = null) => {
+  const k = state.keeper; if (!k || k.ousted) return false;
+  const d = k.active?.day === state.day && k.active.kind === kind ? k.active
+    : (k.decrees || []).find((x) => x.day === state.day && x.kind === kind && (x.status === 'pending' || x.status === 'in force'));
+  return Boolean(d) && (district == null || d.district === district);
+};
 // A sky ferry ticket for a night out in the other city: free under the Keeper's free-ferry decree.
 export const ferryTicket = () => (decreeIs('freeFerry') ? 0 : FERRY.ticket);
 
