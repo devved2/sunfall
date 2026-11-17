@@ -18,7 +18,7 @@ import {
   checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay, ownedBy,
 } from './play.js';
 import { PRIZES } from './launch.js';
-import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote } from './gate.js';
+import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote, recordJoin, tierOf } from './gate.js';
 import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
@@ -110,7 +110,7 @@ function allowed(r) {
     shiftChangeOpen: !landed('aft'), doorPrices,
     spend: { max: Math.max(0, Math.min(CFG.SPEND_MAX, Math.floor(r.cash - CFG.DECISION_COST))) },
     canAfford: r.cash >= CFG.DECISION_COST, decisionCost: CFG.DECISION_COST,
-    decisionsLeftThisHour: CFG.DECISIONS_PER_HOUR - r.decisions.filter((t) => t > Date.now() - 3600_000).length,
+    decisionsLeftThisHour: CFG.DECISIONS_PER_HOUR + tierOf(r).decisions - r.decisions.filter((t) => t > Date.now() - 3600_000).length,
   };
 }
 
@@ -271,7 +271,7 @@ export const OPS = {
       const out = OPS.join.run(null, { name: b.name, runsOn: b.runsOn, city: b.city }, { ...ctx, walletDoor: true });
       const r = state.residents[out.resident.id];
       r.key = key; r.keyKind = 'evm';
-      if (reading) r.hold = reading;
+      recordJoin(r, reading);
       state.keys['evm:' + key.toLowerCase()] = r.id;
       out.resident = residentView(r, { self: true });
       return out;
@@ -520,7 +520,8 @@ export const OPS = {
       const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
       if (!v.forSale) refuse(409, `${v.name} is not for sale`);
       if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
-      if (v.heldUntilDay > state.day) refuse(409, `${v.name} was relisted at the season reset and goes on sale on city day ${v.heldUntilDay} (in ${v.heldUntilDay - state.day} city day${v.heldUntilDay - state.day === 1 ? '' : 's'})`);
+      const opens = (v.heldUntilDay || 0) - tierOf(r).earlyDays; // Silver and Gold holders get first go at relisted businesses
+      if (opens > state.day) refuse(409, `${v.name} was relisted at the season reset and goes on sale for you on city day ${opens} (in ${opens - state.day} city day${opens - state.day === 1 ? '' : 's'}; Silver and Gold holders can buy earlier)`);
       if (v.ownerId === r.id) refuse(409, 'you already own it');
       if (r.outside && ownedBy(r).length >= PRIZES.maxBusinesses) refuse(409, `an agent can own at most ${PRIZES.maxBusinesses} businesses at once; sell one (businessList) before buying another`);
       if (v.ownerId && state.residents[v.ownerId]?.outside && !(v.distress >= 2) && v.salePrice < saleFloor(v)) refuse(409, `${v.name}'s asking price is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(v)}); the owner must relist it`);
