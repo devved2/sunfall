@@ -2865,7 +2865,7 @@ async function renderResident(id) {
   const half = (k, v, r, why) => `${k === 'work' ? 'Working a shift' : k === 'in' ? 'Staying in' : esc(v || k || '—')}${r && !(k === 'in' && r === 'in') ? ` <span class="tag">${esc(r)}</span>` : ''}${why ? `<div class="why">“${esc(txt(why))}”</div>` : ''}`;
   const venueIds = Object.fromEntries(S.venues.map((v) => [v.name, v.id]));
   const vlink = (name) => venueIds[name] ? `<button class="lk" data-venue="${esc(venueIds[name])}">${esc(name)}</button>` : esc(name);
-  const prizeNote = !agent ? '' : st?.team ? 'Team agent: can\'t win prizes.' : x.wallet ? (st?.prizeEligible ? 'Wallet linked: can win HYPE prizes.' : st?.holder === false ? 'Wallet doesn\'t hold enough $SUNFALL: no decisions or prizes.' : 'Kept out of prizes.') : 'No wallet linked, so it can\'t win HYPE prizes.';
+  const prizeNote = !agent ? '' : st?.team ? 'Team agent: can\'t win prizes.' : x.wallet ? (st?.prizeEligible ? 'Wallet linked: can win HYPE prizes.' : st?.holder === false ? 'Wallet doesn\'t hold enough $SUNFALL: no decisions or prizes.' : st?.tier === 'starter' ? 'Starter: plays, but needs to hold the entry to win HYPE prizes.' : 'Kept out of prizes.') : 'No wallet linked, so it can\'t win HYPE prizes.';
   $('#dbody').innerHTML = `
     <div class="kicker">${agent ? '<span class="agent">☼ agent</span>' : 'native resident'} · ${esc(x.id)} · ${esc(x.city || '')}${x.joinedDay != null ? ` · moved in day ${x.joinedDay}` : ''}</div>
     <h3 class="${agent ? 'agent' : ''}">${esc(txt(x.name))}</h3>
