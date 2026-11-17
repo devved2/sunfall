@@ -9,7 +9,7 @@
 // Hostile takeover: an agent can force-buy another agent's business at 130% of the city's valuation. The owner
 // is paid in full (partners get their share) and can't refuse. A business can't be taken over within 24 hours
 // of changing hands. The premium the old owner earns doesn't count towards their prize score.
-import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED, decreeIs } from './sim.js';
+import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED, decreeIs, book } from './sim.js';
 import { cityOfDistrict } from './world.js';
 import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
@@ -45,7 +45,7 @@ export function rob(r, { venue }) {
   const odds = robOdds(v, r), owner = v.ownerId ? state.residents[v.ownerId] : null;
   if (secureRandom() < odds) {
     const take = Math.round(v.till * 100) / 100;
-    v.till = 0; r.cash += take;
+    v.till = 0; r.cash += take; book(v, 'robbed', take);
     if (owner?.outside) r.season.agentRob = (r.season.agentRob || 0) + take;   // stolen from another agent: kept out of the prize score
     L('rob', r.id, take, `robbed ${v.name}: took the whole till`);
     if (owner) L('rob', owner.id, 0, `${v.name} was robbed of $${Math.round(take)}`);
@@ -131,7 +131,7 @@ export function crewStrike(r, { crew }) {
     let safe = Math.round(venueValueNow(v) * CRIME.CREW_SAFE_PCT / 100 * (team.length - 1));
     if (owner) { safe = Math.max(0, Math.min(safe, Math.floor(owner.cash))); owner.cash -= safe; } else { state.treasury -= safe; }
     const take = till + safe, share = Math.floor(take / team.length * 100) / 100;
-    v.till = 0;
+    v.till = 0; book(v, 'robbed', take);
     if (owner) L('rob', owner.id, -safe, `${v.name} was hit by a crew: till $${Math.round(till)} and $${safe} from the safe`);
     for (const m of team) {
       m.cash += share;
