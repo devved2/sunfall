@@ -3,6 +3,7 @@ import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
   cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED, leonidaInfo, settlerGrant,
+  jobApplying, nextTurnAt,
 } from './sim.js';
 import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
@@ -130,12 +131,29 @@ export function venueView(v) {
   };
 }
 export const staffOf = (v) => Object.values(state.residents).filter((r) => r.workplace === v.id);
-function jobView(j) {
+function jobView(j, r = null) {
   const by = j.by === 'city' ? 'city' : { id: j.by, name: nameOf(state.residents[j.by]) };
+  const applying = jobApplying(j);
   return {
     id: j.id, by, kind: j.kind, venue: j.venue, venueName: state.venues[j.venue].name, slot: j.half, day: j.day, pay: j.pay,
-    reason: j.by === 'city' ? j.reason : ut(j.reason), status: j.status, takenBy: j.takenBy, note: j.note,
+    reason: j.by === 'city' ? j.reason : ut(j.reason), status: applying ? 'applying' : j.status, takenBy: j.takenBy, note: j.note,
+    ...(applying ? { applyUntil: new Date(j.applyUntil).toISOString(), applicants: j.applicants.length, ...(r ? { youApplied: j.applicants.some((a) => a.rid === r.id) } : {}) } : {}),
+    ...(j.applied ? { applied: j.applied } : {}),
   };
+}
+// Your money in one place: how many decisions you have left this hour and when the next one frees up.
+function decisionsBrief(r) {
+  const hourAgo = Date.now() - 3600_000, used = r.decisions.filter((t) => t > hourAgo);
+  const perHour = CFG.DECISIONS_PER_HOUR + tierOf(r).decisions, left = Math.max(0, perHour - used.length);
+  return { left, perHour, extraBought: r.perks?.decisions || 0, resetsAt: used.length ? new Date(Math.min(...used) + 3600_000).toISOString() : null,
+    note: left ? undefined : 'None left this hour: the next one frees up at resetsAt (or use an extra decision bought on the Market).' };
+}
+const r2 = (n) => Math.round(n * 100) / 100;
+function booksView(v) {
+  const rows = (v.books || []).slice().reverse().map((e) => ({ day: e.day, shift: e.half === 'aft' ? 'afternoon' : 'night', takings: e.takings, payroll: e.payroll, payouts: e.payouts, robbed: e.robbed, profit: r2(e.takings - e.payroll - e.payouts - e.robbed), cityWageSupport: e.wageSupport || 0 }));
+  const sum = (k) => r2(rows.reduce((a, x) => a + x[k], 0));
+  return { venue: v.id, name: v.name, type: v.type, owner: v.ownerId ? nameOf(state.residents[v.ownerId]) : 'city', shifts: rows,
+    total: { shifts: rows.length, takings: sum('takings'), payroll: sum('payroll'), payouts: sum('payouts'), robbed: sum('robbed'), profit: sum('profit') } };
 }
 const postView = (p) => ({ id: p.id, day: p.day, t: p.t, who: p.who, name: p.outside ? ut(p.name) : p.name, isAgent: p.outside, text: p.outside ? ut(p.text) : p.text });
 
@@ -361,7 +379,16 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep, their approval, and the decree waiting to take effect, which you can support or oppose).',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), latestChange: latestChange() } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), latestChange: latestChange() } : {}) }),
+  },
+  books: {
+    auth: 'token', desc: 'Profit by business and by shift for the last week of city days (newest first): takings, payroll you paid, winnings the business paid out (casino, sportsbook), robberies, and profit. Send venue for one business (any business), or nothing for every business you own or hold a stake in.',
+    input: { venue: S.str('Optional: a venue id') },
+    run(r, b) {
+      if (b.venue) { const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such business'); return { books: [booksView(v)] }; }
+      const mine = Object.values(state.venues).filter((v) => v.isVenue && (v.ownerId === r.id || (v.partners || []).some((p) => p.id === r.id)));
+      return { books: mine.map(booksView), note: mine.length ? 'Payroll is what the business paid; the city\'s wage support is shown apart. Books start from 17 Nov 2026.' : 'You own no businesses yet.' };
+    },
   },
   changes: {
     auth: 'none', desc: 'The changelog: every rule or tool change, newest first, with its date (UTC). Send since (YYYY-MM-DD) for only the changes on or after that day. `me` shows the latest one, so check here when it changes.',
@@ -473,7 +500,8 @@ export const OPS = {
   },
   jobs: {
     auth: 'none', desc: 'The job board. Each job is a paid visit to a venue in a slot; the pay is held in escrow by the city and released automatically when the city\'s own records show the worker was there.',
-    input: {}, run: () => ({ jobs: Object.values(state.jobs).filter((j) => j.day >= state.day - 1).slice(-120).reverse().map(jobView) }),
+    input: {}, run: () => ({ jobs: Object.values(state.jobs).filter((j) => j.day >= state.day - 1).slice(-120).reverse().map((j) => jobView(j)),
+      rule: `A new job takes applications for its first ${Math.round(CFG.JOB_APPLY_MS / 1000)} seconds (status "applying"): every jobTake in that window is an application, and when it closes one applicant is picked at random; the others get their decision back. After that an open job goes to the first taker. One job per slot: you can't apply for or take two jobs in the same slot. Watch for new jobs on GET /api/events instead of polling.` }),
   },
   jobPost: {
     auth: 'token', decision: true, desc: 'Post a job: pay another resident to be at a venue in a slot. The pay leaves your cash now into escrow; refunded if nobody delivers.',
@@ -498,7 +526,7 @@ export const OPS = {
     },
   },
   jobTake: {
-    auth: 'token', decision: true, desc: 'Take an open job. Then make sure your plan puts you at that venue in that slot (use venue or plan). Paid automatically when the slot lands.',
+    auth: 'token', decision: true, desc: `Take an open job, or apply for one still taking applications: new jobs take applications for ${Math.round(CFG.JOB_APPLY_MS / 1000)} seconds, then one applicant is picked at random and the others get their decision back. One job per slot. Then make sure your plan puts you at that venue in that slot (use venue or plan). Paid automatically when the slot lands.`,
     input: { job: S.str('job id') }, required: ['job'],
     run(r, b) {
       const j = state.jobs[b.job]; if (!j) refuse(404, 'no such job');
@@ -506,6 +534,14 @@ export const OPS = {
       if (j.by === r.id) refuse(422, 'you cannot take your own job');
       if (closedToAgents(r, cityOfDistrict(state.venues[j.venue].district))) refuse(403, LEONIDA_CLOSED);
       if (j.day === state.day && landed(j.half)) refuse(409, 'that slot has already landed');
+      const clash = Object.values(state.jobs).find((x) => x !== j && x.day === j.day && x.half === j.half && ((x.status === 'taken' && x.takenBy === r.id) || (jobApplying(x) && x.applicants.some((a) => a.rid === r.id))));
+      if (clash) refuse(409, `you already ${clash.status === 'taken' ? 'have' : 'applied for'} job ${clash.id} in that slot; one job per slot`);
+      if (jobApplying(j)) {
+        if (j.applicants.some((a) => a.rid === r.id)) refuse(409, 'you already applied for this job');
+        const pay = chargeDecision(r); pay();
+        j.applicants.push({ rid: r.id, t: r.decisions.at(-1) });
+        return { applied: jobView(j, r), note: `Applications close at ${new Date(j.applyUntil).toISOString().slice(11, 19)} UTC; then one applicant is picked at random. If it isn't you, this decision is refunded. Check with jobs or watch GET /api/events for jobFilled.` };
+      }
       const pay = chargeDecision(r); pay();
       j.status = 'taken'; j.takenBy = r.id;
       chron(`${r.name} took job ${j.id}: $${j.pay} to be at ${state.venues[j.venue].name}.`, r.id, 'job');
