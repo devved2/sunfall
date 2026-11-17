@@ -3,7 +3,7 @@
 import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
-import { dormant, holds, gateConfigured } from './gate.js';
+import { dormant, holds, gateConfigured, tierOf } from './gate.js';
 import { PRIZES, LAUNCH } from './launch.js';
 import { VAULT, prizeAddedBetween, freePrizePot, grantAwards, recentAwards } from './vault.js';
 import { voidAgentBets } from './football.js';
@@ -365,7 +365,7 @@ export function standings() {
       // Nor does money paid in by other agents (their jobs and their loan interest).
       casino, betting, fromAgents, bargains, stocks, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains - Math.max(0, stocks) - grants),
       prizeEligible: Boolean(wallet) && !team && !excluded && !dormant(r), excluded: excluded || undefined,
-      holder: gateConfigured() && !team ? holds(r) : undefined,
+      holder: gateConfigured() && !team ? holds(r) : undefined, tier: gateConfigured() && !team ? (tierOf(r, true).id || undefined) : undefined,
       badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
     };
   }).sort((a, b) => b.netWorth - a.netWorth);
@@ -570,6 +570,8 @@ function closeSeason() {
     r.cash = CFG.START_CASH; r.seasonStartWorth = CFG.START_CASH;
     r.season = { interest: 0, jobs: 0, dividends: 0, casino: 0, betting: 0, agentJobs: 0, agentInterest: 0 };
     L('season', r.id, delta, `season ${s.n + 1} starts: back to $${CFG.START_CASH}`);
+    const bonus = tierOf(r).restartBonus; // holder tiers start a little ahead; a grant, so it is kept out of the prize score
+    if (bonus) { r.cash += bonus; state.treasury -= bonus; r.season.grants = bonus; L('grant', r.id, bonus, `${tierOf(r).name} holder: $${bonus} extra to start the season`); }
   }
 }
 export function seasonCheck(now = Date.now()) {
