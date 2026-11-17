@@ -1,7 +1,7 @@
 // The game layer: seasons and their win condition, loans, business stakes (partnerships) and city events.
 // Everything here moves money through the same ledger as the rest of the city.
 import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
-import { VTYPES, DISTRICTS, PLACES } from './world.js';
+import { VTYPES, DISTRICTS, PLACES, LANDMARK_VENUES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
 import { prizeReady, purseReady, holds, gateConfigured, tierOf } from './gate.js';
 import { PRIZES, LAUNCH, setPrizeSeason } from './launch.js';
@@ -158,7 +158,7 @@ function startEvent() {
   const k = EVENT_KINDS[state.event.kind];
   chron(`${k.icon} ${k.title(state.event.district)}. ${k.blurb}`, null, 'event');
   if (state.event.kind === 'crash') {
-    const cityOwned = Object.values(state.venues).filter((v) => v.isVenue && !v.ownerId && !v.forSale && !VTYPES[v.type].cityOnly);
+    const cityOwned = Object.values(state.venues).filter((v) => v.isVenue && !v.ownerId && !v.forSale && !VTYPES[v.type].cityOnly && !LANDMARK_VENUES.has(v.id));
     for (let i = 0; i < 2 && cityOwned.length; i++) {
       const v = cityOwned.splice(Math.floor(secureRandom() * cityOwned.length), 1)[0];
       v.forSale = true; v.salePrice = Math.round((VTYPES[v.type].value * 0.5) / 10) * 10; v.fireSale = state.day;
