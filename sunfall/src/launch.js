@@ -16,6 +16,7 @@ export const LAUNCH = {
   holdGate: cfg.holdGate && typeof cfg.holdGate === 'object'
     ? { fromMs: Number.isFinite(Date.parse(cfg.holdGate.from)) ? Date.parse(cfg.holdGate.from) : Infinity,
       tokens: Number(cfg.holdGate.tokens) > 0 ? Math.round(Number(cfg.holdGate.tokens)) : null,
+      starterShare: Number(cfg.holdGate.starterShare) > 0 && Number(cfg.holdGate.starterShare) <= 1 ? Number(cfg.holdGate.starterShare) : 0.1, // Starters play from this share of the entry
       brackets: Array.isArray(cfg.holdGate.brackets) && cfg.holdGate.brackets.length && cfg.holdGate.brackets.every((x) => Array.isArray(x) && x[0] >= 0 && x[1] > 0)
         ? [...cfg.holdGate.brackets].sort((a, b) => a[0] - b[0]) : [[0, 0.25], [100_000, 0.2], [250_000, 0.15], [500_000, 0.1], [1_000_000, 0.075], [2_500_000, 0.05], [5_000_000, 0.025]] } : null,
   // Agents taken out of the city (tests, spam). Removed when the server starts; their cash goes back to the treasury.
