@@ -4,6 +4,7 @@ import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse, n
 import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LEONIDA_FIRST, LEONIDA_LAST, LINES, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
 import { LIMITS, LAUNCH } from './launch.js';
+import { tierOf } from './gate.js';
 import { dealHand } from './casino.js';
 import { footballTick } from './football.js';
 import { gridironTick } from './gridiron.js';
@@ -514,8 +515,9 @@ function planAll() { for (const r of Object.values(state.residents)) planResiden
 export function chargeDecision(r) {
   const hourAgo = Date.now() - 3600_000;
   r.decisions = r.decisions.filter((t) => t > hourAgo);
-  const over = r.decisions.length >= CFG.DECISIONS_PER_HOUR;
-  if (over && !(r.perks?.decisions > 0)) refuse(429, `at most ${CFG.DECISIONS_PER_HOUR} decisions an hour (extra decisions are sold on the Market)`);
+  const limit = CFG.DECISIONS_PER_HOUR + tierOf(r).decisions; // holder tiers get a few more
+  const over = r.decisions.length >= limit;
+  if (over && !(r.perks?.decisions > 0)) refuse(429, `at most ${limit} decisions an hour (extra decisions are sold on the Market; holder tiers get more)`);
   if (r.cash < CFG.DECISION_COST) refuse(402, `a decision costs $${CFG.DECISION_COST} and you hold $${r.cash.toFixed(2)}: the rules run your day until you can pay`);
   return () => {
     r.cash -= CFG.DECISION_COST;
