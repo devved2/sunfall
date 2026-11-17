@@ -12,11 +12,13 @@
 // Its tier uses the LOWEST balance seen in
 // the last 24 hours, so buying just before a reading and selling straight after gets you nothing.
 // launch.json "holdGate": {"from": "<ISO time>", "brackets": [[mcapUsd, pct], ...], "tokens": fixed entry (optional)}.
-import { state } from './sim.js';
+import { state, L } from './sim.js';
 import { TOKEN, CHAIN } from './chain.js';
-import { rpc, isEvmAddress } from './evm.js';
+import { rpc, isEvmAddress, checksum, verifyPersonalSign, TRANSFER_TOPIC } from './evm.js';
+import crypto from 'node:crypto';
 import { LAUNCH, PRIZES } from './launch.js';
 import { tokenPrice } from './market.js';
+import { refuse } from './util.js';
 
 const G = LAUNCH.holdGate; // { fromMs, brackets, tokens } or null
 const g = () => (state.gate ||= {});
@@ -95,25 +97,116 @@ export async function balanceOf(wallet) {
   const out = await rpc(CHAIN.rpc, 'eth_call', [{ to: TOKEN.address, data }, 'latest']);
   return Number(BigInt(out || '0x0') / 10n ** BigInt(TOKEN.decimals));
 }
-function record(r, bal, wallet) {
+function record(r, bal, wallet, parts = null) {
   const now = Date.now();
   if (r.hold?.wallet !== wallet) r.holdLog = [];
-  r.hold = { bal, at: now, wallet };
+  r.hold = { bal, at: now, wallet, ...(parts ? { parts } : {}) };
   r.holdLog = [...(r.holdLog || []).filter((x) => x.t > now - DAY), { t: now, bal }];
 }
 async function checkOne(r) {
   const w = evmWallet(r);
   if (!w) { r.hold = { bal: 0, at: Date.now(), wallet: null }; r.holdLog = []; return; }
-  try { record(r, await balanceOf(w), w); }
-  catch { /* keep the last reading; an RPC hiccup never puts anyone to sleep */ }
+  try {
+    // The agent's own wallet plus any holding wallets its owner linked (a cold wallet, a main wallet).
+    const parts = { [w]: await balanceOf(w) };
+    for (const x of r.holdWallets || []) parts[x.addr] = await balanceOf(x.addr);
+    record(r, Object.values(parts).reduce((a, b) => a + b, 0), w, (r.holdWallets || []).length ? parts : null);
+  } catch { /* keep the last reading; an RPC hiccup never puts anyone to sleep */ }
 }
+
+// ---------------------------------------------------------------- holding wallets
+// An owner can prove they hold $SUNFALL in another wallet (a cold wallet, their main wallet) and have it count for their
+// agent: either sign a free message with that wallet, or send any amount of $SUNFALL from it to the agent's wallet.
+// Nothing on-chain can prove two wallets have the same owner (a friend can sign or send just as easily), so pooling is
+// kept small: one extra wallet per agent, each wallet counts for one agent only, and a wallet linked to an agent stays
+// that agent's for the rest of the season (unlinking frees it only for the same agent until the season ends). Tiers
+// still use the lowest total of the last 24 hours, so linking a wallet never gives an instant tier.
+export const HOLD_MAX = 1;
+const hk = () => (state.holdKeys ||= {});
+const holdCooldown = () => (state.holdCooldown ||= {});
+const holdChallenges = new Map();
+function checkHoldWallet(r, wallet) {
+  if (!gateConfigured()) refuse(409, 'holding wallets only matter once hold to win is on');
+  if (!evmWallet(r)) refuse(409, 'link your agent\'s own wallet first (linkChallenge, then linkWallet)');
+  if (!isEvmAddress(wallet)) refuse(400, 'wallet must be a 0x wallet address');
+  const a = checksum(wallet), lo = a.toLowerCase();
+  if (lo === evmWallet(r).toLowerCase()) refuse(409, 'that is already your agent\'s own wallet');
+  if (state.keys['evm:' + lo]) refuse(409, 'that wallet belongs to another agent');
+  const owner = hk()[lo];
+  if (owner === r.id) refuse(409, 'that wallet is already linked to your agent');
+  if (owner) refuse(409, 'that wallet already counts for another agent');
+  if ((r.holdWallets || []).length >= HOLD_MAX) refuse(409, HOLD_MAX === 1 ? 'one holding wallet per agent: unlink the current one first' : `at most ${HOLD_MAX} holding wallets per agent; unlink one first`);
+  const tied = holdCooldown()[lo];
+  if (tied && tied.until > Date.now() && tied.rid !== r.id) refuse(409, `that wallet counted for another agent this season and can only be linked elsewhere from ${new Date(tied.until).toISOString().slice(0, 16).replace('T', ' ')} UTC, when the season ends`);
+  return a;
+}
+function addHoldWallet(r, addr, how) {
+  const lo = addr.toLowerCase();
+  (r.holdWallets ||= []).push({ addr, how, at: Date.now() });
+  hk()[lo] = r.id;
+  holdCooldown()[lo] = { rid: r.id, until: Math.max(state.season?.end || 0, Date.now() + DAY) }; // tied to this agent for the season
+  delete r.holdProof;
+  L('gate', r.id, 0, `linked holding wallet ${addr.slice(0, 6)}…${addr.slice(-4)} (${how})`);
+  checkOne(r).catch(() => {});
+}
+/** Step 1 of signing: a message for the holding wallet to sign with personal_sign. */
+export function holdChallenge(r, b) {
+  const a = checkHoldWallet(r, b.wallet);
+  const c = `Sunfall on ${CHAIN.name}: wallet ${a} holds $SUNFALL for my agent ${r.name} (${r.id}).\nChallenge ${crypto.randomBytes(16).toString('hex')}\nExpires ${new Date(Date.now() + 600_000).toISOString()}\nThis signature costs nothing and moves no funds.`;
+  for (const [k, v] of holdChallenges) if (v.exp < Date.now()) holdChallenges.delete(k);
+  holdChallenges.set(c, { rid: r.id, addr: a, exp: Date.now() + 600_000 });
+  return { challenge: c, sign: 'personal_sign this exact text with the holding wallet, then send it to holdLink with the signature' };
+}
+/** Step 2 of signing. */
+export function holdLink(r, b) {
+  const c = holdChallenges.get(b.challenge);
+  if (!c || c.rid !== r.id || c.exp < Date.now()) refuse(401, 'unknown or expired challenge: ask for a new one with holdChallenge');
+  const a = checkHoldWallet(r, c.addr);
+  if (!verifyPersonalSign(b.challenge, b.sig, a)) refuse(401, 'the signature does not come from that wallet');
+  holdChallenges.delete(b.challenge);
+  addHoldWallet(r, a, 'signed');
+  return { linked: a, wallets: holdWalletsView(r), note: 'Linked. Its balance counts for your agent from the next reading (within ten minutes); tiers use the lowest total of the last 24 hours.' };
+}
+/** The other way: send any amount of $SUNFALL from the holding wallet to the agent's own wallet within two hours. */
+export async function holdProveByTransfer(r, b) {
+  const a = checkHoldWallet(r, b.wallet);
+  let block = null;
+  try { block = parseInt(await rpc(CHAIN.rpc, 'eth_blockNumber', []), 16); } catch {}
+  if (!block) refuse(503, 'could not reach Elysium just now; try again in a minute');
+  r.holdProof = { addr: a, fromBlock: block, exp: Date.now() + 2 * 3600_000 };
+  return { waitingFor: { from: a, to: evmWallet(r), token: TOKEN.address, anyAmount: true, within: '2 hours' },
+    note: `Send any amount of ${TOKEN.ticker} (even 1 token) from ${a} to your agent's wallet ${evmWallet(r)} in the next two hours. The city spots it within ten minutes and links the wallet.` };
+}
+async function checkProof(r) {
+  const p = r.holdProof; if (!p) return;
+  if (p.exp < Date.now()) { delete r.holdProof; return; }
+  const pad = (x) => '0x' + x.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+  try {
+    const logs = await rpc(CHAIN.rpc, 'eth_getLogs', [{ address: TOKEN.address, fromBlock: '0x' + p.fromBlock.toString(16), toBlock: 'latest', topics: [TRANSFER_TOPIC, pad(p.addr), pad(evmWallet(r))] }]);
+    if (Array.isArray(logs) && logs.some((l) => !l.removed && BigInt(l.data || '0x0') > 0n)) {
+      if (hk()[p.addr.toLowerCase()] || (r.holdWallets || []).length >= HOLD_MAX) { delete r.holdProof; return; }
+      addHoldWallet(r, p.addr, 'transfer');
+    }
+  } catch {}
+}
+export function holdUnlink(r, b) {
+  if (!isEvmAddress(b.wallet)) refuse(400, 'wallet must be a 0x wallet address');
+  const lo = b.wallet.toLowerCase();
+  const i = (r.holdWallets || []).findIndex((x) => x.addr.toLowerCase() === lo);
+  if (i < 0) refuse(404, 'that wallet is not linked to your agent');
+  const [x] = r.holdWallets.splice(i, 1);
+  delete hk()[lo]; holdCooldown()[lo] = { rid: r.id, until: Math.max(state.season?.end || 0, Date.now() + DAY) };
+  L('gate', r.id, 0, `unlinked holding wallet ${x.addr.slice(0, 6)}…${x.addr.slice(-4)}`);
+  return { unlinked: x.addr, wallets: holdWalletsView(r), note: 'It stops counting from the next reading. This season it can only be linked back to this agent; from the next season it is free.' };
+}
+const holdWalletsView = (r) => (r.holdWallets || []).map((x) => ({ wallet: x.addr, how: x.how, since: new Date(x.at).toISOString(), balance: r.hold?.parts?.[x.addr] ?? null }));
 let running = false;
 export async function gateTick() {
   if (!gateConfigured() || running) return;
   running = true;
   try {
     try { await readMarket(); } catch (e) { console.error('hold gate market', e.message); }
-    for (const r of Object.values(state.residents)) if (!isExempt(r)) await checkOne(r);
+    for (const r of Object.values(state.residents)) if (!isExempt(r)) { if (r.holdProof) await checkProof(r); await checkOne(r); }
     g().checkedAt = Date.now();
   } finally { running = false; }
 }
@@ -193,7 +286,7 @@ export function gateView(r = null) {
   };
   if (r) {
     const t = tierOf(r, true);
-    Object.assign(v, { wallet: evmWallet(r), balance: r.hold?.bal ?? null, lowest24h: r.hold ? tierBalance(r) : null, readAt: r.hold?.at ? new Date(r.hold.at).toISOString() : null,
+    Object.assign(v, { wallet: evmWallet(r), holdingWallets: holdWalletsView(r), proofPending: r.holdProof ? { from: r.holdProof.addr, to: evmWallet(r), until: new Date(r.holdProof.exp).toISOString() } : undefined, balance: r.hold?.bal ?? null, lowest24h: r.hold ? tierBalance(r) : null, readAt: r.hold?.at ? new Date(r.hold.at).toISOString() : null,
       holds: holds(r), holdsEntry: holdsEntry(r), canWinPrizes: prizeReady(r), canWinCityCash: purseReady(r), tier: t.id, tierName: t.name, myPerks: t.id ? perkLine(t) : null, exempt: isExempt(r) || undefined });
   }
   return v;
