@@ -1,7 +1,7 @@
-// Hold to play: an agent's own wallet has to hold a set dollar amount of $SUNFALL to make decisions and win prizes.
-// The dollar amount comes from launch.json ("holdGate": {"usd": 10, "from": "<ISO time>"}). Once a UTC day the city
-// turns it into a whole number of tokens from the live pool price ($SUNFALL per HYPE) and HYPE's dollar price, so
-// everyone knows the exact amount for the day. Every wallet is read on Elysium every ten minutes. An agent that falls
+// Hold to play: an agent's own wallet has to hold a set amount of $SUNFALL to make decisions and win prizes.
+// launch.json "holdGate": {"tokens": 2000000, "from": "<ISO time>"} sets a fixed amount; {"usd": 10, ...} instead turns
+// a dollar amount into whole tokens once a UTC day, from the live pool price ($SUNFALL per HYPE) and HYPE's dollar
+// price. Either way the city works out today's dollar value for display. Every wallet is read on Elysium every ten minutes. An agent that falls
 // short goes dormant: its routine still runs and its businesses still trade, but it can't make decisions or win
 // prizes until the wallet holds enough again. Before "from", the city only warns.
 import { state } from './sim.js';
@@ -39,14 +39,15 @@ async function hypeUsd() {
 /** Sets today's token amount once per UTC day (or when the dollar amount changes). */
 async function setToday() {
   const day = new Date().toISOString().slice(0, 10), s = g();
-  if (s.day === day && s.usd === G.usd && s.minTokens) return;
+  if (s.day === day && s.cfgUsd === G.usd && s.cfgTokens === G.tokens && s.minTokens) return;
+  if (G.tokens) Object.assign(s, { minTokens: G.tokens, cfgTokens: G.tokens, cfgUsd: G.usd }); // a fixed amount needs no price
   const px = tokenPrice();
-  if (!px?.tokensPerHype) return;
-  const h = (await hypeUsd()) || (s.hypeUsd ? { usd: s.hypeUsd, src: 'last known' } : G.hypeUsd ? { usd: G.hypeUsd, src: 'launch.json' } : null);
+  const h = px?.tokensPerHype ? ((await hypeUsd()) || (s.hypeUsd ? { usd: s.hypeUsd, src: 'last known' } : G.hypeUsd ? { usd: G.hypeUsd, src: 'launch.json' } : null)) : null;
   if (!h) return;
   const tokensPerUsd = px.tokensPerHype / h.usd;
-  Object.assign(s, { day, usd: G.usd, minTokens: nice(G.usd * tokensPerUsd), tokensPerHype: Math.round(px.tokensPerHype), hypeUsd: h.usd, hypeSrc: h.src, at: Date.now() });
-  console.log(`hold gate ${day}: $${G.usd} = ${s.minTokens} ${TOKEN.ticker} (${s.tokensPerHype}/HYPE, HYPE $${h.usd} via ${h.src})`);
+  const minTokens = G.tokens || nice(G.usd * tokensPerUsd);
+  Object.assign(s, { day, cfgUsd: G.usd, cfgTokens: G.tokens, minTokens, usdNow: Math.round(minTokens / tokensPerUsd), tokensPerHype: Math.round(px.tokensPerHype), hypeUsd: h.usd, hypeSrc: h.src, at: Date.now() });
+  console.log(`hold gate ${day}: ${minTokens} ${TOKEN.ticker} = about $${s.usdNow} (${s.tokensPerHype}/HYPE, HYPE $${h.usd} via ${h.src})`);
 }
 
 // ---------------------------------------------------------------- balances
@@ -73,6 +74,8 @@ export async function gateTick() {
 }
 
 // ---------------------------------------------------------------- rules
+const SUPPLY = 1_000_000_000;
+const pctOf = (n) => `${+(n / SUPPLY * 100).toFixed(3)}% of supply`;
 const stayMin = () => Math.floor(g().minTokens * (G.stayPct / 100));
 /** Whether the agent holds enough today. Unknown (never read yet) counts as holding, so a slow RPC can't lock people out. */
 export function holds(r) {
@@ -86,7 +89,8 @@ export const dormant = (r) => gateLive() && !holds(r);
 
 export function gateNote() {
   const s = g();
-  return `hold at least ${s.minTokens?.toLocaleString('en-US')} ${TOKEN.ticker} (about $${G.usd}) in your agent's own wallet on ${CHAIN.name}`;
+  const usd = s.usdNow || G.usd;
+  return `hold at least ${s.minTokens?.toLocaleString('en-US')} ${TOKEN.ticker} (${pctOf(s.minTokens)}${usd ? `, about $${usd} today` : ''}) in your agent's own wallet on ${CHAIN.name}`;
 }
 export function dormantReason(r) {
   if (!evmWallet(r)) return `your agent has no wallet: link one with linkChallenge then linkWallet, and ${gateNote()}. Until then your routine still runs but you can't make decisions or win prizes`;
@@ -107,9 +111,9 @@ export function gateView(r = null) {
   if (!gateConfigured()) return { on: false };
   const s = g();
   const v = {
-    on: true, live: gateLive(), from: new Date(G.fromMs).toISOString(), usd: G.usd, minTokens: s.minTokens || null, stayTokens: s.minTokens ? stayMin() : null,
+    on: true, live: gateLive(), from: new Date(G.fromMs).toISOString(), usd: g().usdNow || G.usd, pctOfSupply: s.minTokens ? +(s.minTokens / SUPPLY * 100).toFixed(3) : null, minTokens: s.minTokens || null, stayTokens: s.minTokens ? stayMin() : null,
     stayPct: G.stayPct, tokensPerHype: s.tokensPerHype || null, hypeUsd: s.hypeUsd || null, setFor: s.day || null, checkedAt: s.checkedAt ? new Date(s.checkedAt).toISOString() : null,
-    token: TOKEN.address, rule: `From ${new Date(G.fromMs).toISOString().slice(0, 16).replace('T', ' ')} UTC an agent's own wallet must hold $${G.usd} of ${TOKEN.ticker} to make decisions and win prizes. The token amount is set once a UTC day from the live price; wallets are read every ten minutes, and an agent stays in if it holds at least ${G.stayPct}% of the amount.`,
+    token: TOKEN.address, rule: `From ${new Date(G.fromMs).toISOString().slice(0, 16).replace('T', ' ')} UTC an agent's own wallet must hold ${G.tokens ? `${G.tokens.toLocaleString('en-US')} ${TOKEN.ticker} (${pctOf(G.tokens)})` : `$${G.usd} of ${TOKEN.ticker} (set once a UTC day from the live price)`} to make decisions and win prizes. Wallets are read every ten minutes, and an agent stays in if it holds at least ${G.stayPct}% of the amount.`,
   };
   if (r) Object.assign(v, { wallet: evmWallet(r), balance: r.hold?.bal ?? null, readAt: r.hold?.at ? new Date(r.hold.at).toISOString() : null, holds: holds(r), dormant: dormant(r), exempt: isExempt(r) || undefined });
   return v;
