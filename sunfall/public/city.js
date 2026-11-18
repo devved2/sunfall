@@ -2074,12 +2074,13 @@ let montraFX = null;
 function buildMontraTower(grp, add, std, v) {
   const dark = std(0x0b0b0e, { metalness: 0.55, roughness: 0.3 });
   const glass = std(0x15161c, { metalness: 0.7, roughness: 0.18 });
-  const light = new THREE.MeshStandardMaterial({ color: 0xfff3ea, emissive: 0xfff0e6, emissiveIntensity: 0.9, roughness: 0.4 });
+  const light = new THREE.MeshStandardMaterial({ color: 0xfff3ea, emissive: 0xfff0e6, emissiveIntensity: 1.8, roughness: 0.4 });
+  grp.scale.set(1.4, 1.8, 1.4); // the tallest thing on Sunfall: it should read from anywhere on the map
   const tag = (m) => { m.userData.vid = v.id; m.castShadow = m.receiveShadow = true; grp.add(m); venueMeshes.push(m); return m; };
   add(dark, 20, 2.4, 20); add(dark, 15, 3, 15, 0, 2.4);
   add(glass, 9, 150, 9, 0, 5.4, 0, true);
-  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) add(light, 0.5, 150, 0.5, sx * 4.7, 5.4, sz * 4.7);
-  add(dark, 11, 2, 11, 0, 60); add(dark, 11, 2, 11, 0, 100);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) add(light, 0.8, 150, 0.8, sx * 4.7, 5.4, sz * 4.7);
+  add(dark, 11, 2, 11, 0, 60); add(dark, 11, 2, 11, 0, 100); add(light, 11.4, 0.6, 11.4, 0, 62); add(light, 11.4, 0.6, 11.4, 0, 102);
   // the Sky Lounge: a glass ring with a warm glow inside, and its deck
   const deck = tag(new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 1.2, 40), dark)); deck.position.y = 128;
   const ring = tag(new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 7, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x2a2228, emissive: 0xffb38a, emissiveIntensity: 0.35, metalness: 0.3, roughness: 0.2, transparent: true, opacity: 0.85, side: THREE.DoubleSide }))); ring.position.y = 132.7;
@@ -2091,21 +2092,21 @@ function buildMontraTower(grp, add, std, v) {
   const spire = tag(new THREE.Mesh(new THREE.ConeGeometry(2.2, 28, 12), dark)); spire.position.y = 188;
   // the beacon and its beam
   const core = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 203, 0)]),
-    new THREE.PointsMaterial({ map: GLOW, size: 34, color: 0xffe4ec, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    new THREE.PointsMaterial({ map: GLOW, size: 70, color: 0xffe4ec, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
   grp.add(core);
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 9, 520, 18, 1, true).translate(0, 260, 0),
     new THREE.MeshBasicMaterial({ color: 0xffe0ea, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
   beam.position.y = 202; grp.add(beam);
   montraFX = { core, beam };
-  return 204;
+  return Math.round(204 * 1.8);
 }
 function montraTick(t, night) {
   if (!montraFX) return;
   const since = S.montra?.lastLaunch ? Date.now() - S.montra.lastLaunch : Infinity;
   const flare = since < 120_000 ? (1 - since / 120_000) * (0.6 + 0.4 * Math.sin(t * 6)) : 0;   // a new agent moved in: flare for two minutes
-  montraFX.core.material.opacity = 0.35 + night * 0.5 + flare * 0.5;
-  montraFX.core.material.size = 34 + flare * 40;
-  montraFX.beam.material.opacity = night * 0.06 + flare * 0.22;
+  montraFX.core.material.opacity = 0.6 + night * 0.4 + flare * 0.4;
+  montraFX.core.material.size = 70 + night * 20 + flare * 60;
+  montraFX.beam.material.opacity = 0.03 + night * 0.12 + flare * 0.25;
 }
 function buildVenue(v, rnd) {
   const grp = new THREE.Group();
@@ -2972,7 +2973,7 @@ function selectVenue(vid) {
   const v = S.venues.find((x) => x.id === vid); if (!v) return;
   venueOpen = vid;
   const c = W(v.x, v.y);
-  const tall = v.id === MONTRA_VID ? 140 : { casino: 60, office: 120, docks: 40, stadium: 70, field: 70 }[v.type] || 0;
+  const tall = v.id === MONTRA_VID ? 260 : { casino: 60, office: 120, docks: 40, stadium: 70, field: 70 }[v.type] || 0;
   $('#drawer').classList.add('open');
   frameOn(c, new THREE.Vector3(30, 150 + tall * 1.6, 115), tall > 80 ? 2.2 : 3.4);
   renderVenue(vid, null);
