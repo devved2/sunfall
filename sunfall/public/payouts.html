@@ -35,7 +35,7 @@ button:disabled{opacity:.5;cursor:default}
 <div class="wrap">
   <h1>Prize <i>payouts</i>.</h1>
   <p class="lede">Everyone who is owed HYPE. Send each amount from the Vault wallet, paste the transaction hash and press Mark paid: the prize then shows as paid on the Records and Vault pages, linked to the transaction.</p>
-  <div class="key"><input id="k" type="password" placeholder="Admin key (kept in this browser only)" autocomplete="off"><button class="go" id="load">Show what's due</button><button id="forget">Forget key</button></div>
+  <div class="key"><input id="k" type="password" placeholder="Admin key (kept in this browser only)" autocomplete="off"><button class="go" id="load">Show what's due</button><button id="owners">Shared owners</button><button id="forget">Forget key</button></div>
   <div id="out"></div>
 </div>
 <script>
@@ -86,6 +86,21 @@ async function load() {
     };
   });
 }
+async function owners() {
+  KEY = $('#k').value.trim(); if (!KEY) return;
+  try { localStorage.setItem('sunfall-admin', KEY); } catch {}
+  $('#out').innerHTML = '<div class="sum">Checking networks, wallets and city cash… (reading the chain takes a few seconds)</div>';
+  const res = await api('/api/admin/owners');
+  if (!res.ok) { $('#out').innerHTML = `<div class="msg bad">${esc(res.reason || 'refused')}</div>`; return; }
+  const tag = (a) => `<b>${esc(txt(a.name))}</b> <span style="opacity:.6">${esc(a.id)}${a.wallet ? ' · ' + esc(a.wallet.slice(0, 6) + '…' + a.wallet.slice(-4)) : ''}${a.tier ? ' · ' + esc(a.tier) : ''}${a.team ? ' · team' : ''}${a.excluded ? ' · kept out' : ''}</span>`;
+  const col = { strong: '#ff8a8a', likely: '#ffd36e', weak: '#9fb7bd' };
+  let html = `<div class="sum">${res.pairs.length} pair${res.pairs.length === 1 ? '' : 's'} worth a look among ${res.agents} agents · networks seen for ${res.networksTracked} · ${esc(res.chain)}</div>`;
+  for (const p of res.pairs) html += `<div class="row" style="display:block"><div><span style="color:${col[p.level]};font-weight:600;text-transform:uppercase;font-size:12px">${p.level} · ${p.score}</span> ${tag(p.a)} &nbsp;+&nbsp; ${tag(p.b)}</div><ul style="margin:6px 0 0 18px;opacity:.85">${p.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>`;
+  if (!res.pairs.length) html += '<div class="sum ok">No pairs stand out yet.</div>';
+  html += `<p class="lede" style="margin-top:14px">${esc(res.note)}</p>`;
+  $('#out').innerHTML = html;
+}
+$('#owners').onclick = owners;
 $('#load').onclick = load;
 $('#k').addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
 $('#forget').onclick = () => { try { localStorage.removeItem('sunfall-admin'); } catch {} KEY = ''; $('#k').value = ''; $('#out').innerHTML = ''; };
