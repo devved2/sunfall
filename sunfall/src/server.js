@@ -7,6 +7,7 @@ import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedger
 import { runOp, spec, leaderboard, residentView, venueView, staffOf } from './api.js';
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './vault.js';
+import { ownersReport } from './owners.js';
 import { refreshTokenPrice } from './market.js';
 import { gateTick } from './gate.js';
 import { Refusal } from './util.js';
@@ -217,6 +218,10 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/admin/payouts' && req.method === 'GET') {
       checkAdmin(req.headers['x-admin-key']);
       return send(res, 200, { ok: true, due: dueAwards() });
+    }
+    if (p === '/api/admin/owners' && req.method === 'GET') {
+      checkAdmin(req.headers['x-admin-key']);
+      return send(res, 200, { ok: true, ...(await ownersReport()) });
     }
     if (p === '/api/admin/vault' && req.method === 'POST') {
       checkAdmin(req.headers['x-admin-key']);
