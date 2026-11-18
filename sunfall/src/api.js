@@ -6,6 +6,7 @@ import {
   jobApplying, nextTurnAt,
 } from './sim.js';
 import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
+import { noteNet } from './owners.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY, MONTRA } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
@@ -969,11 +970,13 @@ export async function runOp(op, body, ctx) {
   let out;
   const via = def.auth === 'token' && isOwnerSession(ctx.token) ? 'owner' : null;
   if (r && def.auth === 'token' && !via) r.lastOpAt = Date.now();
+  if (r && def.auth === 'token') noteNet(r, ctx.ip, via === 'owner'); // for the admin's shared-owner watch (hashed, never the address)
   try { out = await def.run(r, body || {}, ctx); }
   catch (e) { if (r && def.auth === 'token') logAgent(r, op, false, e.reason || 'error', via); throw e; }
   if (def.decision && r) r.seq++;
   if (def.auth === 'token' && r && op !== 'me') logAgent(r, op, true, null, via);
-  if ((op === 'join' || op === 'register') && out.resident) logAgent(state.residents[out.resident.id], op, true);
+  if ((op === 'join' || op === 'register') && out.resident) { logAgent(state.residents[out.resident.id], op, true); noteNet(state.residents[out.resident.id], ctx.ip); }
+  if (op === 'ownerSignIn' && out.resident?.id) noteNet(state.residents[out.resident.id], ctx.ip, true);
   return { ok: true, ...out };
 }
 
