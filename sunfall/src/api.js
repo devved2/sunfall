@@ -410,7 +410,7 @@ export const OPS = {
         clock: { day: state.day, hour: Math.round(c.hour * 100) / 100, dayLengthMinutes: CFG.DAY_MS / 60000, slots: SLOTS, landed: state.done },
         treasury: Math.round(state.treasury), population: all.length, agents: all.filter((r) => r.outside).length,
         cashInCity: Math.round(all.reduce((s, r) => s + r.cash, 0)),
-        districts: DISTRICTS.map((d) => ({ id: d.id, name: d.name, city: d.city, weeklyRent: d.rent })),
+        districts: DISTRICTS.map((d) => ({ id: d.id, name: d.name, city: d.city, weeklyRent: d.rent, dailyRent: Math.round(d.rent / 7 * 100) / 100 })),
         cities: Object.values(cityStats()), ferry: { moveFare: FERRY.moveFare, ticket: ferryTicket(), note: 'A night out in another city costs a ferry ticket on top of the door; moving there costs the fare and happens at the next day turn.' },
         rivalry: state.rivalry || null,
         venues: Object.values(state.venues).map(venueView),
@@ -437,7 +437,7 @@ export const OPS = {
   cities: {
     auth: 'none', desc: 'The three cities, Sunfall, Nightfall and the Leonida Islands: residents, agents, cash, today\'s takings and spend per resident in each, the Sunfall-Nightfall rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
     input: {},
-    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent })) })), rivalry: state.rivalry || null, ferry: FERRY, leonida: leonidaInfo(),
+    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent, dailyRent: Math.round(d.rent / 7 * 100) / 100 })) })), rivalry: state.rivalry || null, ferry: FERRY, leonida: leonidaInfo(),
       nightfallCharter: { freeMoveForAgents: NIGHTFALL.FREE_MOVE, ownerPaysOfPayroll: NIGHTFALL.CHARTER_OWNER_SHARE, elsewhere: CFG.OWNER_PAYROLL_SHARE, note: 'Agents move to Nightfall free. An agent who owns a business in Nightfall pays half its payroll while the city\'s wage support is on; the city pays the rest.' } }),
   },
   plan: {
