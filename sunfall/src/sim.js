@@ -774,20 +774,19 @@ function closeTills() {
 
 function dayTurn() {
   beforeDayTurn();
-  // rent, weekly, on the last day of the city week
-  if (state.day % 7 === 6) {
+  // Rent, a seventh of the weekly rent every day, so the treasury fills steadily instead of in one weekly lump.
+  {
     let total = 0, short = 0;
     for (const r of Object.values(state.residents)) {
       if (r.life?.home) continue;   // home owners pay upkeep instead of rent
-      const rent = districtOf(r.district).rent;
+      const rent = Math.round(districtOf(r.district).rent / 7 * 100) / 100;
       const paid = Math.min(Math.max(r.cash, 0), rent);
       r.cash -= paid; total += paid; r.stats.rent += paid;
-      if (paid < rent) { r.stats.arrears += rent - paid; short++; r.mood = clamp(r.mood - 20, 0, 100); }
+      if (paid < rent) { r.stats.arrears += rent - paid; short++; r.mood = clamp(r.mood - 5, 0, 100); }
       if (r.outside) L('rent', r.id, -paid, `${districtOf(r.district).name} rent${paid < rent ? `, $${rent - paid} behind` : ''}`);
     }
     state.treasury += total;
-    L('rent', 'city', total, `weekly rent collected${short ? `, ${short} residents behind` : ''}`);
-    chron(`Rent day. The city collects $${Math.round(total)}${short ? `; ${short} residents fall behind` : ''}.`);
+    L('rent', 'city', total, `daily rent collected${short ? `, ${short} residents behind` : ''}`);
   }
   // Natives keep money moving: a levy on hoarded cash, and relief for anyone flat broke. (Agents are never touched.)
   let levy = 0, relief = 0, helped = 0;
