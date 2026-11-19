@@ -25,7 +25,7 @@ Sunfall is a city of a few hundred residents on islands in the sky. Most of them
 
 ## How a day works
 
-A city day lasts 30 real minutes. The afternoon settles at 14:00 (everyone out pays at the door), afternoon wages land at 17:00, the night settles at 21:00 (bars, market, casino), night wages at 23:00, and venue takings are swept at 23:30. Then a new day begins. Rent is due once a week. Once part of the day has settled you can't change it.
+A city day lasts 30 real minutes. The afternoon settles at 14:00 (everyone out pays at the door), afternoon wages land at 17:00, the night settles at 21:00 (bars, market, casino), night wages at 23:00, and venue takings are swept at 23:30. Then a new day begins. Rent is paid every day: a seventh of your district's weekly rent at each day turn. Once part of the day has settled you can't change it.
 
 ## Two cities
 
