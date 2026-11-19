@@ -30,7 +30,9 @@ export const CFG = {
   JOB_PAY_MAX: 200,
   CASINO_WIN_P: 0.47,
   OWNER_PAYROLL_SHARE: Number(process.env.OWNER_PAYROLL_SHARE) || 0.7, // the city's wage support covers the rest at owned venues...
-  SUPPORT_ABOVE: 40000, // ...while the treasury holds more than this
+  SUPPORT_ABOVE: 40000, // (old cut-off, kept for reference) support now tapers between the two below
+  SUPPORT_FULL: 60000,  // full wage support while the treasury holds at least this...
+  SUPPORT_NONE: 15000,  // ...shrinking smoothly to nothing at this
   DATA_DIR: process.env.DATA_DIR || path.resolve('data'),
   SEED: Number(process.env.SEED) || 20261026,
 };
@@ -612,6 +614,10 @@ function landHalf(half) {
       p.result[half] = "closed by the Keeper's curfew";
       continue;
     }
+    if (v.closed && v.closed.day === state.day && v.closed.half === half) { // failed a health inspection (src/ventures.js)
+      p.result[half] = 'closed by the inspectors';
+      continue;
+    }
     const ticket = crossing(r, v) ? ferryTicket() : 0;
     if (r.cash < doorPrice(v) + ticket) {
       p.result[half] = 'turned away';
@@ -622,7 +628,8 @@ function landHalf(half) {
       r.cash -= ticket; state.treasury += ticket;
       if (r.outside) L('ferry', r.id, -ticket, `ferry ticket to ${v.name}`); else (agg['ferry'] ||= { n: 0, amt: 0, v: { id: 'city', name: 'the sky ferry' }, kind: 'ferry' }, agg['ferry'].n++, agg['ferry'].amt += ticket);
     }
-    const amt = Math.min(p.shares[half], Math.floor(r.cash * 100) / 100);
+    const rated = v.type !== 'casino' && v.rating && v.rating.until >= state.day ? 1.1 : 1; // inspectors' rating: customers spend more
+    const amt = Math.min(Math.round(p.shares[half] * rated * 100) / 100, Math.floor(r.cash * 100) / 100);
     p.result[half] = 'there';
     v.visitsToday++; v.lifetime.visits++;
     if (v.type === 'casino') {
@@ -663,35 +670,49 @@ function landHalf(half) {
   const outText = state.nightfall ? outs.map(([c, n]) => `${n} out in ${c.name}`).join(', ') : `${outs[0][1]} residents out`;
   chron(`The ${half === 'aft' ? 'afternoon' : 'night'} lands: ${outText}, $${Math.round(taken)} taken today. Busiest: ${busiest.name}.`, null, 'landing');
   settleJobs(half);
+  for (const fn of landHooks) { try { fn(half); } catch (e) { console.error('land hook failed', e); } }
   chatter(half);
 }
 
-export const wageSupportOn = () => state.treasury > CFG.SUPPORT_ABOVE;
+/** How much of the usual wage support the city can afford right now: 1 = all of it, 0 = none. It tapers with the
+ *  treasury instead of switching off at a line, so owners never see their wage bill jump overnight. */
+export const supportFactor = () => Math.max(0, Math.min(1, (state.treasury - CFG.SUPPORT_NONE) / (CFG.SUPPORT_FULL - CFG.SUPPORT_NONE)));
+export const wageSupportOn = () => supportFactor() > 0;
 // What an owner pays of a venue's payroll while wage support is on: less under the Nightfall charter.
 export const ownerPayrollShare = (v) => (v.ownerId && state.residents[v.ownerId]?.outside && cityOfDistrict(v.district) === 'nightfall' ? NIGHTFALL.CHARTER_OWNER_SHARE : CFG.OWNER_PAYROLL_SHARE);
 function payWages(half) {
-  const agg = {}, short = {};
+  const agg = {}, short = {}, owed = {};
   let support = 0;
   for (const r of Object.values(state.residents)) {
     if (shiftFor(r) !== half) continue;
     const wage = TRADES[r.trade].wage;
     const place = state.venues[r.workplace];
-    const ownerPart = place.ownerId && wageSupportOn() ? Math.round(wage * ownerPayrollShare(place) * 100) / 100 : wage;
+    const share = ownerPayrollShare(place), f = supportFactor();
+    const ownerPart = place.ownerId ? Math.round(wage * (share + (1 - share) * (1 - f)) * 100) / 100 : wage;
     const fromOwner = payFromVenue(place, ownerPart, 'payroll', half);
     const fromCity = place.ownerId ? Math.min(wage - ownerPart, Math.max(state.treasury, 0)) : 0; // 0 when support is off
     book(place, 'wageSupport', fromCity, half);
     state.treasury -= fromCity; support += fromCity;
-    const paid = fromOwner + fromCity;
+    // Workers always get paid: when an owner can't cover their part, the city pays the gap and the owner owes it back
+    // out of their next takings (see closeTills). Missing payroll still counts against the business.
+    const gap = place.ownerId ? Math.min(ownerPart - fromOwner, Math.max(state.treasury, 0)) : 0;
+    if (gap > 0) {
+      state.treasury -= gap; book(place, 'wageSupport', gap, half);
+      const o = state.residents[place.ownerId]; o.wageDebt = Math.round(((o.wageDebt || 0) + gap) * 100) / 100;
+      (owed[o.id] ||= { o, amt: 0 }).amt += gap;
+    }
+    const paid = fromOwner + fromCity + gap;
     r.cash += paid; r.stats.wages += paid;
-    if (fromOwner < ownerPart) {
-      r.mood = clamp(r.mood - 15, 0, 100);
-      (short[place.id] ||= { n: 0, amt: 0, place }).n++; short[place.id].amt += wage - paid;
-    } else r.mood = clamp(r.mood + 3, 0, 100);
+    if (fromOwner < ownerPart) { // the owner missed their part of payroll: it counts against the business either way
+      (short[place.id] ||= { n: 0, amt: 0, place }).n++; short[place.id].amt += ownerPart - fromOwner;
+    }
+    r.mood = clamp(r.mood + (paid < wage - 0.01 ? -15 : 3), 0, 100);
     if (r.outside) L('wage', r.id, paid, `${TRADES[r.trade].name} at ${place.name}${paid < wage ? `, $${Math.round(wage - paid)} short` : ''}`);
     else (agg[place.id] ||= { n: 0, amt: 0, place }, agg[place.id].n++, agg[place.id].amt += paid);
   }
   for (const a of Object.values(agg)) L('wage', a.place.id, a.amt, `${a.n} staff paid at ${a.place.name}`);
   if (support) L('support', 'city', -support, `wage support at owned venues, ${half === 'aft' ? 'afternoon' : 'night'}`);
+  for (const { o, amt } of Object.values(owed)) L('wagedebt', o.id, 0, `the city covered $${Math.round(amt)} of your payroll you couldn't pay; you owe it back from your next takings ($${Math.round(o.wageDebt)} owed)`);
   if (eventIs('boom')) {
     let total = 0;
     const cap = Math.min(2500, Math.max(0, state.treasury - 20000));
@@ -711,7 +732,7 @@ function payWages(half) {
     if (!sh) { if (half === 'night' || VTYPES[v.type]?.half === half) v.distress = 0; continue; }
     const o = state.residents[v.ownerId];
     v.distress = (v.distress || 0) + 1;
-    chron(`${o.name} missed payroll at ${v.name}: ${sh.n} staff short $${Math.round(sh.amt)}.`, o.id, 'business');
+    chron(`${o.name} couldn't cover payroll at ${v.name}: the city paid ${sh.n} staff the $${Math.round(sh.amt)} gap, and ${o.name} owes it back.`, o.id, 'business');
     if (v.distress >= 3) {
       const price = Math.round(VTYPES[v.type].value * 0.4);
       const pay = Math.min(price, Math.max(state.treasury, 0));
@@ -734,6 +755,11 @@ function closeTills() {
     if (v.till !== 0) {
       if (v.ownerId) {
         const o = state.residents[v.ownerId];
+        if (o.wageDebt > 0 && v.till > 0) { // payroll the city covered comes back first
+          const back = Math.min(v.till, o.wageDebt); v.till -= back; o.wageDebt = Math.round((o.wageDebt - back) * 100) / 100; state.treasury += back;
+          L('wagedebt', o.id, -back, `paid back $${Math.round(back)} of covered payroll from ${v.name}'s takings${o.wageDebt > 0 ? ` ($${Math.round(o.wageDebt)} still owed)` : ''}`);
+          if (v.till <= 0) { v.till = 0; continue; }
+        }
         const mine = payPartners(v, v.till, 'dividend');
         o.cash += mine;
         L('profit', o.id, mine, `night's take from ${v.name}`);
@@ -807,9 +833,12 @@ export const venueValueNow = (v) => (VTYPES[v.type]?.value || 0) * (eventIs('cra
 export const SALE_FLOOR_PCT = 75;
 export const saleFloor = (v, pct = 100) => Math.ceil(venueValueNow(v) * pct / 100 * SALE_FLOOR_PCT / 100);
 const dayHooks = [];
+const landHooks = [];
+export const onLand = (fn) => { landHooks.push(fn); }; // run as each half (afternoon, night) lands, after jobs settle
 export const onDayTurn = (fn) => { dayHooks.push(fn); };   // run at every day turn, before tomorrow is planned
 const worthHooks = [];
 export const onWorth = (fn) => { worthHooks.push(fn); };
+onWorth((r) => -(r.wageDebt || 0)); // payroll the city covered is owed back, so it comes off net worth
 export function netWorth(r) {
   let w = r.cash;
   for (const fn of worthHooks) { try { w += fn(r) || 0; } catch {} }
