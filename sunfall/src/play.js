@@ -414,9 +414,17 @@ function dailyGains(rows = standings(), key = 'prizeEligible') {
     // A day's gain counts up to the cap; agents level at the cap are split by how much they grew in percent.
     .sort((a, b) => b.gain - a.gain || b.pct - a.pct);
 }
+// Run as a prize day closes, before its winners and the next day's starting scores are worked out.
+const closeHooks = [];
+export const onDailyClose = (fn) => { closeHooks.push(fn); };
+/** The window before each prize close in which homes and things bought are voided at the close. */
+export const VOID_BEFORE_CLOSE_MS = 2 * 3_600_000;
+export const prizeCloseAt = (date) => Date.parse(date + 'T00:00:00Z') + 86_400_000 - CLOSE_OFF;
 export function dailyCheck(now = Date.now()) {
   const d = dailyState(), today = utcDay(now);
   if (d.date === today) return false;
+  const closeAt = prizeCloseAt(d.date);
+  for (const fn of closeHooks) { try { fn(closeAt - VOID_BEFORE_CLOSE_MS, closeAt); } catch (e) { console.error('close hook failed', e); } }
   const rows = standings();
   const top = dailyGains(rows).slice(0, DAILY_SPLIT.length), shares = dailyShares(top.length);
   top.forEach((w, i) => d.winners.push({ date: d.date, place: i + 1, sharePct: shares[i], id: w.id, name: w.name, wallet: w.wallet, gain: Math.round(w.gain) }));
