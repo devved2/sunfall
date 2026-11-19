@@ -13,7 +13,7 @@
 // Life Score: all of it, plus money, in one number. Lives persist across seasons; cash and businesses don't.
 import { state, CFG, L, chron, netWorth, chargeDecision, newResident, nameTaken, nameLookalike, districtOf, onDayTurn, cityOf, NIGHTFALL, decreeIs } from './sim.js';
 import { refuse, secureRandom, checkName } from './util.js';
-import { ownedBy, onDailyClose } from './play.js';
+import { ownedBy, onDailyClose, onDayWorth } from './play.js';
 import { tierOf } from './gate.js';
 
 export const HOMES = [
@@ -143,6 +143,12 @@ export function buyItem(r, { item }) {
 // Homes and things bought in the two hours before a prize close are void: at the close the purchase is undone and the
 // money goes back, before the day's winners and the next day's starting scores are taken. Buying just before the
 // close and selling just after can't move anyone up the daily board.
+// For the daily prize: homes and things at what the city pays to take them back (broken things at half that).
+onDayWorth((r) => {
+  const l = r.life; if (!r.outside || !l) return 0;
+  return Math.round((l.home ? HOMES[l.home].price * LIFE.TRADE_IN : 0)
+    + Object.entries(l.items || {}).reduce((s, [k, n]) => s + ITEMS[k].price * LIFE.RESALE * (n - (l.broken?.[k] ? 0.5 : 0)), 0));
+});
 onDailyClose((from, to) => {
   for (const r of Object.values(state.residents)) {
     const l = r.life; if (!r.outside || !l?.buys?.length) continue;
