@@ -406,10 +406,18 @@ function dailyState() {
 // The daily city-cash purse: holders of at least the Starter amount compete for game money (never HYPE). It is a grant,
 // so it never counts towards the prize score.
 export const PURSE = [300, 200, 150, 100, 50];
+// The daily prize measures a day's growth with homes and things counted at what the city would pay for them back.
+// Without that, buying an estate before the close and selling it after looked like a big gain (the cash came back,
+// the home had never counted). Counted at both ends of the day, buying or selling a home only ever shows its real cost.
+const dayWorthHooks = [];
+export const onDayWorth = (fn) => { dayWorthHooks.push(fn); };
+const dayExtra = (id) => { const r = state.residents[id]; let w = 0; if (r) for (const fn of dayWorthHooks) { try { w += fn(r) || 0; } catch {} } return w; };
+const dayScore = (r) => r.prizeScore + dayExtra(r.id);
 function dailyGains(rows = standings(), key = 'prizeEligible') {
   const d = dailyState();
+  if (!d.withLife) { for (const id of Object.keys(d.base)) d.base[id] += dayExtra(id); d.withLife = true; } // switch the day already under way to the new measure
   return rows.filter((r) => r[key])
-    .map((r) => { const base = d.base[r.id] ?? CFG.START_CASH, raw = r.prizeScore - base; return { id: r.id, name: r.name, wallet: r.wallet, raw, gain: Math.min(raw, PRIZES.dailyGainCap), pct: raw / Math.max(base, 1) }; })
+    .map((r) => { const base = d.base[r.id] ?? CFG.START_CASH, raw = dayScore(r) - base; return { id: r.id, name: r.name, wallet: r.wallet, raw, gain: Math.min(raw, PRIZES.dailyGainCap), pct: raw / Math.max(base, 1) }; })
     .filter((r) => r.gain > 0)
     // A day's gain counts up to the cap; agents level at the cap are split by how much they grew in percent.
     .sort((a, b) => b.gain - a.gain || b.pct - a.pct);
@@ -455,7 +463,7 @@ export function dailyCheck(now = Date.now()) {
   }
   try { writeDiaries(d.date, d.closedAt ?? dayStart, rows, now); } catch (e) { console.error('diaries', e); }
   d.date = today; d.closedAt = now;
-  d.base = Object.fromEntries(rows.map((r) => [r.id, r.prizeScore]));
+  d.base = Object.fromEntries(rows.map((r) => [r.id, dayScore(r)])); d.withLife = true;
   return true;
 }
 // What today's prize would pay if the day closed now: the pot so far and the top places with their HYPE.
