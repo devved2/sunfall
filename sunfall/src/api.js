@@ -3,10 +3,11 @@ import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
   postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
   cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED, leonidaInfo, settlerGrant,
-  jobApplying, nextTurnAt,
+  jobApplying, nextTurnAt, supportFactor,
 } from './sim.js';
 import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
 import { noteNet } from './owners.js';
+import { tradeView, cargoBuy, cargoSell, contractsView, contractBid, businessRepair, inspectionView } from './ventures.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY, MONTRA } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
@@ -125,10 +126,11 @@ export function venueView(v) {
     ...(v.isVenue ? { security: v.security || 0, robberyOdds: robOdds(v), tillNow: Math.round(v.till || 0), ...(o?.outside ? { takeoverPrice: takeoverPrice(v), takeoverFrom: v.boughtAt ? new Date(v.boughtAt + CRIME.TAKEOVER_COOLDOWN_MS).toISOString() : null } : {}) } : {}),
     forSale: v.forSale, salePrice: v.salePrice, ...(v.heldUntilDay > state.day ? { onSaleFromDay: v.heldUntilDay } : {}), visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime,
     staff: staffOf(v).length, payrollPerShift: staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0),
-    ownerPaysPerShift: Math.round(staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0) * (state.treasury > CFG.SUPPORT_ABOVE ? ownerPayrollShare(v) : 1)), distress: v.distress || 0,
+    ownerPaysPerShift: Math.round(staffOf(v).reduce((t, r) => t + TRADES[r.trade].wage, 0) * (ownerPayrollShare(v) + (1 - ownerPayrollShare(v)) * (1 - supportFactor()))), distress: v.distress || 0,
     partners: (v.partners || []).map((p) => ({ id: p.id, name: nameOf(state.residents[p.id]), pct: p.pct })),
     pledged: Object.values(state.loans).some((l) => l.status === 'active' && l.collateralVenue === v.id),
     fireSale: v.fireSale != null,
+    inspection: v.ownerId && state.residents[v.ownerId]?.outside ? inspectionView(v) : undefined,
     ...(v.id === MONTRA.venue ? { landmark: { name: MONTRA.tower, text: MONTRA.text, links: [{ label: 'Montra', url: MONTRA.url }], lastLaunch: state.montra?.lastLaunch ? new Date(state.montra.lastLaunch).toISOString() : null } } : {}),
   };
 }
@@ -382,7 +384,7 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep, their approval, and the decree waiting to take effect, which you can support or oppose).',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), latestChange: latestChange() } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), ...(r.wageDebt > 0 ? { wageDebt: { owed: Math.round(r.wageDebt), note: 'Payroll the city covered when you could not pay your staff. It is taken back from your businesses\' takings when the tills close, and counts against your net worth until then. Three missed paydays in a row still puts a business up for a distress sale.' } } : {}), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), latestChange: latestChange() } : {}) }),
   },
   books: {
     auth: 'token', desc: 'Profit by business and by shift for the last week of city days (newest first): takings, payroll you paid, winnings the business paid out (casino, sportsbook), robberies, and profit. Send venue for one business (any business), or nothing for every business you own or hold a stake in.',
@@ -414,7 +416,7 @@ export const OPS = {
         venues: Object.values(state.venues).map(venueView),
         trades: Object.fromEntries(Object.entries(TRADES).map(([k, t]) => [k, { name: t.name, dailyWage: t.wage }])),
         season: { n: state.season.n, id: state.season.id, endsInMs: Math.max(0, state.season.end - Date.now()) },
-        wageSupport: { on: state.treasury > CFG.SUPPORT_ABOVE, ownerPays: CFG.OWNER_PAYROLL_SHARE, note: 'The city pays 30% of wages at owned venues while the treasury holds over $40k.' },
+        wageSupport: { share: Math.round(supportFactor() * 100) / 100, ownerPays: Math.round((CFG.OWNER_PAYROLL_SHARE + (1 - CFG.OWNER_PAYROLL_SHARE) * (1 - supportFactor())) * 100) / 100, note: `The city pays up to 30% of wages at owned venues: all of that with $${CFG.SUPPORT_FULL / 1000}k or more in the treasury, shrinking smoothly to nothing at $${CFG.SUPPORT_NONE / 1000}k. Staff are always paid: if an owner can't cover their part, the city pays it and the owner owes it back from their next takings.` },
         event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast),
       };
     },
@@ -568,7 +570,7 @@ export const OPS = {
     },
   },
   businesses: {
-    auth: 'none', desc: 'Every venue: owner, door price and band, today\'s visits and takings, staff and payroll per shift (an owner pays it from the till, then their own cash; while the treasury is above $40k the city\'s wage support covers 30%), missed paydays (one is a warning, two a distress sale, three and the city repossesses), and which are for sale at what price.',
+    auth: 'none', desc: 'Every venue: owner, door price and band, today\'s visits and takings, staff and payroll per shift (an owner pays it from the till, then their own cash; the city\'s wage support covers up to 30%, less as the treasury runs low; if an owner can\'t pay, the city pays the staff and the owner owes it back), missed paydays (one is a warning, two a distress sale, three and the city repossesses), and which are for sale at what price.',
     input: {}, run: () => ({ businesses: Object.values(state.venues).filter((v) => v.isVenue).map(venueView) }),
   },
   businessBuy: {
@@ -588,6 +590,34 @@ export const OPS = {
       pay(); buyBusiness(r, v);
       return { business: venueView(v), resident: residentView(r, { self: true }) };
     },
+  },
+  contracts: {
+    auth: 'none', desc: 'City contracts for tomorrow: courier runs (be at two venues in their slots) and supply orders (a venue of a type you own takes at least a target in one shift). Lowest bid wins at the day turn and puts down a deposit; deliver to be paid, fall short and lose the deposit.',
+    input: {}, run: (r) => contractsView(r || null),
+  },
+  contractBid: {
+    auth: 'token', decision: true, desc: 'Bid on a city contract: your price, up to its top price. The lowest bid when the day turns wins and puts down a 25% deposit. You can change your bid until then. The top 2 on the season\'s prize table can\'t bid.',
+    input: { contract: S.str('contract id, e.g. k12'), price: S.int('your price in whole dollars') }, required: ['contract', 'price'],
+    run: (r, b) => contractBid(r, b),
+  },
+  trade: {
+    auth: 'none', desc: 'Island trade: today\'s prices for Sky Silk (made in Sunfall), Neon Glass (Nightfall) and Island Rum (Leonida) in every city, and with your token your cargo and where you can sell today.',
+    input: {}, run: (r) => tradeView(r || null),
+  },
+  cargoBuy: {
+    auth: 'token', decision: true, desc: 'Buy goods in your own city to carry across the sky and sell where they are dear. You can carry 40 units. The top 2 on the season\'s prize table can\'t buy.',
+    input: { good: S.str('silk, glass or rum'), qty: S.int('units') }, required: ['good', 'qty'],
+    run: (r, b) => cargoBuy(r, b),
+  },
+  cargoSell: {
+    auth: 'token', decision: true, desc: 'Sell cargo in your own city or in any city you went out in today. Markets buy back at 90% of their price.',
+    input: { good: S.str('silk, glass or rum'), qty: S.int('units (leave out to sell all)'), city: S.str('city id to sell in (leave out for the other city you visited today, else your own)') }, required: ['good'],
+    run: (r, b) => cargoSell(r, b),
+  },
+  businessRepair: {
+    auth: 'token', decision: true, desc: 'Repair a venue you own: each point of condition costs about 0.1% of its value. Inspectors fine and shut run-down venues (under 40) and rate well-kept ones (80+), whose customers spend 10% more for three days.',
+    input: { venue: S.str('venue id'), points: S.int('condition points to add (leave out to repair fully)') }, required: ['venue'],
+    run: (r, b) => businessRepair(r, b),
   },
   businessPrice: {
     auth: 'token', decision: true, desc: 'Set the door price of a venue you own, inside its band. Takes effect at the next landing.',
@@ -961,7 +991,7 @@ export async function runOp(op, body, ctx) {
   if (def.auth === 'token') {
     r = residentFromToken(ctx.token);
     if (!r) refuse(401, 'missing or unknown token: join first, then send Authorization: Bearer <token>');
-  } else if (op === 'ledger' && ctx.token) r = residentFromToken(ctx.token);
+  } else if ((op === 'ledger' || op === 'trade' || op === 'contracts') && ctx.token) r = residentFromToken(ctx.token);
   const known = new Set([...Object.keys(def.input), 'token', 'op']);
   for (const k of Object.keys(body || {})) if (!known.has(k)) refuse(400, `unexpected field ${k}`);
   for (const k of def.required || []) if (body?.[k] === undefined) refuse(400, `missing field ${k}`);
