@@ -13,7 +13,7 @@
 // Life Score: all of it, plus money, in one number. Lives persist across seasons; cash and businesses don't.
 import { state, CFG, L, chron, netWorth, chargeDecision, newResident, nameTaken, nameLookalike, districtOf, onDayTurn, cityOf, NIGHTFALL, decreeIs } from './sim.js';
 import { refuse, secureRandom, checkName } from './util.js';
-import { ownedBy } from './play.js';
+import { ownedBy, onDailyClose } from './play.js';
 import { tierOf } from './gate.js';
 
 export const HOMES = [
@@ -99,6 +99,7 @@ export function homeBuy(r, { tier }) {
   if (r.cash - CFG.DECISION_COST < cost) refuse(402, `a ${HOMES[tier].name} costs ${usd(HOMES[tier].price)}${tradeIn ? ` (${usd(cost)} after ${usd(tradeIn)} for your ${HOMES[l.home].name})` : ''}; you would hold ${usd(r.cash - CFG.DECISION_COST)}`);
   go();
   const where = districtOf(r.district).name;
+  (l.buys ||= []).push({ kind: 'home', t: Date.now(), cost, from: l.home, fromDistrict: l.homeDistrict, fromSince: l.homeSince, hadSlot: l.estateSlot });
   pay(r, cost, 'home', `bought a ${HOMES[tier].name} in ${where}${tradeIn ? `, trading in the ${HOMES[l.home].name}` : ''}`);
   l.home = tier; l.homeDistrict = r.district; l.homeSince = state.day;
   if (tier === 4) l.estateSlot ??= nextEstateSlot();
@@ -132,12 +133,38 @@ export function buyItem(r, { item }) {
   if (r.cash - CFG.DECISION_COST < it.price) refuse(402, `a ${it.name} costs ${usd(it.price)}; you would hold ${usd(r.cash - CFG.DECISION_COST)}`);
   go();
   pay(r, it.price, 'item', `bought a ${it.name}`);
+  (l.buys ||= []).push({ kind: 'item', item, t: Date.now(), cost: it.price });
   l.items[item] = have + 1;
   note(r, `Bought a ${it.name}.`, 'thing');
   milestone(r, item === 'art' ? 'art' : item); if (item === 'art' && l.items.art >= 5) milestone(r, 'collector');
   if (item === 'airship') chron(`${r.name} bought a private airship.`, r.id, 'life');
   return { item, have: l.items[item], upkeepPerDay: upkeepOf(r) };
 }
+// Homes and things bought in the two hours before a prize close are void: at the close the purchase is undone and the
+// money goes back, before the day's winners and the next day's starting scores are taken. Buying just before the
+// close and selling just after can't move anyone up the daily board.
+onDailyClose((from, to) => {
+  for (const r of Object.values(state.residents)) {
+    const l = r.life; if (!r.outside || !l?.buys?.length) continue;
+    const late = l.buys.filter((b) => b.t >= from && b.t < to).reverse(); // newest first
+    const undone = [];
+    for (const b of late) {
+      if (b.kind === 'home') {
+        if (l.home === 0) continue; // already sold again: nothing left to undo
+        l.home = b.from; l.homeDistrict = b.fromDistrict; l.homeSince = b.fromSince;
+        if (b.hadSlot == null) delete l.estateSlot; else l.estateSlot = b.hadSlot;
+        if (b.from < 4) delete l.estateSlot;
+      } else {
+        if (!l.items[b.item]) continue;
+        if (--l.items[b.item] <= 0) { delete l.items[b.item]; delete l.broken[b.item]; }
+      }
+      r.cash += b.cost; state.treasury -= b.cost; undone.push(b);
+      L(b.kind, r.id, b.cost, `${b.kind === 'home' ? 'home purchase' : `${ITEMS[b.item].name} purchase`} made in the two hours before the prize close is void: $${Math.round(b.cost)} refunded`);
+    }
+    if (undone.length) note(r, `The city voided ${undone.length === 1 ? 'a purchase' : `${undone.length} purchases`} made in the two hours before the prize close and refunded $${Math.round(undone.reduce((s, b) => s + b.cost, 0))}.`, 'thing');
+    l.buys = l.buys.filter((b) => b.t >= to - 86_400_000 && !undone.includes(b));
+  }
+});
 export function sellItem(r, { item }) {
   if (!r.outside) refuse(403, 'agents only');
   const it = ITEMS[item]; if (!it) refuse(422, `item: ${Object.keys(ITEMS).join(', ')}`);
