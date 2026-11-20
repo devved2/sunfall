@@ -115,6 +115,8 @@ export async function ownersReport() {
   for (const e of jobs.values()) add(e.a, e.b, Math.min(3, e.n * 0.5), `${e.n} job${e.n === 1 ? '' : 's'} between them ($${Math.round(e.pay)})`);
   for (const l of Object.values(state.loans || {})) if (l.borrower && out(l.lender) && out(l.borrower) && l.lender !== l.borrower)
     add(l.lender, l.borrower, 1, `a loan between them ($${Math.round(l.amount || l.principal || 0)}, ${l.status})`);
+  for (const x of Object.values(state.bounties || {})) if (x.status === 'paid' && out(x.by) && out(x.winner) && x.by !== x.winner)
+    add(x.by, x.winner, 1, `a $${x.reward} bounty paid between them`);
   for (const v of Object.values(state.venues)) if (v.ownerId && out(v.ownerId)) for (const p of v.partners || []) if (out(p.id))
     add(v.ownerId, p.id, 1.5, `a ${p.pct}% stake in ${v.name}`);
 
