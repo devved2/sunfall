@@ -594,6 +594,7 @@ function nativesTakeLeftovers(half) {
 function landHalf(half) {
   resolveJobApps(Date.now(), half); // applications for this slot close now at the latest
   nativesTakeLeftovers(half);
+  for (const fn of preLandHooks) { try { fn(half, { doorPrice, crossing }); } catch (e) { console.error('pre-land hook failed', e); } }
   const agg = {}; // venueId -> {n, amt} for natives (outside residents get their own lines)
   for (const r of Object.values(state.residents)) {
     const p = r.plan;
@@ -628,8 +629,9 @@ function landHalf(half) {
       r.cash -= ticket; state.treasury += ticket;
       if (r.outside) L('ferry', r.id, -ticket, `ferry ticket to ${v.name}`); else (agg['ferry'] ||= { n: 0, amt: 0, v: { id: 'city', name: 'the sky ferry' }, kind: 'ferry' }, agg['ferry'].n++, agg['ferry'].amt += ticket);
     }
-    const rated = v.type !== 'casino' && v.rating && v.rating.until >= state.day ? 1.1 : 1; // inspectors' rating: customers spend more
-    const amt = Math.min(Math.round(p.shares[half] * rated * 100) / 100, Math.floor(r.cash * 100) / 100);
+    // What customers spend can be nudged by the venue: an inspectors' rating, upgrades, a happy hour (src/ventures.js).
+    const mult = spendHooks.reduce((m, fn) => { try { return m * (fn(v, half) || 1); } catch { return m; } }, 1);
+    const amt = Math.min(Math.round(p.shares[half] * mult * 100) / 100, Math.floor(r.cash * 100) / 100);
     p.result[half] = 'there';
     v.visitsToday++; v.lifetime.visits++;
     if (v.type === 'casino') {
@@ -834,6 +836,9 @@ export const saleFloor = (v, pct = 100) => Math.ceil(venueValueNow(v) * pct / 10
 const dayHooks = [];
 const landHooks = [];
 export const onLand = (fn) => { landHooks.push(fn); }; // run as each half (afternoon, night) lands, after jobs settle
+const preLandHooks = [], spendHooks = [];
+export const onBeforeLand = (fn) => { preLandHooks.push(fn); }; // run as a half lands, before anyone pays: customers can still move
+export const onSpend = (fn) => { spendHooks.push(fn); };         // (venue, half) -> multiplier on what a customer spends there
 export const onDayTurn = (fn) => { dayHooks.push(fn); };   // run at every day turn, before tomorrow is planned
 const worthHooks = [];
 export const onWorth = (fn) => { worthHooks.push(fn); };
