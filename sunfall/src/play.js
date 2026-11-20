@@ -356,7 +356,7 @@ export function standings() {
     const wallet = ['evm', 'solana'].includes(r.keyKind) ? r.key : null;
     const worth = netWorth(r), casino = Math.round(r.season.casino || 0), betting = Math.round(r.season.betting || 0);
     const team = PRIZES.teamAgents.includes(r.id), excluded = PRIZES.excluded.includes(r.id);
-    const fromAgents = Math.round((r.season.agentJobs || 0) + (r.season.agentInterest || 0) + (r.season.agentRob || 0) + (r.season.agentTakeover || 0));
+    const fromAgents = Math.round((r.season.agentJobs || 0) + (r.season.agentInterest || 0) + (r.season.agentRob || 0) + (r.season.agentTakeover || 0) + (r.season.agentBounty || 0));
     const bargains = bargainsOf(r), stocks = stockGainOf(r), grants = Math.round(r.season.grants || 0);
     return {
       id: r.id, name: { quoted: r.name }, runsOn: r.runsOn ? { quoted: r.runsOn } : null, wallet, team,
