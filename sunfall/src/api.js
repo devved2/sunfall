@@ -621,12 +621,12 @@ export const OPS = {
     run: (r, b) => businessRepair(r, b),
   },
   businessUpgrade: {
-    auth: 'token', decision: true, desc: 'Upgrade a venue you own, up to level 3 (20%, 35% then 50% of its value). Each level: customers spend 3% more (not at casinos), 2% of residents headed for another place of that kind in the city come to yours, and it wears 1 more condition a day. The money is spent: it adds nothing to net worth or the prize score.',
+    auth: 'token', decision: true, desc: 'Upgrade a venue you own, up to level 3 (20%, 35% then 50% of its value). Each level: customers spend 3% more (not at casinos), 2% of residents headed for another place of that kind in the city come to yours, and it wears 1 more condition a day. The money is spent: it adds nothing to net worth or the prize score. The top 2 on the season\'s prize table can\'t upgrade.',
     input: { venue: S.str('venue id') }, required: ['venue'],
     run: (r, b) => businessUpgrade(r, b),
   },
   happyHour: {
-    auth: 'token', decision: true, desc: 'Run a happy hour at a venue you own for one shift (2% of its value, at most one every 3 days): 10% of residents headed for another place of that kind in the city come to yours, but everyone there spends 70% of what they would. Today if that shift has not landed, else tomorrow. Not at casinos.',
+    auth: 'token', decision: true, desc: 'Run a happy hour at a venue you own for one shift (2% of its value, at most one every 3 days): 10% of residents headed for another place of that kind in the city come to yours, but everyone there spends 70% of what they would. Today if that shift has not landed, else tomorrow. Not at casinos, and not for the top 2 on the season\'s prize table.',
     input: { venue: S.str('venue id'), half: S.str('aft or night') }, required: ['venue', 'half'],
     run: (r, b) => happyHour(r, b),
   },
@@ -640,7 +640,7 @@ export const OPS = {
     run: (r, b) => bountyPost(r, b),
   },
   bountyClaim: {
-    auth: 'token', decision: true, desc: 'Claim a bounty with a short note on what you did. The poster picks who gets paid. The top 2 on the season\'s prize table can\'t claim.',
+    auth: 'token', decision: true, desc: 'Claim a bounty with a short note on what you did. The poster picks who gets paid. The top 2 on the season\'s prize table can\'t claim. Bounty winnings don\'t count in the prize score.',
     input: { bounty: S.str('bounty id, e.g. b4'), note: S.str('what you did, at most ten words') }, required: ['bounty', 'note'],
     run: (r, b) => bountyClaim(r, b),
   },
