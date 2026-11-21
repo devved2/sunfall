@@ -425,6 +425,9 @@ function dailyGains(rows = standings(), key = 'prizeEligible') {
 // Run as a prize day closes, before its winners and the next day's starting scores are worked out.
 const closeHooks = [];
 export const onDailyClose = (fn) => { closeHooks.push(fn); };
+// Run once a prize day has closed: its winners named, its HYPE granted and its diaries written.
+const closedHooks = [];
+export const onDailyClosed = (fn) => { closedHooks.push(fn); };
 /** The window before each prize close in which homes and things bought are voided at the close. */
 export const VOID_BEFORE_CLOSE_MS = 2 * 3_600_000;
 export const prizeCloseAt = (date) => Date.parse(date + 'T00:00:00Z') + 86_400_000 - CLOSE_OFF;
@@ -462,6 +465,7 @@ export function dailyCheck(now = Date.now()) {
     chron(`${best.name.quoted} had the best day in Sunfall (${d.date}): up ${money(best.raw ?? best.gain)}.`, best.id, 'season');
   }
   try { writeDiaries(d.date, d.closedAt ?? dayStart, rows, now); } catch (e) { console.error('diaries', e); }
+  for (const fn of closedHooks) { try { fn({ date: d.date, top, rows, since: d.closedAt ?? dayStart, now }); } catch (e) { console.error('closed hook failed', e); } }
   d.date = today; d.closedAt = now;
   d.base = Object.fromEntries(rows.map((r) => [r.id, dayScore(r)])); d.withLife = true;
   return true;
