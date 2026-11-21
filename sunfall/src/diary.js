@@ -149,6 +149,7 @@ export function writeDiaries(date, sinceMs, rows, now = Date.now()) {
 export const entryView = (e) => ({ id: e.id, resident: e.rid, name: { quoted: e.name }, date: e.date, text: { quoted: e.text }, byAgent: e.byAgent, stats: e.stats, url: '/diary/' + e.id });
 export const diaryOf = (rid, n = 7) => D().entries.filter((e) => e.rid === rid).slice(-n).reverse().map(entryView);
 export const diaryEntry = (id) => D().entries.find((e) => e.id === id) || null;
+export const entriesOn = (date) => D().entries.filter((e) => e.date === date);
 export function diariesView({ id, resident } = {}) {
   if (id) { const e = diaryEntry(id); if (!e) refuse(404, 'no such diary entry'); return { entry: entryView(e), more: diaryOf(e.rid, 6).filter((x) => x.id !== e.id) }; }
   if (resident) return { entries: diaryOf(resident, 30) };
