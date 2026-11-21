@@ -121,9 +121,13 @@ export function L(kind, who, amt, note = '') {
 }
 export const recentLines = () => recentLedger;
 
+const chronHooks = [];
+export const onChron = (fn) => { chronHooks.push(fn); }; // every line of city news, as it's written
 function chron(text, who = null, kind = 'event') {
-  state.chronicle.push({ t: Date.now(), day: state.day, text, who, kind });
+  const c = { t: Date.now(), day: state.day, text, who, kind };
+  state.chronicle.push(c);
   if (state.chronicle.length > 300) state.chronicle.splice(0, state.chronicle.length - 300);
+  for (const fn of chronHooks) { try { fn(c); } catch (e) { console.error('chron hook', e); } }
 }
 function squarePost(r, text) {
   const p = { id: 's' + ++state.counters.s, t: Date.now(), day: state.day, who: r.id, name: r.name, outside: r.outside, text };
