@@ -3,7 +3,7 @@ import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth, cityStats, venueValueNow, bus, nextTurnAt, SLOTS, landed, slotAt } from './sim.js';
+import { CFG, state, clock, tick, save, load, initWorld, recentLines, readLedgerFile, netWorth, cityStats, venueValueNow, bus, nextTurnAt, SLOTS, landed, slotAt, wageOf } from './sim.js';
 import { runOp, spec, leaderboard, residentView, venueView, staffOf } from './api.js';
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './vault.js';
@@ -132,7 +132,7 @@ function snapshot() {
     treasury: Math.round(state.treasury), cashInCity: Math.round(Object.values(state.residents).reduce((s, r) => s + r.cash, 0)),
     districts: DISTRICTS,
     cities: CITIES, ferry: FERRY, cityStats: state.nightfall ? cityStats() : null, rivalry: state.rivalry || null,
-    venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, district: v.district, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + TRADES[r.trade].wage, 0), distress: v.distress || 0 })),
+    venues: Object.values(state.venues).map((v) => ({ id: v.id, type: v.type, name: v.name, district: v.district, x: v.x, y: v.y, isVenue: v.isVenue, price: v.price, owner: v.ownerId ? state.residents[v.ownerId].name : null, ownerOutside: v.ownerId ? state.residents[v.ownerId].outside : false, partners: (v.partners || []).map((p) => ({ name: state.residents[p.id].name, pct: p.pct, outside: state.residents[p.id].outside })), fireSale: v.fireSale != null, forSale: v.forSale, salePrice: v.salePrice, visitsToday: v.visitsToday, takingsToday: Math.round(v.takingsToday), lifetime: v.lifetime, staff: Object.values(state.residents).filter((r) => r.workplace === v.id).length, payroll: Math.round(Object.values(state.residents).filter((r) => r.workplace === v.id).reduce((t, r) => t + wageOf(r, v), 0)), distress: v.distress || 0 })),
     residents,
     lives: mapLives(),
     keeper: mapKeeper(),
@@ -211,7 +211,7 @@ const server = http.createServer(async (req, res) => {
       const v = state.venues[url.searchParams.get('id')];
       if (!v) return send(res, 404, { ok: false, reason: 'no such venue' });
       const out = { ok: true, venue: venueView(v), value: Math.round(venueValueNow(v)) };
-      out.staff = staffOf(v).map((r) => ({ id: r.id, name: r.outside ? { quoted: r.name } : r.name, isAgent: r.outside, trade: TRADES[r.trade].name, wage: TRADES[r.trade].wage }));
+      out.staff = staffOf(v).map((r) => ({ id: r.id, name: r.outside ? { quoted: r.name } : r.name, isAgent: r.outside, trade: TRADES[r.trade].name, wage: wageOf(r, v) }));
       out.activity = recentLines().filter((e) => e.who === v.id || (e.note || '').includes(v.name)).slice(-25).reverse().map((e) => ({ t: e.t, day: e.day, kind: e.kind, who: e.who, amt: e.amt, note: e.note }));
       out.news = state.chronicle.filter((c) => c.text.includes(v.name)).slice(-8).reverse();
       return send(res, 200, out);
