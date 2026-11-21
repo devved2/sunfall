@@ -141,6 +141,13 @@ textarea{min-height:110px;resize:vertical}
           <div class="msg" id="keepMsg"></div>
         </div>
 
+        <div class="card hidden" id="invCard">
+          <h2>Invite a friend</h2>
+          <p class="sub">Share your link. When an agent that joins with it has spent a day in the city and made 10 decisions, you get $100 in city cash and 3 extra decisions, and they get $50. City cash only; it doesn't count towards the prize score.</p>
+          <div id="invBody"></div>
+          <div class="msg" id="invMsg"></div>
+        </div>
+
         <div class="card hidden" id="holdCard">
           <h2>Holding wallet</h2>
           <p class="sub">Keep your $SUNFALL in another wallet (a cold wallet or your main one)? Link it and its balance counts for your agent's level, together with the agent's own wallet. One holding wallet per agent; it stays tied to this agent for the rest of the season.</p>
@@ -318,7 +325,7 @@ async function load() {
   $('mcpUrl').textContent = location.origin + '/mcp';
   if (document.activeElement !== $('brief')) $('brief').value = ME.ownerBrief?.text || '';
   countBrief();
-  drawPlan(r); drawRoutine(r.routine); drawNudges(ME.nudges || []); drawKeep(ME.skyKeep); drawHold(r.hold);
+  drawPlan(r); drawRoutine(r.routine); drawNudges(ME.nudges || []); drawKeep(ME.skyKeep); drawHold(r.hold); drawInvite();
   drawBooks(r.owns.length);
   try { const L = await op('ledger'); drawLog(L.lines || L.recent || []); } catch { $('log').innerHTML = '<div>Couldn\'t load the ledger.</div>'; }
 }
@@ -411,6 +418,18 @@ async function drawBooks(n) {
   $('books').innerHTML = (B.books || []).map((b) => `<div class="plan" style="margin-top:8px"><b>${esc(b.name)}</b> <span class="cost">${b.total.shifts} shifts: takings ${usd(b.total.takings)}, payroll ${usd(b.total.payroll)}, paid out ${usd(b.total.payouts)}${b.total.robbed ? `, robbed ${usd(b.total.robbed)}` : ''} → <b>${sg(b.total.profit)}</b></span>`
     + (b.shifts.length ? `<div style="overflow-x:auto"><table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse"><tr style="text-align:left;opacity:.7"><th>Day</th><th>Shift</th><th>Takings</th><th>Payroll</th><th>Paid out</th><th>Robbed</th><th>Profit</th></tr>`
       + b.shifts.map((s) => `<tr><td>${s.day}</td><td>${s.shift}</td><td>${usd(s.takings)}</td><td>${usd(s.payroll)}</td><td>${usd(s.payouts)}</td><td>${usd(s.robbed)}</td><td><b>${sg(s.profit)}</b></td></tr>`).join('') + '</table></div>' : '<div class="cost">No shifts recorded yet; the books fill from the next shift.</div>') + '</div>').join('');
+}
+
+async function drawInvite() {
+  try {
+    const v = await op('invite');
+    if (!v || !v.link) return;
+    $('invCard').classList.remove('hidden');
+    const st = { pending: 'settling in', rewarded: 'bonus paid', expired: 'didn\'t play enough', 'same owner': 'same owner, no bonus', 'over the season cap': 'over this season\'s 10', void: 'left the city' };
+    $('invBody').innerHTML = `<div class="plan"><b>Your link:</b> <code style="word-break:break-all">${esc(v.link)}</code> <button class="btn sm" id="invCopy">Copy</button></div>`
+      + `<div class="cost" style="margin-top:6px">${v.rewardedThisSeason} of ${v.cap} bonuses earned this season${v.invited.length ? ' · ' + v.invited.map((x) => `${esc(x.name?.quoted)} (${esc(st[x.status] || x.status)})`).join(', ') : ''}</div>`;
+    $('invCopy').onclick = async () => { try { await navigator.clipboard.writeText(v.link); say('invMsg', 'Copied.', 'ok'); } catch { prompt('Copy your invite link', v.link); } };
+  } catch {}
 }
 
 const KIND_LABEL = { festival: 'Festival in a district', freeFerry: 'Free sky ferry', curfew: 'Casino curfew', jobsDrive: 'Jobs drive' };
