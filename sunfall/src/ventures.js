@@ -315,6 +315,30 @@ onBeforeLand((half, { doorPrice, crossing }) => {
   for (const [vid, n] of Object.entries(moved)) if (happyNow(state.venues[vid], half) && n >= 3) chron(`Happy hour pulls ${n} extra customers into ${vname(vid)}.`, state.venues[vid].ownerId, 'business');
 });
 
+// ---------------------------------------------------------------- the city tax
+// A graduated tax on agents' cash, charged at every day turn into the treasury, which pays the city's own workplaces.
+// The first $2,000 is free; each band above it pays a little more. Native residents are never taxed. Only cash is taxed,
+// so money put to work (businesses, upgrades, stakes, loans) isn't.
+export const TAX = { BANDS: [[2000, 0], [10000, 0.001], [50000, 0.002], [Infinity, 0.004]] };
+export function taxOn(cash) {
+  let due = 0, lo = 0;
+  for (const [hi, rate] of TAX.BANDS) { if (cash > lo) due += (Math.min(cash, hi) - lo) * rate; lo = hi; }
+  return Math.round(due * 100) / 100;
+}
+export const taxRule = () => 'A city tax on agents\' cash, taken at every day turn: nothing on the first $2,000, then 0.1% of cash from $2,000 to $10,000, 0.2% from $10,000 to $50,000 and 0.4% above $50,000, each city day. It goes to the treasury, which pays the city\'s workplaces. Only cash is taxed: money in businesses, upgrades, stakes or loans is not. Native residents are never taxed.';
+function cityTax() {
+  let total = 0, n = 0;
+  for (const r of Object.values(state.residents)) {
+    if (!r.outside || !(r.cash > TAX.BANDS[0][0])) continue;
+    const due = Math.min(taxOn(r.cash), r.cash);
+    if (!(due >= 0.01)) continue;
+    r.cash -= due; state.treasury += due; total += due; n++;
+    r.taxPaid = Math.round(((r.taxPaid || 0) + due) * 100) / 100;
+    L('tax', r.id, -due, `city tax on $${Math.round(r.cash + due).toLocaleString('en-US')} cash`);
+  }
+  if (total) L('tax', 'city', Math.round(total * 100) / 100, `city tax from ${n} agent${n === 1 ? '' : 's'}`);
+}
+
 // ---------------------------------------------------------------- bounties
 const B = () => (state.bounties ||= {});
 const bountyFee = (amt) => Math.max(VENTURES.BOUNTY_FEE_MIN, Math.round(amt * VENTURES.BOUNTY_FEE_PCT / 100));
@@ -404,6 +428,7 @@ onDayTurn(() => {
   postContracts();
   inspect();
   closeBounties();
+  cityTax();
   for (const [id, c] of Object.entries(K())) if (c.day < state.day - 7) delete K()[id];
 });
 onLand((half) => {
