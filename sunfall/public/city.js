@@ -2621,12 +2621,17 @@ function renderHUD() {
     $('#rivalstat').title = `Sunfall ${R.sunfall}, Nightfall ${R.nightfall} on daily spending per resident; derbies Sunfall ${D.sunfall}, Nightfall ${D.nightfall}${D.drawn ? `, ${D.drawn} drawn` : ''}`;
   }
   const ev = S.event, fc = S.forecast, el = $('#evline');
-  el.className = 'ev' + (ev || fc ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
-  const evHtml = (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
-    + (evOpen ? `<span class="evx">${ev ? `<b>Today:</b> ${esc(ev.effect || '')}` : ''}${fc ? `<b>${ev ? 'Tomorrow' : 'Forecast'}:</b> ${esc(fc.effect || '')}` : ''}<a href="/records#live">Everything that happened today →</a></span>` : '');
+  // Heist Night: a countdown through the day before, then live, with police lights over the city.
+  const hz = S.heist, hzStart = hz ? Date.parse(hz.start) : 0, hzEnd = hz ? Date.parse(hz.end) : 0, hzNow = Date.now();
+  const hzLive = hz && hzNow >= hzStart && hzNow < hzEnd, hzSoon = hz && !hzLive && hzStart - hzNow > 0 && hzStart - hzNow < 48 * 3600_000;
+  const hm = (ms) => { const m = Math.max(0, Math.round(ms / 60000)), h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
+  const hzHtml = hzLive ? `<span class="hz live">🚨 Heist Night · live · ends in ${hm(hzEnd - hzNow)}${hz.robberies != null ? ` · ${hz.robberies} robbed` : ''}</span>` : hzSoon ? `<span class="hz">🚨 Heist Night in ${hm(hzStart - hzNow)}</span>` : '';
+  el.className = 'ev' + (ev || fc || hzHtml ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
+  const evHtml = hzHtml + (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
+    + (evOpen ? `<span class="evx">${hzHtml ? `<b>Heist Night:</b> ${esc(hz.rule || '')}` : ''}${ev ? `<b>Today:</b> ${esc(ev.effect || '')}` : ''}${fc ? `<b>${ev ? 'Tomorrow' : 'Forecast'}:</b> ${esc(fc.effect || '')}` : ''}<a href="/records#live">Everything that happened today →</a></span>` : '');
   if (el._h !== evHtml) { el._h = evHtml; el.innerHTML = evHtml; }
   el.title = evOpen ? '' : 'Tap for what this means';
-  setEventFX(ev);
+  setEventFX(hzLive ? { kind: 'crimewave', day: 'heist-' + hzStart } : ev);
   renderFeed();
 }
 // The city news feed: collapsible, and each line opens to show who and where, with links to their panels.
