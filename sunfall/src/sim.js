@@ -21,6 +21,7 @@ export const CFG = {
   START_CASH: 250,
   CITY_WAGE_PCT: 80, // the city's own workplaces and venues pay this % of a trade's wage (cut from 100% on 21 Nov 2026 to rebuild the treasury)
   SKY_MINT_TO: 60000, // the one-off Sky Mint grant tops the treasury up to this (21 Nov 2026)
+  TREASURY_FLOOR: 10000, // the Sky Mint's standing backstop: the treasury is topped back up to this whenever it falls below it
   WAGE_OVERDRAFT: 150000, // wages are always paid: the treasury may go this far below zero for payroll only, repaid by rent, till sweeps and the Monday reset
   DECISION_COST: 3,
   DECISIONS_PER_HOUR: Number(process.env.DECISIONS_PER_HOUR) || 10,
@@ -1034,6 +1035,19 @@ export function tick(now = Date.now()) {
   for (const s of SLOTS) if (c2.hour >= s.h && !landed(s.k)) runSlot(s.k);
   footballTick(now);
   gridironTick(now);
+  treasuryBackstop();
+}
+// The Sky Mint's backstop: whatever happened this tick, the treasury never stays below CFG.TREASURY_FLOOR.
+// City cash only (never HYPE, never to an agent); each top-up is a ledger line, and state.skyMint keeps the running total.
+export function treasuryBackstop() {
+  if (!(state.treasury < CFG.TREASURY_FLOOR)) return 0;
+  const grant = Math.round((CFG.TREASURY_FLOOR - state.treasury) * 100) / 100;
+  state.treasury += grant;
+  state.skyMint ||= { day: state.day, t: Date.now(), grant: 0 };
+  state.skyMint.backstop = Math.round(((state.skyMint.backstop || 0) + grant) * 100) / 100;
+  state.skyMint.lastBackstop = { day: state.day, t: Date.now(), grant };
+  L('grant', 'city', grant, `the Sky Mint topped the treasury back up to $${CFG.TREASURY_FLOOR.toLocaleString('en-US')}`);
+  return grant;
 }
 function runSlot(k) {
   state.done.push(k);
