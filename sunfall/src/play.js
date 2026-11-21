@@ -118,6 +118,14 @@ export function migrate() {
   removeAgents();
   purgeAgents();
   if (!Object.values(state.loans).some((l) => l.lender === 'city' && l.status === 'open')) cityBank();
+  if (!state.skyMint) { // once: the Sky Mint tops the treasury up after the wage overdraft ran it down (21 Nov 2026)
+    const grant = Math.max(0, Math.round(CFG.SKY_MINT_TO - state.treasury));
+    state.treasury += grant; state.skyMint = { day: state.day, t: Date.now(), grant };
+    if (grant) {
+      L('grant', 'city', grant, 'the Sky Mint: a one-off grant to the treasury');
+      chron(`The Sky Mint pours $${grant.toLocaleString('en-US')} into the city treasury. The city's own workplaces now pay ${CFG.CITY_WAGE_PCT}% of the usual wage to keep it full.`, null, 'event');
+    }
+  }
   if (process.env.FORCE_EVENT) { const [kind, district] = process.env.FORCE_EVENT.split(':'); state.event = { kind, district: district || null, day: state.day }; } // testing only
 }
 
