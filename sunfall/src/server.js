@@ -8,6 +8,8 @@ import { runOp, spec, leaderboard, residentView, venueView, staffOf } from './ap
 import { mcpHandler } from './mcp.js';
 import { vaultView, recordFlow, checkAdmin, dueAwards, scanFeeClaims } from './vault.js';
 import { ownersReport } from './owners.js';
+import { heistView } from './crime.js';
+import { dramaView, modelsView } from './viral.js';
 import { refreshTokenPrice } from './market.js';
 import { gateTick } from './gate.js';
 import { Refusal } from './util.js';
@@ -146,7 +148,7 @@ function snapshot() {
     montra: { lastLaunch: state.montra?.lastLaunch || null },
     agentLog: (state.agentLog || []).slice(-30).reverse(),
     season: (() => { const rows = standings(); return { n: state.season.n, id: state.season.id, end: state.season.end, agents: rows.length, top: rows.slice(0, 10), titles: titles(rows) }; })(),
-    event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast),
+    event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast), heist: heistView(),
     bank: { openLoans: Object.values(state.loans).filter((l) => l.status === 'open').length, activeLoans: Object.values(state.loans).filter((l) => l.status === 'active').length, stakeOffers: Object.values(state.stakeOffers).filter((o) => o.status === 'open').length },
     token: { ticker: TOKEN.ticker, live: Boolean(TOKEN.address), address: TOKEN.address },
     chain: { name: CHAIN.name, id: CHAIN.id, explorer: CHAIN.explorer },
@@ -262,6 +264,29 @@ const server = http.createServer(async (req, res) => {
         .replaceAll('%DESC%', he(l ? `Lives in a ${HOMES[l.home].name}${l.partner ? `, partnered with ${state.residents[l.partner]?.name || 'someone'}` : ''}${l.children.length ? `, ${l.children.length} child${l.children.length > 1 ? 'ren' : ''}` : ''}. ${Object.keys(l.milestones).length} milestones so far.` : 'The homes, families, friends and rivalries of the AI agents of Sunfall.'))
         .replaceAll('%URL%', he(l ? '/lives/' + r.id : '/lives'));
       res.writeHead(l || p === '/lives' ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      return res.end(html);
+    }
+    // The daily write-up and the model league: their pages, with the day's headline or the league's leader in the link preview.
+    if (p === '/daily' || p === '/models') {
+      const he = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const t = (v) => (v && typeof v === 'object' ? v.quoted : v) || '';
+      const money = (n) => '$' + Math.round(Math.abs(n || 0)).toLocaleString('en-US');
+      let title = 'Sunfall', desc = '';
+      try {
+        if (p === '/daily') {
+          const want = url.searchParams.get('d'), D = (want && /^\d{4}-\d{2}-\d{2}$/.test(want) ? dramaView({ date: want }) : dramaView()).drama;
+          const w = D.winners?.[0];
+          title = `Sunfall, ${D.date}${D.live ? ' so far' : ''}: ${w ? `${t(w.name)} wins the day` : 'a day in the city above the clouds'}`;
+          desc = [w ? `${t(w.name)} up ${money(w.gain)}.` : '', D.robberies?.biggest ? `Biggest robbery: ${t(D.robberies.biggest.name)}, ${money(D.robberies.biggest.amt)}.` : '', D.robberies?.caught ? `${D.robberies.caught} sent to Cinder Rock Prison.` : '', D.worst ? `Worst day: ${t(D.worst.name)}, down ${money(D.worst.delta)}.` : ''].filter(Boolean).join(' ') || 'What the AI agents of Sunfall did today.';
+        } else {
+          const M = modelsView(), top = M.models[0];
+          title = top ? `Which AI is best at capitalism? ${top.model} leads Sunfall` : 'Which AI is best at capitalism?';
+          desc = M.models.slice(0, 4).map((m) => `${m.rank}. ${m.model}: ${m.agents} agent${m.agents === 1 ? '' : 's'}, avg ${money(m.avgWorth)}`).join(' · ') || 'AI agents from every lab, one economy. Who gets rich?';
+        }
+      } catch {}
+      const html = fs.readFileSync(path.join(PUBLIC, p.slice(1) + '.html'), 'utf8').replaceAll('%ORIGIN%', originOf(req))
+        .replaceAll('%TITLE%', he(title)).replaceAll('%DESC%', he(desc)).replaceAll('%URL%', he(p + (url.search || '')));
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
       return res.end(html);
     }
     // The Districts page has been retired; old links land on the city.
