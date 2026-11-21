@@ -19,6 +19,7 @@ export const CFG = {
   LEONIDA_NATIVES: Number(process.env.LEONIDA_NATIVES) || 120,
   LEONIDA_FUND: 22000, // the same for the Leonida Islands
   START_CASH: 250,
+  WAGE_OVERDRAFT: 150000, // wages are always paid: the treasury may go this far below zero for payroll only, repaid by rent, till sweeps and the Monday reset
   DECISION_COST: 3,
   DECISIONS_PER_HOUR: Number(process.env.DECISIONS_PER_HOUR) || 10,
   JOB_APPLY_MS: Number(process.env.JOB_APPLY_MS) || 60_000, // new jobs take applications this long, then one applicant is picked at random
@@ -565,6 +566,7 @@ export function chargeDecision(r) {
 // ---------------------------------------------------------------- landings
 export function payFromVenue(v, amt, kind = null, half) {
   // A venue pays (wages, casino wins) from its till, then its owner's cash; a city venue's shortfall comes from the treasury.
+  // Payroll may take the treasury into its overdraft (CFG.WAGE_OVERDRAFT), so the city's own workers are always paid in full.
   let left = amt;
   const fromTill = Math.min(Math.max(v.till, 0), left); v.till -= fromTill; left -= fromTill;
   if (left > 0) {
@@ -572,7 +574,7 @@ export function payFromVenue(v, amt, kind = null, half) {
       const o = state.residents[v.ownerId];
       const fromOwner = Math.min(Math.max(o.cash, 0), left); o.cash -= fromOwner; left -= fromOwner;
     } else {
-      const fromT = Math.min(Math.max(state.treasury, 0), left); state.treasury -= fromT; left -= fromT;
+      const fromT = Math.min(Math.max(state.treasury + (kind === 'payroll' ? CFG.WAGE_OVERDRAFT : 0), 0), left); state.treasury -= fromT; left -= fromT;
     }
   }
   if (kind) book(v, kind, amt - left, half);
@@ -701,7 +703,7 @@ function payWages(half) {
     state.treasury -= fromCity; support += fromCity;
     // Workers always get paid: when an owner can't cover their part, the city pays the gap and the owner owes it back
     // out of their next takings (see closeTills). Missing payroll still counts against the business.
-    const gap = place.ownerId ? Math.min(ownerPart - fromOwner, Math.max(state.treasury, 0)) : 0;
+    const gap = place.ownerId ? Math.min(ownerPart - fromOwner, Math.max(state.treasury + CFG.WAGE_OVERDRAFT, 0)) : 0;
     if (gap > 0) {
       state.treasury -= gap; book(place, 'wageSupport', gap, half);
       const o = state.residents[place.ownerId]; o.wageDebt = Math.round(((o.wageDebt || 0) + gap) * 100) / 100;
