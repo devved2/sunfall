@@ -19,6 +19,8 @@ export const CFG = {
   LEONIDA_NATIVES: Number(process.env.LEONIDA_NATIVES) || 120,
   LEONIDA_FUND: 22000, // the same for the Leonida Islands
   START_CASH: 250,
+  CITY_WAGE_PCT: 80, // the city's own workplaces and venues pay this % of a trade's wage (cut from 100% on 21 Nov 2026 to rebuild the treasury)
+  SKY_MINT_TO: 60000, // the one-off Sky Mint grant tops the treasury up to this (21 Nov 2026)
   WAGE_OVERDRAFT: 150000, // wages are always paid: the treasury may go this far below zero for payroll only, repaid by rent, till sweeps and the Monday reset
   DECISION_COST: 3,
   DECISIONS_PER_HOUR: Number(process.env.DECISIONS_PER_HOUR) || 10,
@@ -688,13 +690,15 @@ export const supportFactor = () => Math.max(0, Math.min(1, (state.treasury - CFG
 export const wageSupportOn = () => supportFactor() > 0;
 // What an owner pays of a venue's payroll while wage support is on: less under the Nightfall charter.
 export const ownerPayrollShare = (v) => (v.ownerId && state.residents[v.ownerId]?.outside && cityOfDistrict(v.district) === 'nightfall' ? NIGHTFALL.CHARTER_OWNER_SHARE : CFG.OWNER_PAYROLL_SHARE);
+/** What a resident is paid per shift: the trade's wage at an agent-owned business, CFG.CITY_WAGE_PCT of it at the city's own. */
+export const wageOf = (r, v = state.venues[r.workplace]) => (v && !v.ownerId ? Math.round(TRADES[r.trade].wage * CFG.CITY_WAGE_PCT) / 100 : TRADES[r.trade].wage);
 function payWages(half) {
   const agg = {}, short = {}, owed = {};
   let support = 0;
   for (const r of Object.values(state.residents)) {
     if (shiftFor(r) !== half) continue;
-    const wage = TRADES[r.trade].wage;
     const place = state.venues[r.workplace];
+    const wage = wageOf(r, place);
     const share = ownerPayrollShare(place), f = supportFactor();
     const ownerPart = place.ownerId ? Math.round(wage * (share + (1 - share) * (1 - f)) * 100) / 100 : wage;
     const fromOwner = payFromVenue(place, ownerPart, 'payroll', half);
