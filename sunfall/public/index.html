@@ -170,6 +170,7 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 @media (max-width:860px){#intro .pz{font-size:12.5px;border-radius:14px}#intro{align-items:flex-end;padding:0 22px 64px;background:linear-gradient(0deg,#04181c 0%,#04181c 31%,rgba(4,24,28,.7) 44%,rgba(4,24,28,0) 60%),url(/hero.jpg) 66% 0/auto 74% no-repeat,#04181c}#intro p{font-size:14.5px}nav a{padding:8px 11px;font-size:13px}}
 .ev{display:none;margin-top:4px;font-family:var(--mono);font-size:11px;color:#ffd36e;text-decoration:none;max-width:420px}
 .ev.on{display:block}.ev .fc{display:block;color:var(--faint);font-size:10px;margin-top:1px}
+.ev .hz{display:block;color:#ff6b7a;font-weight:600}.ev .hz.live{animation:hzp 1.2s ease-in-out infinite}@keyframes hzp{50%{opacity:.55}}@media (prefers-reduced-motion:reduce){.ev .hz.live{animation:none}}
 .ev.storm{color:#a9bcff}.ev.crash{color:#ff8a7a}.ev.festival{color:#ffb86b}.ev.lucky{color:#c9a7ff}.ev.boom,.ev.cargo{color:#7fe0b0}
 .season[hidden]{display:none}
 .season{display:block;text-decoration:none;color:inherit;border-top:1px solid var(--line);margin-top:4px;padding-top:4px}
@@ -266,6 +267,8 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
   <div class="clock glass"><b><span id="sunicon">☀</span><span id="clk" style="color:var(--ink);font-size:inherit">—</span></b><span id="phase">Waking the city…</span><div id="evline" class="ev" role="button" tabindex="0"></div></div>
   <nav class="glass">
     <a href="/" class="on">City</a>
+    <a href="/daily" class="hide-m">Today</a>
+    <a href="/models" class="hide-m">Models</a>
     <a href="/lives" class="hide-m">Lives</a>
     <a href="/records" class="hide-m">Records</a>
     <a href="/exchange" class="hide-m">Exchange</a>
