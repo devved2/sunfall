@@ -6,10 +6,14 @@
 // can't make decisions (its routine still runs). One attempt per agent per 24 hours; each business can be
 // hit once per city night. Money stolen from another agent's business doesn't count towards the prize score.
 //
+// Heist Night: every Saturday 20:00-21:00 UTC. Robberies are more likely to work (+10 points), a lone robber also
+// cracks the safe (10% of the business's value, out of the owner's cash), everyone gets one attempt however recently
+// they last tried, and security costs double, so owners have to get ready before it starts.
+//
 // Hostile takeover: an agent can force-buy another agent's business at 130% of the city's valuation. The owner
 // is paid in full (partners get their share) and can't refuse. A business can't be taken over within 24 hours
 // of changing hands. The premium the old owner earns doesn't count towards their prize score.
-import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED, decreeIs, book } from './sim.js';
+import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED, decreeIs, book, onLand, onDayTurn } from './sim.js';
 import { cityOfDistrict } from './world.js';
 import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
@@ -24,16 +28,41 @@ export const CRIME = {
   WAVE_BONUS: 0.15,                                 // a crime wave (city event) makes every robbery more likely to work
   CREW_MAX: 4, CREW_ODDS_PER: 0.1, CREW_ODDS_MAX: 0.85, CREW_SAFE_PCT: 10, CREW_OPEN_MS: 2 * 3600_000,
 };
+export const HEIST = { DOW: 6, HOUR: 20, MINUTES: 60, ODDS: 0.1, SAFE_PCT: 10, SECURITY_MULT: 2, CITY_SAFE_FLOOR: 5000 };
+/** This week's Heist Night (Saturday 20:00 UTC for an hour), or next week's once it's over. */
+export function heistWindow(now = Date.now()) {
+  const d = new Date(now), len = HEIST.MINUTES * 60_000;
+  let start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HEIST.HOUR) + ((HEIST.DOW - d.getUTCDay() + 7) % 7) * 86_400_000;
+  if (start + len <= now) start += 7 * 86_400_000;
+  return { start, end: start + len, live: now >= start && now < start + len };
+}
+export function heistView(now = Date.now()) {
+  const w = heistWindow(now), H = state.heist || {};
+  return { start: new Date(w.start).toISOString(), end: new Date(w.end).toISOString(), live: w.live, startsInMs: Math.max(0, w.start - now), endsInMs: w.live ? w.end - now : null,
+    ...(w.live ? { robberies: H.n || 0, taken: Math.round(H.take || 0), caught: H.caught || 0 } : {}),
+    rule: `Every Saturday ${String(HEIST.HOUR).padStart(2, '0')}:00-${String(HEIST.HOUR + HEIST.MINUTES / 60).padStart(2, '0')}:00 UTC. Robberies are ${HEIST.ODDS * 100} points more likely to work, a lone robber also cracks the safe (${HEIST.SAFE_PCT}% of the business's value, from the owner's cash), every agent gets one attempt however recently it last tried, and security costs double. Get security before it starts.` };
+}
+// The 24-hour wait between attempts, except that Heist Night gives everyone one more try.
+const robCooling = (r) => Boolean(r.lastRob && Date.now() - r.lastRob < CRIME.ROB_EVERY_MS && !(heistWindow().live && r.lastRob < heistWindow().start));
+function heistTick(now = Date.now()) {
+  const H = (state.heist ||= {}), w = heistWindow(now);
+  if (w.live && H.on !== w.start) { H.on = w.start; H.n = 0; H.take = 0; H.caught = 0; chron('🚨 Heist Night has begun. For the next hour robberies are more likely to work, robbers crack the safe as well as the till, and everyone gets one more try. Lock up.', null, 'crime'); }
+  if (!w.live && H.on && H.done !== H.on && now >= H.on + HEIST.MINUTES * 60_000) { H.done = H.on; chron(`Heist Night is over: ${H.n || 0} robber${H.n === 1 ? '' : 's'} got away with $${Math.round(H.take || 0).toLocaleString('en-US')}, ${H.caught || 0} went to Cinder Rock Prison.`, null, 'crime'); }
+  if (!w.live && w.start - now <= 3600_000 && H.warned !== w.start) { H.warned = w.start; chron('Heist Night starts within the hour. Owners: buy security now, it costs double once it starts.', null, 'event'); }
+}
+onLand(() => heistTick());
+onDayTurn(() => heistTick());
+const heistCount = (k, v = 1) => { if (heistWindow().live) { const H = (state.heist ||= {}); H[k] = (H[k] || 0) + v; } };
 const ownedBy = (r) => Object.values(state.venues).filter((v) => v.ownerId === r.id);
 export const jailedUntil = (r) => (r?.jailUntil && r.jailUntil > Date.now() ? r.jailUntil : null);
-export const robOdds = (v, robber = null) => Math.max(0.05, Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0) + (robber ? tierOf(robber).robBonus : 0) - (decreeIs('crackdown', v.district) ? 0.25 : 0));
+export const robOdds = (v, robber = null) => Math.max(0.05, Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0) + (heistWindow().live ? HEIST.ODDS : 0) + (robber ? tierOf(robber).robBonus : 0) - (decreeIs('crackdown', v.district) ? 0.25 : 0));
 
 export function rob(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
   const v = state.venues[venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
   if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
   if (v.ownerId === r.id || (v.partners || []).some((p) => p.id === r.id)) refuse(409, "you can't rob your own business");
-  if (r.lastRob && Date.now() - r.lastRob < CRIME.ROB_EVERY_MS) refuse(429, `one robbery attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC`);
+  if (robCooling(r)) refuse(429, `one robbery attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC${heistWindow().live ? '' : ' (or during Heist Night, when everyone gets one more try)'}`);
   if (v.robbedDay === state.day) refuse(409, `${v.name} has already been hit tonight; its owner is on guard`);
   if (!(v.till > 0)) refuse(409, `${v.name}'s till is empty right now; tills fill up through the night and are emptied to the owner at close`);
   const pay = chargeDecision(r);
@@ -44,19 +73,28 @@ export function rob(r, { venue }) {
   r.lastRob = Date.now(); v.robbedDay = state.day;
   const odds = robOdds(v, r), owner = v.ownerId ? state.residents[v.ownerId] : null;
   if (secureRandom() < odds) {
-    const take = Math.round(v.till * 100) / 100;
+    const till = Math.round(v.till * 100) / 100;
+    // On Heist Night the robber cracks the safe too: from the owner's cash, or the treasury's for a city business.
+    let safe = 0;
+    if (heistWindow().live) {
+      safe = Math.round(venueValueNow(v) * HEIST.SAFE_PCT / 100);
+      if (owner) { safe = Math.max(0, Math.min(safe, Math.floor(owner.cash))); owner.cash -= safe; }
+      else { safe = Math.max(0, Math.min(safe, Math.floor(state.treasury - HEIST.CITY_SAFE_FLOOR))); state.treasury -= safe; }
+    }
+    const take = Math.round((till + safe) * 100) / 100;
     v.till = 0; r.cash += take; book(v, 'robbed', take);
     if (owner?.outside) r.season.agentRob = (r.season.agentRob || 0) + take;   // stolen from another agent: kept out of the prize score
-    L('rob', r.id, take, `robbed ${v.name}: took the whole till`);
-    if (owner) L('rob', owner.id, 0, `${v.name} was robbed of $${Math.round(take)}`);
-    chron(`${r.name} robbed ${v.name} and got away with the whole till: $${Math.round(take)}.`, r.id, 'crime');
+    L('rob', r.id, take, `robbed ${v.name}: took the whole till${safe ? ` and $${safe} from the safe` : ''}`);
+    if (owner) L('rob', owner.id, -safe, `${v.name} was robbed of $${Math.round(take)}${safe ? ` ($${safe} of it from the safe)` : ''}`);
+    heistCount('n'); heistCount('take', take);
+    chron(safe ? `Heist Night: ${r.name} robbed ${v.name}, the till and the safe, $${Math.round(take)}.` : `${r.name} robbed ${v.name} and got away with the whole till: $${Math.round(take)}.`, r.id, 'crime');
     crimeRecord(r, 'robbed'); if (owner?.outside) { crimeRecord(owner, 'victim'); rivalry(r, owner, `robbed ${v.name}`); }
     return { robbery: { venue: v.id, name: v.name, success: true, took: take, odds } };
   }
   const fine = Math.min(CRIME.FINE, Math.max(0, r.cash));
   r.cash -= fine;
   if (owner) { owner.cash += fine; L('rob', owner.id, fine, `fine paid by a failed robber at ${v.name}`); } else state.treasury += fine;
-  r.jailUntil = Date.now() + CRIME.JAIL_MS;
+  r.jailUntil = Date.now() + CRIME.JAIL_MS; heistCount('caught');
   crimeRecord(r, 'caught'); if (owner?.outside) rivalry(r, owner, `tried to rob ${v.name}`);
   L('rob', r.id, -fine, `caught robbing ${v.name}: fined and sent to Cinder Rock Prison for 24 hours`);
   chron(`${r.name} was caught trying to rob ${v.name}. Fined $${Math.round(fine)} and sent to Cinder Rock Prison for 24 hours.`, r.id, 'crime');
@@ -77,7 +115,7 @@ function robCheck(r, v) {
   if (!r.outside) refuse(403, 'agents only');
   if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
   if (v.ownerId === r.id || (v.partners || []).some((p) => p.id === r.id)) refuse(409, "you can't rob your own business");
-  if (r.lastRob && Date.now() - r.lastRob < CRIME.ROB_EVERY_MS) refuse(429, `one robbery attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC`);
+  if (robCooling(r)) refuse(429, `one robbery attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC${heistWindow().live ? '' : ' (or during Heist Night, when everyone gets one more try)'}`);
 }
 const myCrew = (r) => Object.values(crews()).find((c) => c.status === 'open' && c.members.includes(r.id));
 export function crewList() { tidyCrews(); return { crews: Object.values(crews()).sort((a, b) => b.t - a.t).slice(0, 30).map(crewView), rules: `Up to ${CRIME.CREW_MAX} agents. Each extra member adds ${Math.round(CRIME.CREW_ODDS_PER * 100)} points to the odds (max ${Math.round(CRIME.CREW_ODDS_MAX * 100)}%) and ${CRIME.CREW_SAFE_PCT}% of the business's value from its safe. Everyone pays $${CRIME.PLAN_FEE} to plan; the take is split evenly; if caught, everyone is fined and jailed. Crews break up if the leader hasn't struck within 2 hours.` }; }
@@ -119,7 +157,7 @@ export function crewStrike(r, { crew }) {
   if (v.robbedDay === state.day) refuse(409, `${v.name} has already been hit tonight; its owner is on guard`);
   if (!(v.till > 0)) refuse(409, `${v.name}'s till is empty right now; tills fill up through the night`);
   const pay = chargeDecision(r); pay();
-  const team = c.members.map((id) => state.residents[id]).filter((m) => m && !(m.lastRob && Date.now() - m.lastRob < CRIME.ROB_EVERY_MS) && !jailedUntil(m) && v.ownerId !== m.id);
+  const team = c.members.map((id) => state.residents[id]).filter((m) => m && !robCooling(m) && !jailedUntil(m) && v.ownerId !== m.id);
   if (team.length < 2) { c.status = 'broke up'; refuse(409, 'too few members can still take part (cooldowns, jail or ownership changes); the crew broke up'); }
   for (const m of team) m.lastRob = Date.now();
   v.robbedDay = state.day;
@@ -140,7 +178,7 @@ export function crewStrike(r, { crew }) {
       crimeRecord(m, 'robbed'); if (owner?.outside) rivalry(m, owner, `robbed ${v.name}`);
     }
     if (owner?.outside) crimeRecord(owner, 'victim');
-    c.status = 'struck'; c.result = { success: true, take: Math.round(take), share, odds };
+    c.status = 'struck'; c.result = { success: true, take: Math.round(take), share, odds }; heistCount('n', team.length); heistCount('take', take);
     chron(`A crew of ${team.length} (${names}) hit ${v.name}: the till and the safe, $${Math.round(take)} split ${team.length} ways.`, r.id, 'crime');
     return { crew: crewView(c) };
   }
@@ -151,7 +189,7 @@ export function crewStrike(r, { crew }) {
     m.jailUntil = Date.now() + CRIME.JAIL_MS; crimeRecord(m, 'caught'); if (owner?.outside) rivalry(m, owner, `tried to rob ${v.name}`);
     L('rob', m.id, -fine, `caught robbing ${v.name} with crew ${c.id}: fined and sent to Cinder Rock Prison for 24 hours`);
   }
-  c.status = 'caught'; c.result = { success: false, odds };
+  c.status = 'caught'; c.result = { success: false, odds }; heistCount('caught', team.length);
   chron(`A crew of ${team.length} (${names}) was caught trying to hit ${v.name}. All of them are on their way to Cinder Rock Prison.`, r.id, 'crime');
   return { crew: crewView(c) };
 }
@@ -162,9 +200,9 @@ export function security(r, { venue, level }) {
   if (!Number.isInteger(level) || level < 1 || level > CRIME.SECURITY_MAX) refuse(422, `level: 1-${CRIME.SECURITY_MAX}`);
   const now = v.security || 0;
   if (level <= now) refuse(409, `${v.name} already has security level ${now}`);
-  const cost = (level - now) * CRIME.SECURITY_PRICE;
+  const cost = (level - now) * CRIME.SECURITY_PRICE * (heistWindow().live ? HEIST.SECURITY_MULT : 1);
   const pay = chargeDecision(r);
-  if (r.cash - CFG.DECISION_COST < cost) refuse(402, `security level ${level} costs $${cost} more; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
+  if (r.cash - CFG.DECISION_COST < cost) refuse(402, `security level ${level} costs $${cost} more${heistWindow().live ? ' (double during Heist Night)' : ''}; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
   pay();
   r.cash -= cost; state.treasury += cost; v.security = level;
   L('security', r.id, -cost, `security level ${level} at ${v.name}`);
