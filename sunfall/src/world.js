@@ -1,4 +1,4 @@
-// Static geography of the world: Sunfall and, across the sky, Nightfall and the Leonida Islands. Sunfall's map space
+// Static geography of the world: Sunfall and, across the sky, Nightfall, the Leonida Islands and Montra Planet. Sunfall's map space
 // is 1000 x 700; Nightfall sits further east in the same map space (x 1540-2200) and the Leonida Islands to the south
 // (x 980-1860, y 1020-1620), each joined to the others by the sky ferry.
 
@@ -6,10 +6,11 @@ export const CITIES = [
   { id: 'sunfall', name: 'Sunfall', tagline: 'a world above the clouds', bounds: [0, 0, 1000, 700] },
   { id: 'nightfall', name: 'Nightfall', tagline: 'the city that never lands', bounds: [1520, 40, 2220, 660] },
   { id: 'leonida', name: 'Leonida Islands', tagline: 'sun, neon and bad decisions', bounds: [900, 940, 1940, 1700] },
+  { id: 'montra', name: 'Montra Planet', tagline: 'every block a launch', bounds: [2440, 0, 3160, 720] },
 ];
 export const cityById = (id) => CITIES.find((c) => c.id === id);
 // The sky ferry: moving house costs a fare, a night out in the other city a ticket.
-export const FERRY = { moveFare: 30, ticket: 6, pierSunfall: [990, 400], pierNightfall: [1530, 400], pierLeonida: [1180, 1010], pierLeonidaEast: [1700, 1010] };
+export const FERRY = { moveFare: 30, ticket: 6, pierSunfall: [990, 400], pierNightfall: [1530, 400], pierLeonida: [1180, 1010], pierLeonidaEast: [1700, 1010], pierNightfallEast: [2190, 360], pierMontra: [2530, 360] };
 
 export const DISTRICTS = [
   { id: 'flats', name: 'The Terraces', rent: 75, rect: [30, 40, 300, 300], tint: '#3a2f4a', city: 'sunfall' },
@@ -30,6 +31,14 @@ export const DISTRICTS = [
   { id: 'marina', name: 'Sunset Marina', rent: 165, rect: [1660, 1060, 160, 120], tint: '#2f3f55', city: 'leonida' },
   { id: 'bayou', name: 'Gator Bayou', rent: 45, rect: [1020, 1340, 160, 160], tint: '#33402a', city: 'leonida' },
   { id: 'port', name: 'Port Leonida', rent: 70, rect: [1620, 1420, 200, 160], tint: '#2f3a4a', city: 'leonida' },
+  // Montra Planet: a small world east of Nightfall, reached by rocket. The launchpad stands in the Launch Quarter at its
+  // heart; the rich live up in Graduation Heights, the nights run along the LP Line, rockets load at the Orbital Yards.
+  { id: 'heights', name: 'Graduation Heights', rent: 210, rect: [2540, 60, 520, 180], tint: '#2a3a5a', city: 'montra' },
+  { id: 'lpline', name: 'The LP Line', rent: 110, rect: [2540, 240, 160, 220], tint: '#3a2456', city: 'montra' },
+  { id: 'launchq', name: 'Launch Quarter', rent: 160, rect: [2700, 240, 200, 220], tint: '#1f3550', city: 'montra' },
+  { id: 'orbit', name: 'Orbital Yards', rent: 55, rect: [2900, 240, 160, 220], tint: '#33303a', city: 'montra' },
+  { id: 'genesis', name: 'Genesis Block', rent: 60, rect: [2540, 460, 260, 200], tint: '#2e2a40', city: 'montra' },
+  { id: 'pools', name: 'Pool Row', rent: 120, rect: [2800, 460, 260, 200], tint: '#233f48', city: 'montra' },
 ];
 export const cityOfDistrict = (id) => DISTRICTS.find((d) => d.id === id)?.city || 'sunfall';
 export const districtsOf = (city) => DISTRICTS.filter((d) => d.city === city);
@@ -109,9 +118,23 @@ export const PLACES = [
   ['w9', 'yard', 'Saltmarsh Freight', 'port', 1660, 1460, null],
   // Montra Tower on the Plaza: the city's tribute to Montra, the Elysium launchpad $SUNFALL launched on. Its top floor is a bar.
   ['v31', 'bar', 'Montra Sky Lounge', 'oldtown', 680, 320, null],
+  // Montra Planet
+  ['v32', 'bar', 'The First Block', 'lpline', 2600, 300, null],
+  ['v33', 'casino', 'The 142x', 'lpline', 2640, 410, null],
+  ['v34', 'bar', 'Anti-Snipe Lounge', 'heights', 2980, 140, 700],
+  ['v35', 'gym', 'Graduation Gym', 'heights', 2620, 150, null],
+  ['v36', 'market', 'Ticker Market', 'pools', 2880, 540, null],
+  ['v37', 'diner', 'Seed Liquidity Diner', 'genesis', 2640, 570, 550],
+  ['v38', 'diner', 'The Fee Tier', 'pools', 3000, 610, null],
+  ['w10', 'office', 'Montra Launch Control', 'launchq', 2800, 380, null],
+  ['w11', 'docks', 'Rocket Docks', 'orbit', 2980, 300, null],
+  ['w12', 'yard', 'Orbital Freight', 'orbit', 2980, 420, null],
 ];
 /** Landmark venues stay the city's: never listed in a fire sale. */
 export const LANDMARK_VENUES = new Set(['v31']);
+// Montra Planet's launchpad: agents who live on the planet launch coins here (see launchpad.js).
+export const MONTRA_PLANET = { pad: 'w10', name: 'Montra Planet', url: 'https://montramarkets.xyz/',
+  text: 'A planet for launches, named for Montra, the Elysium launchpad $SUNFALL launched on. Every coin launched here trades in its own pool from the first block, with locked seed liquidity and no bonding curve, the way Montra does it.' };
 export const MONTRA = { venue: 'v31', tower: 'Montra Tower', url: 'https://montramarkets.xyz/',
   text: '$SUNFALL launched on Montra, the house of all launches on Elysium. The tower on the Plaza honours it: its beacon lights up whenever a new agent moves in, Launchworks (LNCH) lists on the Exchange from its trading floor, and the Sky Lounge at the top is open every afternoon and night.' };
 export const placeCity = (p) => cityOfDistrict(p.district);
@@ -120,6 +143,9 @@ export const FIRST = ['Mara', 'Teo', 'Ines', 'Rafe', 'Odile', 'Juno', 'Cass', 'H
 // Names for the Leonida Islands' own residents.
 export const LEONIDA_FIRST = ['Marisol', 'Dante', 'Luz', 'Rico', 'Carmen', 'Tito', 'Yesenia', 'Manny', 'Inez', 'Rafa', 'Coral', 'Duke', 'Brandi', 'Junior', 'Lorena', 'Cesar', 'Tammy', 'Hector', 'Crystal', 'Wade', 'Nayeli', 'Bo', 'Paloma', 'Reggie'];
 export const LEONIDA_LAST = ['Reyes', 'Delgado', 'Fontaine', 'Boudreaux', 'Ortega', 'Pruitt', 'Salas', 'Mercado', 'Trahan', 'Vega', 'Caldwell', 'Navarro', 'Lafleur', 'Bautista', 'Hebert', 'Quintero'];
+// Names for Montra Planet's own residents.
+export const MONTRA_FIRST = ['Nova', 'Orion', 'Vega', 'Lyra', 'Zephyr', 'Astra', 'Cosmo', 'Atlas', 'Rhea', 'Kai', 'Io', 'Elara', 'Talon', 'Skye', 'Halley', 'Rigel', 'Mira', 'Soren', 'Celeste', 'Dax', 'Electra', 'Pax', 'Luna', 'Corin'];
+export const MONTRA_LAST = ['Kepler', 'Starling', 'Halcyon', 'Lumen', 'Voss', 'Drake', 'Corvin', 'Ashby', 'Marlow', 'Sable', 'Wilde', 'Fenn', 'Okoro', 'Rao', 'Strand', 'Quasar'];
 export const LAST = ['Okafor', 'Halloway', 'Vance', 'Moreau', 'Sato', 'Brennan', 'Castell', 'Duarte', 'Eklund', 'Farrow', 'Gage', 'Hart', 'Ilves', 'Jarrow', 'Kemp', 'Lind', 'Marsh', 'Nakamura', 'Oyelaran', 'Pike', 'Quarry', 'Rook', 'Stroud', 'Thorne', 'Ueda', 'Varga', 'Webb', 'Yeats', 'Zeller', 'Abara', 'Bastos', 'Crane', 'Delacroix', 'Ferro', 'Grieve', 'Holm'];
 
 export const LINES = {
@@ -135,6 +161,7 @@ export const LINES = {
   wage: ['payday, finally', 'long shift but the pay landed', 'wages in, spirits up'],
   broke: ['nothing left until payday', 'counting coins again', 'skipping dinner to make rent'],
   ferry: ['a night out across the sky', 'taking the ferry to Nightfall tonight', 'Nightfall stays up later than we do', 'heard the bars in Nightfall never close'],
+  montra: ['a rocket to Montra Planet tonight', 'watching coins launch on the big board', 'first-block drinks on Montra', 'the planet never sleeps', 'chasing the 16.8x on Montra'],
   leonida: ['sun, sand and one more round', 'beach day on the Ocean Strip', 'the islands are calling', 'flamingo cocktails at sunset', 'the ferry to Leonida, finally'],
 };
 // (The city view is built from these places; see public/city.js for how each island is drawn.)
