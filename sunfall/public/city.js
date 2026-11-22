@@ -32,12 +32,14 @@ const LEO_TOWNS = [[1215, 1134, 1545, 1306], [1655, 1054, 1825, 1186], [1015, 13
 // The islands' neon nights (built with the city, driven by the clock): towers outlined in neon and their light pooled on the wet streets.
 const leoFx = { edges: null, pools: null };
 const inTown = (x, y, m = 0) => LEO_TOWNS.some(([a, b, c, d]) => x > a - m && x < c + m && y > b - m && y < d + m);
-// Montra Planet: a fourth world east of Nightfall, its town on the same 40-unit grid on top of a small planet, reached by rocket.
-const MP = { x0: 2540, x1: 3060, y0: 60, y1: 660, cx: 2800, cy: 360 };
-const inMP = (x) => x > 2360;
-const PAD_TOWER = '2800,280'; // the launch tower stands on this block, by Montra Launch Control
-const PAD_PLAZA = new Set(['2760,280', '2840,280', '2760,320', '2800,320', '2840,320']); // kept clear round it, so the pad and the board can be seen
-const regionOf = (x, y) => (inLI(y) ? 'leonida' : inMP(x) ? 'montra' : inNF(x) ? 'nightfall' : 'sunfall');
+// Montra Planet: a fourth world floating beside the Sky Keep, north of Sunfall, its town on the same 40-unit grid on top
+// of a small black-and-gold planet, reached by rocket from Sunfall's north pier.
+const MP = { x0: 820, x1: 1340, y0: -740, y1: -140, cx: 1080, cy: -440 };
+const inMP = (x, y) => y < -100 && x > 760 && x < 1420;
+const PAD_TOWER = '1080,-520'; // the launch tower stands on this block, by Montra Launch Control
+const PAD_PLAZA = new Set(['1040,-520', '1120,-520', '1040,-480', '1080,-480', '1120,-480']); // kept clear round it, so the pad and the board can be seen
+const MONTRA_D = new Set(['heights', 'lpline', 'launchq', 'orbit', 'genesis', 'pools']);
+const regionOf = (x, y) => (inLI(y) ? 'leonida' : inMP(x, y) ? 'montra' : inNF(x) ? 'nightfall' : 'sunfall');
 const BOUNDS = { sunfall: [OFF, XMAX, OFF, YMAX], nightfall: [NF.x0, NF.x1, NF.y0, NF.y1], leonida: [LI.x0, LI.x1, LI.y0, LI.y1], montra: [MP.x0, MP.x1, MP.y0, MP.y1] };
 const snapX = (v, y = 0) => { const [a, b] = BOUNDS[regionOf(v, y)]; return clamp(OFF + GRID * Math.round((v - OFF) / GRID), a, b); };
 const snapY = (v, x = 0) => { const [, , a, b] = BOUNDS[regionOf(x, v)]; return clamp(OFF + GRID * Math.round((v - OFF) / GRID), a, b); };
@@ -239,14 +241,14 @@ const STYLE = {
   bayou: { k: 2, h: [5, 10], cols: ['#8a6e52', '#a08466', '#6f5a46', '#b49a78', '#8f7a62', '#c7b08a', '#9fb7a0', '#c98fa8', '#7fb3a8'], empty: 0.32, neon: 0.12 },
   port: { k: 1, h: [8, 15], cols: ['#8e9aa6', '#a6a096', '#7d8892', '#b0a48e', '#c9b9a0', '#9a8fb0'], chimney: 0.07, split: 0.3, neon: 0.22 },
   marina: { k: 1, h: [18, 54], cols: ['#ffffff', '#ffd6ec', '#c9fff4', '#e4d6ff', '#bfe9ff', '#ffc2dc'], neon: 0.65, split: 0.4, empty: 0.1 },
-  // Montra Planet: white glass towers on Graduation Heights, a violet neon strip on the LP Line, blue glass round the
-  // launchpad, teal blocks on Pool Row, low dark sheds at the Orbital Yards and the starter blocks of Genesis Block
-  heights: { k: 1, h: [60, 150], cols: ['#e6ecff', '#c8d4ff', '#eee6ff', '#b9c8f2', '#f4f7ff'], neon: 0.35, glass: true, split: 0.25 },
-  lpline: { k: 1, h: [24, 72], cols: ['#3e2660', '#52307a', '#2e2150', '#64388e', '#46286a'], neon: 0.95, split: 0.35 },
-  launchq: { k: 1, h: [16, 44], cols: ['#22406a', '#2a5282', '#336496', '#1c3254'], neon: 0.6, glass: true },
-  orbit: { k: 1, h: [8, 16], cols: ['#5c5a6a', '#4c4c5a', '#6c6678', '#55526a'], chimney: 0.4, neon: 0.15 },
-  genesis: { k: 2, h: [10, 26], cols: ['#4e4466', '#423e5a', '#5e5276', '#4a4262', '#6a5e86'], neon: 0.3 },
-  pools: { k: 2, h: [12, 32], cols: ['#2f6a78', '#3a8090', '#265a68', '#48949e', '#5fb2ba'], neon: 0.5 },
+  // Montra Planet, in Montra's own colours (black, chrome and gold, green for up and red for down): chrome and gold
+  // towers on Graduation Heights, and everywhere else half the blocks are giant candlesticks, green or red, wicks and all
+  heights: { k: 1, h: [60, 160], cols: ['#f2f2f2', '#d4d4d4', '#e9b64a', '#ffd27a', '#b0b4ba', '#1a1a1a'], neon: 0.4, glass: true, split: 0.25, candle: 0.25 },
+  lpline: { k: 1, h: [24, 80], cols: ['#0a0a0a', '#161616', '#1f1f1f', '#e9b64a', '#2c2c2c'], neon: 0.95, split: 0.35, candle: 0.55 },
+  launchq: { k: 1, h: [16, 44], cols: ['#101010', '#e9b64a', '#1e1e1e', '#ffd27a'], neon: 0.6, glass: true, candle: 0.35 },
+  orbit: { k: 1, h: [8, 18], cols: ['#2c2c2c', '#444444', '#1e1e1e', '#6b6b6b'], chimney: 0.4, neon: 0.2, candle: 0.3 },
+  genesis: { k: 2, h: [10, 30], cols: ['#161616', '#2c2c2c', '#0a0a0a', '#e9b64a'], neon: 0.35, candle: 0.6 },
+  pools: { k: 2, h: [12, 34], cols: ['#1a1a1a', '#e9b64a', '#101010', '#d4d4d4'], neon: 0.5, candle: 0.6 },
 };
 const LEON = new Set(['strip', 'keys', 'marina', 'bayou', 'port']);
 const GRAND = '1400,1220'; // the Leonida Grand, the islands' pink art-deco tower, stands on this block
@@ -262,7 +264,7 @@ const ISLANDS = [
   { parts: [[340, 494, 985, 686]], depth: 220 },
   { parts: [[1535, 54, 2185, 666]], depth: 300, tex: [1520, 40], nf: true }, // Nightfall (tex: where its streets sit on the road texture)
   { parts: LEO_TOWNS, depth: 340, tex: [960, 1000], li: true }, // the Leonida Islands' towns (the island itself: see buildLeonida)
-  { parts: [[2535, 54, 3065, 666]], depth: 260, tex: [2520, 40], mp: true }, // Montra Planet's town (the planet under it: see buildMontra)
+  { parts: [[815, -746, 1345, -134]], depth: 260, tex: [800, -760], mp: true }, // Montra Planet's town (the planet under it: see buildMontra)
 ];
 // The islands' shore: the land above, a ring of sand around it, a ring of lagoon around that, and a coral lip.
 const SHORE = { sand: 26, lagoon: 40, lip: 6 };
@@ -270,10 +272,10 @@ const SHORE = { sand: 26, lagoon: 40, lip: 6 };
 const PRISON = { x0: -660, y0: 190, x1: -250, y1: 510, cx: -455, cy: 350, lift: -30, yard: [-380, 350], yardR: 30 };
 const LANDMARKS = [{ name: 'Central Park', x: 560, y: 120 }, { name: 'Montra Tower', x: 680, y: 320 }, { name: 'The Rift', x: 560, y: 480 }, { name: 'Skyport', x: 70, y: 520 }, { name: 'Sky Keep', x: 520, y: -330, h: 250 },
   { name: 'Cinder Rock Prison', x: -560, y: 350, h: PRISON.lift + 262, prison: true }, { name: 'Ferry to Nightfall', x: 1010, y: 400, h: 14 }, { name: 'Ferry to Sunfall', x: 1510, y: 400, h: 14 }, { name: 'NIGHTFALL', x: 1860, y: 360, h: 250, big: true },
-  { name: 'MONTRA PLANET', x: 2800, y: 360, h: 260, big: true }, { name: 'Rocket to Montra Planet', x: 2200, y: 360, h: 14 }, { name: 'Rocket to Nightfall', x: 2525, y: 360, h: 14 }, { name: 'Launchpad', x: 2800, y: 280, h: 120 },
+  { name: 'MONTRA PLANET', x: 1080, y: -440, h: 270, big: true }, { name: 'Rocket to Montra Planet', x: 900, y: 10, h: 14 }, { name: 'Rocket to Sunfall', x: 900, y: -140, h: 14 }, { name: 'Launchpad', x: 1080, y: -520, h: 120 },
   { name: 'LEONIDA ISLANDS', x: 1420, y: 1320, h: 250, big: true }, { name: 'Ferry to Leonida', x: 960, y: 735, h: 14 }, { name: 'Ferry to Leonida', x: 1700, y: 700, h: 14 },
   { name: 'Ferry to Sunfall', x: 1180, y: 955, h: 14 }, { name: 'Ferry to Nightfall', x: 1700, y: 955, h: 14 }, { name: 'Leonida Beach', x: 1300, y: 1690, h: 10 }, { name: 'Gator Swamp', x: 1000, y: 1620, h: 10 }, { name: 'The Keys', x: 760, y: 1900, h: 10 }, { name: 'Leonida Wheel', x: 1420, y: 985, h: 84 }, { name: 'Sunset Marina', x: 1900, y: 1160, h: 10 }];
-const SLAB = { heights: '#8f96b4', lpline: '#3a3048', launchq: '#4a5a72', orbit: '#4a4852', genesis: '#4a4458', pools: '#3e5e66', flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', strip: '#e9b6d2', keys: '#bfe4e6', marina: '#ddd2ef', bayou: '#5e6a4a', port: '#857f92', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
+const SLAB = { heights: '#2a2a2a', lpline: '#141414', launchq: '#3a2e12', orbit: '#1f1f1f', genesis: '#181818', pools: '#1c1c1c', flats: '#8d8496', hillside: '#7f9a6c', neon: '#8a80a6', oldtown: '#9a8a78', harbour: '#86939e', saltworks: '#8f8a86', strip: '#e9b6d2', keys: '#bfe4e6', marina: '#ddd2ef', bayou: '#5e6a4a', port: '#857f92', velvet: '#3e3448', halo: '#5a6072', undertow: '#4a4248', ashdock: '#4e4842' };
 const SPINDLE = '1880,360'; // Nightfall's centrepiece tower stands on this block
 const venueMeshes = [];
 const islandMeshes = []; // land and rock of each island, so a click on a city brings it into focus
@@ -294,7 +296,7 @@ function build() {
     const land = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 4, y1 - y0), [side, side, new THREE.MeshStandardMaterial({ map: t, roughness: 0.92, color: isl.li ? 0xeed2f2 : 0xffffff }), side, side, side]);
     land.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -2)); land.receiveShadow = true; scene.add(land);
     land.userData.city = isl.nf ? 'nightfall' : isl.li ? 'leonida' : isl.mp ? 'montra' : 'sunfall'; land.userData.top = true; islandMeshes.push(land);
-    const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: isl.li ? 0xe9d3a8 : isl.mp ? 0x3d3a5c : 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
+    const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: isl.li ? 0xe9d3a8 : isl.mp ? 0x14110a : 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
     if (isl.li || isl.mp) continue; // the islands' rock follows their coastline (buildLeonida); Montra's town sits on a planet (buildMontra)
     const rock = rockUnder(x0, y0, x1, y1, isl.depth, rnd); rock.userData.city = land.userData.city; islandMeshes.push(rock); scene.add(rock);
   }
@@ -312,7 +314,7 @@ function build() {
   const rndM = mulberry32(2026), rnd0 = rnd, rndL = mulberry32(1987); // the islands' blocks draw from their own stream, so Sunfall and Nightfall keep their layout
   for (const [cx, cy] of cells) {
     {
-      const rnd = inLI(cy) ? rndL : inMP(cx) ? rndM : rnd0;
+      const rnd = inLI(cy) ? rndL : inMP(cx, cy) ? rndM : rnd0;
       const key = `${cx},${cy}`;
       if (key === SPINDLE || key === GRAND || key === PAD_TOWER) continue;
       if (PAD_PLAZA.has(key)) { slabs.push([cx, cy, '#2c2b3c']); continue; }
@@ -331,6 +333,13 @@ function build() {
         const lx = cx - 14 + lot / 2 + a * (lot + 2), ly = cy - 14 + lot / 2 + b * (lot + 2);
         if (st.empty && rnd() < st.empty) { if (LEON.has(d.id)) { palms.push([lx, ly, 0.8 + rnd() * 0.45]); if (d.id === 'bayou' && rnd() < 0.5) bayouPools.push([lx, ly, lot]); } else trees.push([lx, ly, 1 + rnd() * 0.5]); continue; }
         if (d.id === 'neon') { let h = 55 + Math.pow(rnd(), 1.4) * 95; if (S.venues.some((v) => Math.hypot(v.x - lx, v.y - ly) < 120)) h = Math.min(h, 44); crystals.push([lx, ly, lot * (0.55 + rnd() * 0.3), h, st.cols[Math.floor(rnd() * st.cols.length)], rnd() * Math.PI]); if (rnd() < 0.6) crystals.push([lx + (rnd() - 0.5) * lot * 0.6, ly + (rnd() - 0.5) * lot * 0.6, lot * 0.3, h * (0.35 + rnd() * 0.3), st.cols[Math.floor(rnd() * st.cols.length)], rnd() * Math.PI]); continue; }
+        if (st.candle && rnd() < st.candle) { // Montra Planet: a candlestick, green or red, with its wicks
+          const up = rnd() < 0.55, cw = lot * (0.5 + rnd() * 0.3), lo = 3 + rnd() * 16, body = st.h[0] * 0.6 + Math.pow(rnd(), 1.3) * (st.h[1] - st.h[0] * 0.6);
+          bld.push([lx, ly, cw * 0.16, cw * 0.16, lo, '#d4d4d4', 0, d.id, true]);
+          bld.push([lx, ly, cw, cw, body, up ? '#3ddc84' : '#ff5470', lo, d.id, true]);
+          bld.push([lx, ly, cw * 0.16, cw * 0.16, 5 + rnd() * 18, '#d4d4d4', lo + body, d.id, true]);
+          continue;
+        }
         const shrink = rnd() * 2.5;
         let [h0, h1] = st.h;
         if (d.id === 'harbour' && k === 2) { h0 = 14; h1 = 28; }
@@ -1196,37 +1205,55 @@ function updateFerries(t) {
 }
 
 // ================================================================== Montra Planet
-// A small violet world east of Nightfall: the town sits on a plinth on top of the planet, a ring and two moons turn
-// around it, rockets shuttle from Nightfall's east pier, and a launch tower by Montra Launch Control sends a rocket up
-// whenever an agent launches a coin (S.pad.lastLaunch). A board by the tower shows the biggest live coins.
-const mp = { planet: null, ring: null, moons: [], shuttles: [], rocket: null, flame: null, launchAt: -1, seen: null, idleAt: 40, board: null, boardKey: '' };
+// A black-and-gold world floating beside the Sky Keep, in Montra's colours (black, chrome, gold; green up, red down),
+// and loud with it: the planet wears a price chart round its middle, giant gold coins and candlesticks orbit it,
+// pump and dump beams shoot up out of the town, a gold ring turns round it, and rockets shuttle from Sunfall's north
+// pier. A launch tower by Montra Launch Control sends a rocket up whenever an agent launches a coin
+// (S.pad.lastLaunch), and now and then just for the show. A board by the tower shows the biggest live coins.
+const MGOLD = 0xe9b64a, MGOLD2 = 0xffd27a, MUP = 0x3ddc84, MDOWN = 0xff5470;
+const mp = { planet: null, ring: null, coins: [], candles: [], beams: [], moons: [], shuttles: [], rocket: null, flame: null, launchAt: -1, seen: null, idleAt: 30, board: null, boardKey: '' };
 function planetTexture(rnd) {
   const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const g = c.getContext('2d');
   const grad = g.createLinearGradient(0, 0, 0, 512);
-  for (const [k, col] of [[0, '#2a1f5c'], [0.18, '#4b2f8a'], [0.32, '#3a5fb0'], [0.45, '#6a3fa8'], [0.6, '#2c2a6e'], [0.74, '#5a46b8'], [0.88, '#22305e'], [1, '#160f34']]) grad.addColorStop(k, col);
+  for (const [k, col] of [[0, '#050505'], [0.2, '#1a1406'], [0.34, '#0a0a0a'], [0.5, '#2a1f08'], [0.66, '#0a0a0a'], [0.8, '#1e1e1e'], [1, '#050505']]) grad.addColorStop(k, col);
   g.fillStyle = grad; g.fillRect(0, 0, 1024, 512);
-  g.globalAlpha = 0.25;
-  for (let i = 0; i < 46; i++) { g.fillStyle = rnd() < 0.5 ? '#9a86ff' : '#1a1440'; g.fillRect(0, rnd() * 512, 1024, 2 + rnd() * 9); }
+  g.globalAlpha = 0.5;
+  for (let i = 0; i < 30; i++) { g.fillStyle = rnd() < 0.5 ? '#e9b64a' : '#ffd27a'; g.fillRect(0, rnd() * 512, 1024, 1 + rnd() * 3); }
   g.globalAlpha = 1;
-  for (let i = 0; i < 40; i++) { const x = rnd() * 1024, y = 150 + rnd() * 212, r = 3 + rnd() * 9; g.fillStyle = 'rgba(20,14,50,0.45)'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.strokeStyle = 'rgba(170,150,255,0.35)'; g.lineWidth = 1.5; g.beginPath(); g.arc(x - 1, y - 1, r, 0, 7); g.stroke(); }
-  for (let i = 0; i < 260; i++) { g.fillStyle = rnd() < 0.7 ? 'rgba(120,230,255,0.85)' : 'rgba(255,190,250,0.85)'; g.fillRect(rnd() * 1024, 80 + rnd() * 360, 1.6, 1.6); }
+  // a price chart wrapped round the equator: candles, then a glowing line through them
+  let p = 256; const pts = [];
+  for (let x = 6; x < 1024; x += 12) {
+    const o = p, cl = Math.max(150, Math.min(360, p + (rnd() - 0.47) * 46)), hi = Math.min(o, cl) - rnd() * 14, lo = Math.max(o, cl) + rnd() * 14, up = cl < o;
+    g.fillStyle = up ? '#3ddc84' : '#ff5470'; g.fillRect(x - 0.6, hi, 1.4, lo - hi); g.fillRect(x - 4, Math.min(o, cl), 8, Math.max(2, Math.abs(cl - o)));
+    pts.push([x, cl]); p = cl;
+  }
+  g.strokeStyle = '#ffd27a'; g.lineWidth = 2; g.shadowColor = '#ffd27a'; g.shadowBlur = 8; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); g.shadowBlur = 0;
+  for (let i = 0; i < 220; i++) { g.fillStyle = rnd() < 0.6 ? 'rgba(255,210,122,0.9)' : 'rgba(242,242,242,0.8)'; g.fillRect(rnd() * 1024, 40 + rnd() * 430, 1.6, 1.6); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; return t;
 }
 function ringTexture() {
   const c = document.createElement('canvas'); c.width = 512; c.height = 8; const g = c.getContext('2d');
-  for (let x = 0; x < 512; x++) { const k = x / 512, a = (0.25 + 0.5 * Math.abs(Math.sin(k * 23))) * Math.sin(k * Math.PI); g.fillStyle = `rgba(${170 + 60 * Math.sin(k * 9) | 0},${150 + 50 * Math.cos(k * 5) | 0},255,${a.toFixed(3)})`; g.fillRect(x, 0, 1, 8); }
+  for (let x = 0; x < 512; x++) { const k = x / 512, a = (0.3 + 0.55 * Math.abs(Math.sin(k * 29))) * Math.sin(k * Math.PI); g.fillStyle = `rgba(${233 + 22 * Math.sin(k * 7) | 0},${182 + 30 * Math.cos(k * 5) | 0},${74 + 50 * Math.sin(k * 3) | 0},${a.toFixed(3)})`; g.fillRect(x, 0, 1, 8); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function coinTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256; const g = c.getContext('2d');
+  const r = g.createRadialGradient(100, 90, 10, 128, 128, 128); r.addColorStop(0, '#fff0c4'); r.addColorStop(0.5, '#efbe4c'); r.addColorStop(1, '#a87818');
+  g.fillStyle = r; g.beginPath(); g.arc(128, 128, 126, 0, 7); g.fill();
+  g.strokeStyle = '#8a5f10'; g.lineWidth = 8; g.beginPath(); g.arc(128, 128, 104, 0, 7); g.stroke();
+  g.fillStyle = '#6b4708'; g.font = '800 120px "Inter", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', 128, 134);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function rocketMesh(s = 1) {
   const g = new THREE.Group();
-  const hull = new THREE.MeshStandardMaterial({ color: 0xeef0ff, metalness: 0.4, roughness: 0.35 });
-  const band = new THREE.MeshStandardMaterial({ color: 0x6b4dff, emissive: 0x6b4dff, emissiveIntensity: 0.8, roughness: 0.4 });
+  const hull = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, metalness: 0.85, roughness: 0.2 });
+  const band = new THREE.MeshStandardMaterial({ color: MGOLD, emissive: MGOLD, emissiveIntensity: 0.7, metalness: 0.6, roughness: 0.3 });
   const body = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.4, 40, 20).translate(0, 20, 0), hull); body.castShadow = true; g.add(body);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(4, 12, 20).translate(0, 46, 0), hull); g.add(nose);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(4, 12, 20).translate(0, 46, 0), band); g.add(nose);
   for (const y of [10, 32]) { const b = new THREE.Mesh(new THREE.CylinderGeometry(4.05, 4.05, 2.2, 20).translate(0, y, 0), band); g.add(b); }
   for (let i = 0; i < 4; i++) { const f = new THREE.Mesh(BOX, band); f.scale.set(0.8, 10, 6); f.position.set(Math.cos(i * Math.PI / 2) * 5, 0, Math.sin(i * Math.PI / 2) * 5); f.rotation.y = -i * Math.PI / 2; g.add(f); }
   const flame = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -3, 0), new THREE.Vector3(0, -9, 0), new THREE.Vector3(0, -16, 0)]),
-    new THREE.PointsMaterial({ map: GLOW, size: 22, color: 0xffb070, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    new THREE.PointsMaterial({ map: GLOW, size: 22, color: 0x7dffb0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
   g.add(flame); g.userData.flame = flame;
   g.scale.setScalar(s); return g;
 }
@@ -1235,49 +1262,76 @@ function drawBoard() {
   const P = (S && S.pad) || { top: [], live: 0, burned: 0 };
   const key = JSON.stringify(P.top) + P.live; if (key === mp.boardKey) return; mp.boardKey = key;
   const g = b.g; g.clearRect(0, 0, 1024, 512);
-  g.fillStyle = 'rgba(8,6,22,0.86)'; roundRect(g, 6, 6, 1012, 500, 28); g.fill();
-  g.lineWidth = 5; g.strokeStyle = '#8b7bff'; g.shadowColor = '#8b7bff'; g.shadowBlur = 20; roundRect(g, 12, 12, 1000, 488, 24); g.stroke(); g.shadowBlur = 0;
-  g.fillStyle = '#c9c2ff'; g.font = '700 46px "Inter", system-ui, sans-serif'; g.textAlign = 'left'; g.fillText('MONTRA PLANET LAUNCHPAD', 40, 74);
-  g.fillStyle = '#8f88c8'; g.font = '500 28px "Inter", system-ui, sans-serif'; g.fillText(`${P.live || 0} live coins · no bonding curve · locked seed`, 40, 116);
+  g.fillStyle = 'rgba(5,5,5,0.92)'; roundRect(g, 6, 6, 1012, 500, 10); g.fill();
+  g.lineWidth = 5; g.strokeStyle = '#e9b64a'; g.shadowColor = '#e9b64a'; g.shadowBlur = 20; roundRect(g, 12, 12, 1000, 488, 8); g.stroke(); g.shadowBlur = 0;
+  g.fillStyle = '#ffd27a'; g.font = 'italic 700 50px Georgia, "Times New Roman", serif'; g.textAlign = 'left'; g.fillText('Montra Planet launches', 40, 76);
+  g.fillStyle = '#a3a3a3'; g.font = '500 28px "Inter", system-ui, sans-serif'; g.fillText(`${P.live || 0} live coins · no bonding curve · locked seed`, 40, 118);
   const rows = (P.top || []).slice(0, 5);
-  if (!rows.length) { g.fillStyle = '#e8e4ff'; g.font = '600 40px "Inter", system-ui, sans-serif'; g.fillText('Awaiting the first launch', 40, 260); }
+  if (!rows.length) { g.fillStyle = '#f2f2f2'; g.font = '600 40px "Inter", system-ui, sans-serif'; g.fillText('Awaiting the first launch', 40, 260); }
   rows.forEach((c, i) => {
-    const y = 180 + i * 64, up = c.x >= 1;
-    g.fillStyle = '#ffffff'; g.font = '700 40px "Inter", system-ui, sans-serif'; g.fillText(String(c.sym).slice(0, 8), 40, y);
-    g.fillStyle = c.x >= 16.8 ? '#7dffb0' : up ? '#9fe3ff' : '#ff8fa8'; g.textAlign = 'right'; g.fillText(`${c.x >= 100 ? Math.round(c.x) : c.x.toFixed(1)}x`, 640, y);
-    g.fillStyle = '#c9c2ff'; g.fillText('$' + Math.round(c.cap).toLocaleString(), 980, y); g.textAlign = 'left';
+    const y = 182 + i * 64;
+    g.fillStyle = '#f2f2f2'; g.font = '700 40px "Inter", system-ui, sans-serif'; g.fillText(String(c.sym).slice(0, 8), 40, y);
+    g.fillStyle = c.x >= 1 ? '#3ddc84' : '#ff5470'; g.textAlign = 'right'; g.fillText(`${c.x >= 100 ? Math.round(c.x) : c.x.toFixed(1)}x`, 640, y);
+    g.fillStyle = '#ffd27a'; g.fillText('$' + Math.round(c.cap).toLocaleString(), 980, y); g.textAlign = 'left';
   });
   b.tex.needsUpdate = true;
 }
 function buildMontra(rnd) {
   const box = (x, y, w, d, h, y0b, mat) => { const m = new THREE.Mesh(BOX, mat); m.scale.set(w, h, d); m.position.copy(W(x, y, y0b)); m.receiveShadow = true; m.castShadow = true; scene.add(m); return m; };
+  const additive = (col, op = 0.6) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
   // the town's plinth, and the planet under it
-  const plinth = rockUnder(2535, 54, 3065, 666, 150, rnd); plinth.userData.city = 'montra'; islandMeshes.push(plinth); scene.add(plinth);
+  const plinth = rockUnder(815, -746, 1345, -134, 150, rnd); plinth.userData.city = 'montra'; islandMeshes.push(plinth); scene.add(plinth);
   const R = 215, C0 = W(MP.cx, MP.cy, -55 - R); // most of it above the cloud sea (SEA_Y)
-  const planet = new THREE.Mesh(new THREE.SphereGeometry(R, LITE ? 48 : 96, LITE ? 32 : 64), new THREE.MeshStandardMaterial({ map: planetTexture(rnd), roughness: 0.85, metalness: 0.05, emissive: 0x1c1350, emissiveIntensity: 0.55 }));
-  const pivot = new THREE.Group(); pivot.position.copy(C0); pivot.rotation.set(0.3, 0, 1.25); scene.add(pivot); // its axis tipped over, so the bands run round its side like a gas giant's
+  const planet = new THREE.Mesh(new THREE.SphereGeometry(R, LITE ? 48 : 96, LITE ? 32 : 64), new THREE.MeshStandardMaterial({ map: planetTexture(rnd), roughness: 0.4, metalness: 0.5, emissive: 0x4a3408, emissiveIntensity: 1 }));
+  const pivot = new THREE.Group(); pivot.position.copy(C0); pivot.rotation.set(0.3, 0, 1.25); scene.add(pivot); // its axis tipped over, so the chart runs round its side
   pivot.add(planet); planet.userData.city = 'montra'; islandMeshes.push(planet); mp.planet = planet; mp.centre = C0;
-  const atmo = new THREE.Mesh(new THREE.SphereGeometry(R * 1.06, 48, 32), new THREE.MeshBasicMaterial({ color: 0x8a76ff, transparent: true, opacity: 0.13, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  const atmo = new THREE.Mesh(new THREE.SphereGeometry(R * 1.07, 48, 32), new THREE.MeshBasicMaterial({ color: MGOLD, transparent: true, opacity: 0.12, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   atmo.position.copy(C0); scene.add(atmo);
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0x7d6cff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-  halo.scale.setScalar(R * 3.1); halo.position.copy(C0); scene.add(halo);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(R * 1.3, R * 1.72, 128, 1), new THREE.MeshBasicMaterial({ map: ringTexture(), transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false }));
-  { const uv = ring.geometry.attributes.uv, pos = ring.geometry.attributes.position; for (let i = 0; i < uv.count; i++) { const r = Math.hypot(pos.getX(i), pos.getY(i)); uv.setXY(i, (r - R * 1.3) / (R * 0.42), 0.5); } }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: MGOLD2, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  halo.scale.setScalar(R * 3.2); halo.position.copy(C0); scene.add(halo);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(R * 1.3, R * 1.75, 128, 1), new THREE.MeshBasicMaterial({ map: ringTexture(), transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false }));
+  { const uv = ring.geometry.attributes.uv, pos = ring.geometry.attributes.position; for (let i = 0; i < uv.count; i++) { const r = Math.hypot(pos.getX(i), pos.getY(i)); uv.setXY(i, (r - R * 1.3) / (R * 0.45), 0.5); } }
   ring.rotation.x = -Math.PI / 2 + 0.22; ring.rotation.y = 0.12; ring.position.copy(C0); scene.add(ring); mp.ring = ring;
-  for (const [r, d, sp, col, ph] of [[34, R * 2.2, 0.05, 0xb8b0e8, 0], [20, R * 2.8, -0.032, 0x8fd8ff, 2.2]]) {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), new THREE.MeshStandardMaterial({ color: col, roughness: 0.9, emissive: col, emissiveIntensity: 0.12 }));
-    scene.add(m); mp.moons.push({ m, d, sp, ph, y: -260 + r });
+  // two moons: one chrome, one gold
+  for (const [r, d, sp, col, ph] of [[30, R * 2.3, 0.06, 0xd4d4d4, 0], [18, R * 2.9, -0.04, MGOLD, 2.2]]) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), new THREE.MeshStandardMaterial({ color: col, metalness: 0.9, roughness: 0.2, emissive: col, emissiveIntensity: 0.1 }));
+    scene.add(m); mp.moons.push({ m, d, sp, ph });
+  }
+  // giant gold coins orbiting the planet, spinning as they go
+  { const tex = coinTexture(), face = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.7, roughness: 0.25, emissive: MGOLD, emissiveIntensity: 0.25 }), edge = new THREE.MeshStandardMaterial({ color: 0xc8962c, metalness: 0.9, roughness: 0.3 });
+    for (let i = 0; i < (LITE ? 5 : 9); i++) {
+      const s2 = 12 + rnd() * 16, m = new THREE.Mesh(new THREE.CylinderGeometry(s2, s2, s2 * 0.18, 32).rotateX(Math.PI / 2), [edge, face, face]);
+      scene.add(m); mp.coins.push({ m, d: R * (1.55 + rnd() * 1.3), sp: (rnd() < 0.5 ? -1 : 1) * (0.05 + rnd() * 0.08), ph: rnd() * 6.28, y: -40 + rnd() * 240, spin: 1 + rnd() * 2 });
+    }
+  }
+  // candlesticks drifting in the sky round the town, like a chart come loose
+  { const up = new THREE.MeshStandardMaterial({ color: MUP, emissive: MUP, emissiveIntensity: 0.45, roughness: 0.4 }), dn = new THREE.MeshStandardMaterial({ color: MDOWN, emissive: MDOWN, emissiveIntensity: 0.45, roughness: 0.4 }), wick = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, emissive: 0xffffff, emissiveIntensity: 0.3 });
+    for (let i = 0; i < (LITE ? 8 : 16); i++) {
+      const g = new THREE.Group(), isUp = rnd() < 0.55, bh = 18 + rnd() * 50, bw = 6 + rnd() * 6;
+      const b = new THREE.Mesh(BOX, isUp ? up : dn); b.scale.set(bw, bh, bw); g.add(b);
+      const w1 = new THREE.Mesh(BOX, wick); w1.scale.set(1.2, 10 + rnd() * 16, 1.2); w1.position.y = bh; g.add(w1);
+      const w2 = new THREE.Mesh(BOX, wick); w2.scale.set(1.2, 8 + rnd() * 12, 1.2); w2.position.y = -w2.scale.y; g.add(w2);
+      const a = rnd() * 6.28, dist = 330 + rnd() * 240, x = MP.cx + Math.cos(a) * dist, y = MP.cy + Math.sin(a) * dist * 0.9;
+      if (y > 0) continue; // keep clear of Sunfall
+      g.position.copy(W(x, y, 40 + rnd() * 180)); scene.add(g); mp.candles.push({ g, y0: g.position.y, ph: rnd() * 6.28, sp: 0.4 + rnd() * 0.6 });
+    }
+  }
+  // pump and dump beams: green and red light shooting up out of the town now and then
+  for (let i = 0; i < (LITE ? 4 : 8); i++) {
+    const isUp = i % 2 === 0, mat = additive(isUp ? MUP : MDOWN, 0), x = MP.x0 + 40 + rnd() * (MP.x1 - MP.x0 - 80), y = MP.y0 + 40 + rnd() * (MP.y1 - MP.y0 - 80);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(isUp ? 1.5 : 6, isUp ? 6 : 1.5, 420, 12, 1, true).translate(0, 210, 0), mat);
+    m.position.copy(W(x, y, 10)); scene.add(m); mp.beams.push({ m, mat, next: rnd() * 12, len: 1.2 + rnd() * 1.5, t0: -99 });
   }
   // the launch tower and its rocket, by Montra Launch Control
   const [tx, ty] = PAD_TOWER.split(',').map(Number);
-  const steel = new THREE.MeshStandardMaterial({ color: 0x3a3c52, metalness: 0.6, roughness: 0.45 });
-  const lit = new THREE.MeshStandardMaterial({ color: 0x8b7bff, emissive: 0x8b7bff, emissiveIntensity: 1.2 });
-  box(tx, ty, 34, 34, 1.6, 0, new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.8 }));
+  const steel = new THREE.MeshStandardMaterial({ color: 0xd4d4d4, metalness: 0.85, roughness: 0.25 });
+  const lit = new THREE.MeshStandardMaterial({ color: MGOLD, emissive: MGOLD, emissiveIntensity: 1.4 });
+  box(tx, ty, 34, 34, 1.6, 0, new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.6, metalness: 0.4 }));
   for (const [sx, sy] of [[-9, -9], [-9, -3], [-3, -9]]) box(tx + sx, ty + sy, 1.4, 1.4, 78, 1.6, steel);
   for (let h = 10; h < 78; h += 12) { box(tx - 6, ty - 9, 7, 1, 1, 1.6 + h, steel); box(tx - 9, ty - 6, 1, 7, 1, 1.6 + h, steel); box(tx - 6, ty - 6, 1, 1, 1.2, 1.6 + h, lit); }
   box(tx - 4, ty - 6, 6, 1.2, 1.2, 60, steel);
   const rocket = rocketMesh(1); rocket.position.copy(W(tx + 2, ty + 2, 1.6)); scene.add(rocket); mp.rocket = rocket; mp.flame = rocket.userData.flame; mp.base = rocket.position.clone();
-  const padGlow = new THREE.Points(new THREE.BufferGeometry().setFromPoints([W(tx + 2, ty + 2, 3)]), new THREE.PointsMaterial({ map: GLOW, size: 60, color: 0x8b7bff, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const padGlow = new THREE.Points(new THREE.BufferGeometry().setFromPoints([W(tx + 2, ty + 2, 3)]), new THREE.PointsMaterial({ map: GLOW, size: 60, color: MGOLD2, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
   scene.add(padGlow); blinkers.push(padGlow.material);
   // the board: the biggest live coins, on two posts beside the tower
   { const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
@@ -1286,32 +1340,43 @@ function buildMontra(rnd) {
     const face = new THREE.Mesh(new THREE.PlaneGeometry(72, 36), mat); face.position.copy(W(tx + 40, ty + 44, 46)); scene.add(face); neonMats.push(mat);
     for (const sx of [-30, 30]) box(tx + 40 + sx, ty + 44, 1.8, 1.8, 28, 0, steel);
     drawBoard(); }
-  // the planet's name in neon over Graduation Heights
-  { const sm = new THREE.MeshBasicMaterial({ map: neonTexture('Montra Planet', '#8b7bff'), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }); neonMats.push(sm);
-    const sg = new THREE.Mesh(new THREE.PlaneGeometry(150, 37.5), sm); sg.position.copy(W(MP.cx, 40, 190)); scene.add(sg); }
-  // the rocket ferry: piers on Nightfall's east edge and the planet's west edge, and two small rockets between them
-  const deck = new THREE.MeshStandardMaterial({ color: 0x4a4658, roughness: 0.7 });
-  box(2200, 360, 34, 18, 2, -1, deck); box(2520, 360, 34, 18, 2, -1, deck);
-  for (const x of [2200, 2520]) { const gl = new THREE.Points(new THREE.BufferGeometry().setFromPoints([W(x, 360, 6)]), new THREE.PointsMaterial({ map: GLOW, size: 26, color: 0xb2a6ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); scene.add(gl); blinkers.push(gl.material); }
-  for (let i = 0; i < 2; i++) { const g = rocketMesh(0.42); const holder = new THREE.Group(); g.rotation.z = -Math.PI / 2; holder.add(g); scene.add(holder); mp.shuttles.push({ g: holder, flame: g.userData.flame, off: i * 0.5, lane: i ? 372 : 348 }); }
-  for (let i = 0; i < (LITE ? 5 : 10); i++) puff(2500 + rnd() * 640, 20 + rnd() * 680, -380 - rnd() * 120, 320 + rnd() * 260, i % 2);
+  // the planet's name in gold neon over Graduation Heights, and the milestones floating over the town
+  { const sm = new THREE.MeshBasicMaterial({ map: neonTexture('Montra Planet', '#e9b64a'), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }); neonMats.push(sm);
+    const sg = new THREE.Mesh(new THREE.PlaneGeometry(150, 37.5), sm); sg.position.copy(W(MP.cx, MP.y0 - 10, 200)); scene.add(sg); }
+  for (const [txt, col, x, y, h] of [['16.8x', '#3ddc84', MP.x0 + 70, MP.cy, 150], ['142.6x', '#ffd27a', MP.x1 - 70, MP.cy - 60, 175], ['LFG', '#ff5470', MP.cx + 40, MP.y1 - 30, 120]]) {
+    const sm = new THREE.MeshBasicMaterial({ map: neonTexture(txt, col), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }); neonMats.push(sm);
+    const sg = new THREE.Mesh(new THREE.PlaneGeometry(64, 16), sm); sg.position.copy(W(x, y, h)); scene.add(sg); mp.candles.push({ g: sg, y0: sg.position.y, ph: rnd() * 6.28, sp: 0.7 });
+  }
+  // the rocket ferry: a pier on Sunfall's north edge and one on the planet's south edge, and two small rockets between them
+  const deck = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.5 });
+  box(900, 2, 18, 30, 2, -1, deck); box(900, -132, 18, 30, 2, -1, deck);
+  for (const y of [-10, -122]) { const gl = new THREE.Points(new THREE.BufferGeometry().setFromPoints([W(900, y, 6)]), new THREE.PointsMaterial({ map: GLOW, size: 26, color: MGOLD2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); scene.add(gl); blinkers.push(gl.material); }
+  for (let i = 0; i < 2; i++) { const g = rocketMesh(0.42); const holder = new THREE.Group(); g.rotation.z = -Math.PI / 2; holder.add(g); scene.add(holder); mp.shuttles.push({ g: holder, flame: g.userData.flame, off: i * 0.5, lane: i ? 912 : 888 }); }
+  for (let i = 0; i < (LITE ? 5 : 10); i++) puff(MP.x0 - 60 + rnd() * 640, MP.y0 - 60 + rnd() * 640, -380 - rnd() * 120, 320 + rnd() * 260, i % 2);
 }
 function updateMontra(t, dt) {
   if (!mp.planet) return;
-  mp.planet.rotation.y += dt * 0.012; mp.ring.rotation.z += dt * 0.004;
+  mp.planet.rotation.y += dt * 0.02; mp.ring.rotation.z += dt * 0.008;
   const c = mp.centre;
   for (const m of mp.moons) { const a = m.ph + t * m.sp; m.m.position.set(c.x + Math.cos(a) * m.d, c.y + 60 + Math.sin(a * 0.7) * 90, c.z + Math.sin(a) * m.d); }
+  for (const k of mp.coins) { const a = k.ph + t * k.sp; k.m.position.set(c.x + Math.cos(a) * k.d, c.y + k.y + Math.sin(t * 0.6 + k.ph) * 12, c.z + Math.sin(a) * k.d); k.m.rotation.y = t * k.spin; }
+  for (const k of mp.candles) { k.g.position.y = k.y0 + Math.sin(t * k.sp + k.ph) * 10; k.g.rotation.y = Math.sin(t * 0.3 + k.ph) * 0.4; }
+  for (const b of mp.beams) {
+    if (t > b.next) { b.t0 = t; b.next = t + 6 + Math.random() * 14; }
+    const e = t - b.t0, k = e < b.len ? Math.sin((e / b.len) * Math.PI) : 0;
+    b.mat.opacity = 0.75 * k; b.m.scale.set(1, 0.2 + 0.8 * Math.min(1, e / (b.len * 0.4)), 1); b.m.visible = k > 0.01;
+  }
   // the rocket ferry: wait, fly over in an arc, wait, fly back
   for (const f of mp.shuttles) {
-    const k = ((t / 52 + f.off) % 1 + 1) % 1;
+    const k = ((t / 40 + f.off) % 1 + 1) % 1;
     let u, back = false;
     if (k < 0.1) u = 0; else if (k < 0.45) u = smooth(0.1, 0.45, k); else if (k < 0.55) u = 1; else { u = 1 - smooth(0.55, 0.9, k); back = true; }
     if (k >= 0.9) { u = 0; back = true; }
     const moving = (k > 0.1 && k < 0.45) || (k > 0.55 && k < 0.9);
-    f.g.position.copy(W(2215 + (2505 - 2215) * u, f.lane, 14 + Math.sin(u * Math.PI) * 70));
-    f.g.rotation.y = back ? Math.PI : 0; f.flame.material.opacity = moving ? 0.9 : 0;
+    f.g.position.copy(W(f.lane, -6 + (-118 + 6) * u, 14 + Math.sin(u * Math.PI) * 60));
+    f.g.rotation.y = back ? -Math.PI / 2 : Math.PI / 2; f.flame.material.opacity = moving ? 0.9 : 0;
   }
-  // a launch: every new coin (and now and then for show) sends the rocket up; a fresh one is on the pad soon after
+  // a launch: every new coin (and every half minute or so for the show) sends the rocket up; a fresh one is on the pad soon after
   const last = S?.pad?.lastLaunch || null;
   if (mp.seen === null) mp.seen = last;
   if (last && last !== mp.seen && mp.launchAt < 0) { mp.seen = last; mp.launchAt = t; }
@@ -1319,10 +1384,10 @@ function updateMontra(t, dt) {
   const r = mp.rocket;
   if (mp.launchAt >= 0) {
     const e = t - mp.launchAt;
-    if (e < 2.5) { r.position.copy(mp.base); r.position.x += Math.sin(t * 60) * 0.25; mp.flame.material.opacity = e / 2.5; }
-    else if (e < 14) { const k = e - 2.5; r.position.copy(mp.base); r.position.y += 4 * k * k; r.position.x += k * k * 0.6; r.rotation.z = -Math.min(0.35, k * 0.03); mp.flame.material.opacity = 1; mp.flame.material.size = 22 + k * 4; }
-    else if (e < 20) { r.visible = false; mp.flame.material.opacity = 0; }
-    else { r.visible = true; r.position.copy(mp.base); r.rotation.z = 0; mp.flame.material.size = 22; mp.launchAt = -1; mp.idleAt = t + 90 + Math.random() * 60; }
+    if (e < 2) { r.position.copy(mp.base); r.position.x += Math.sin(t * 60) * 0.3; mp.flame.material.opacity = e / 2; }
+    else if (e < 12) { const k = e - 2; r.position.copy(mp.base); r.position.y += 5 * k * k; r.position.x += Math.sin(k * 3) * k * 2; r.rotation.z = Math.sin(k * 2) * 0.25; mp.flame.material.opacity = 1; mp.flame.material.size = 22 + k * 5; mp.flame.material.color.setHex(k % 1 < 0.5 ? MUP : MGOLD2); }
+    else if (e < 16) { r.visible = false; mp.flame.material.opacity = 0; }
+    else { r.visible = true; r.position.copy(mp.base); r.rotation.z = 0; mp.flame.material.size = 22; mp.launchAt = -1; mp.idleAt = t + 25 + Math.random() * 20; }
   }
   if ((t | 0) % 3 === 0) drawBoard();
 }
@@ -1931,7 +1996,7 @@ function buildSkyWorld(rnd) {
   waterfall(747, 330, -3, 8, 160, Math.PI / 2); waterfall(620, 494, -3, 10, 170, 0);
   buildSkyKeep();
   buildPrison(mulberry32(41));   // its own random stream, so the rest of the sky world keeps its layout
-  for (const [x, y, h, sz] of [[-150, 180, 30, 70], [-120, 560, -30, 54], [1150, 260, 40, 64], [1120, 600, -20, 50], [240, 860, -70, 60], [820, 880, -50, 46], [1060, -120, 70, 58], [-60, -150, 50, 52], [330, -230, 20, 36]]) buildIslet(x, y, h, sz, rnd);
+  for (const [x, y, h, sz] of [[-150, 180, 30, 70], [-120, 560, -30, 54], [1150, 260, 40, 64], [1120, 600, -20, 50], [240, 860, -70, 60], [820, 880, -50, 46], [1460, -90, 70, 58], [-60, -150, 50, 52], [330, -230, 20, 36]]) buildIslet(x, y, h, sz, rnd);
   // airships circling the city
   for (let i = 0; i < (LITE ? 3 : 5); i++) { const g = airshipMesh(0.9 + rnd() * 0.5, rnd); scene.add(g); airships.push({ g, r: 840 + rnd() * 260, h: 150 + rnd() * 90, sp: (0.012 + rnd() * 0.01) * (rnd() < 0.5 ? 1 : -1), a: rnd() * 6.28 }); }
   // chimney steam
@@ -2905,7 +2970,7 @@ $('#livehead').onclick = () => $('#live').classList.toggle('closed');
 let chipCity = 'sunfall';
 const NF_CAM = { target: W(NF.cx, NF.cy, 10), pos: W(NF.cx, NF.cy, 10).add(new THREE.Vector3(-70, 160, 690)) };
 const LI_CAM = { target: W(LI.cx, LI.cy, 10), pos: W(LI.cx, LI.cy, 10).add(new THREE.Vector3(-260, 420, 980)) };
-const MP_CAM = { target: W(MP.cx, MP.cy, -90), pos: W(MP.cx, MP.cy, -90).add(new THREE.Vector3(-560, 420, 1320)) };
+const MP_CAM = { target: W(MP.cx, MP.cy, -110), pos: W(MP.cx, MP.cy, -110).add(new THREE.Vector3(-640, 360, -1080)) }; // from the north, so Sunfall doesn't stand in the way
 const CITY_CHIP = { sunfall: '☀ Sunfall', nightfall: '☾ Nightfall', leonida: '✺ Leonida Islands', montra: '◉ Montra Planet' };
 function goCity(city) {
   unfollow();
