@@ -58,6 +58,7 @@ export const GOODS = {
   silk: { name: 'Sky Silk', from: 'sunfall' },
   glass: { name: 'Neon Glass', from: 'nightfall' },
   rum: { name: 'Island Rum', from: 'leonida' },
+  dust: { name: 'Moon Dust', from: 'montra' },
 };
 const T = () => (state.trade ||= { day: -1, p: {} });
 function setPrices() {
