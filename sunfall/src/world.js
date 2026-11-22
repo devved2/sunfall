@@ -6,11 +6,11 @@ export const CITIES = [
   { id: 'sunfall', name: 'Sunfall', tagline: 'a world above the clouds', bounds: [0, 0, 1000, 700] },
   { id: 'nightfall', name: 'Nightfall', tagline: 'the city that never lands', bounds: [1520, 40, 2220, 660] },
   { id: 'leonida', name: 'Leonida Islands', tagline: 'sun, neon and bad decisions', bounds: [900, 940, 1940, 1700] },
-  { id: 'montra', name: 'Montra Planet', tagline: 'every block a launch', bounds: [2440, 0, 3160, 720] },
+  { id: 'montra', name: 'Montra Planet', tagline: 'every block a launch', bounds: [760, -800, 1400, -80] },
 ];
 export const cityById = (id) => CITIES.find((c) => c.id === id);
 // The sky ferry: moving house costs a fare, a night out in the other city a ticket.
-export const FERRY = { moveFare: 30, ticket: 6, pierSunfall: [990, 400], pierNightfall: [1530, 400], pierLeonida: [1180, 1010], pierLeonidaEast: [1700, 1010], pierNightfallEast: [2190, 360], pierMontra: [2530, 360] };
+export const FERRY = { moveFare: 30, ticket: 6, pierSunfall: [990, 400], pierNightfall: [1530, 400], pierLeonida: [1180, 1010], pierLeonidaEast: [1700, 1010], pierSunfallNorth: [900, 4], pierMontra: [900, -130] };
 
 export const DISTRICTS = [
   { id: 'flats', name: 'The Terraces', rent: 75, rect: [30, 40, 300, 300], tint: '#3a2f4a', city: 'sunfall' },
@@ -31,14 +31,14 @@ export const DISTRICTS = [
   { id: 'marina', name: 'Sunset Marina', rent: 165, rect: [1660, 1060, 160, 120], tint: '#2f3f55', city: 'leonida' },
   { id: 'bayou', name: 'Gator Bayou', rent: 45, rect: [1020, 1340, 160, 160], tint: '#33402a', city: 'leonida' },
   { id: 'port', name: 'Port Leonida', rent: 70, rect: [1620, 1420, 200, 160], tint: '#2f3a4a', city: 'leonida' },
-  // Montra Planet: a small world east of Nightfall, reached by rocket. The launchpad stands in the Launch Quarter at its
+  // Montra Planet: a small world floating beside the Sky Keep, north of Sunfall, reached by rocket from Sunfall's north pier. The launchpad stands in the Launch Quarter at its
   // heart; the rich live up in Graduation Heights, the nights run along the LP Line, rockets load at the Orbital Yards.
-  { id: 'heights', name: 'Graduation Heights', rent: 210, rect: [2540, 60, 520, 180], tint: '#2a3a5a', city: 'montra' },
-  { id: 'lpline', name: 'The LP Line', rent: 110, rect: [2540, 240, 160, 220], tint: '#3a2456', city: 'montra' },
-  { id: 'launchq', name: 'Launch Quarter', rent: 160, rect: [2700, 240, 200, 220], tint: '#1f3550', city: 'montra' },
-  { id: 'orbit', name: 'Orbital Yards', rent: 55, rect: [2900, 240, 160, 220], tint: '#33303a', city: 'montra' },
-  { id: 'genesis', name: 'Genesis Block', rent: 60, rect: [2540, 460, 260, 200], tint: '#2e2a40', city: 'montra' },
-  { id: 'pools', name: 'Pool Row', rent: 120, rect: [2800, 460, 260, 200], tint: '#233f48', city: 'montra' },
+  { id: 'heights', name: 'Graduation Heights', rent: 210, rect: [820, -740, 520, 180], tint: '#2a3a5a', city: 'montra' },
+  { id: 'lpline', name: 'The LP Line', rent: 110, rect: [820, -560, 160, 220], tint: '#3a2456', city: 'montra' },
+  { id: 'launchq', name: 'Launch Quarter', rent: 160, rect: [980, -560, 200, 220], tint: '#1f3550', city: 'montra' },
+  { id: 'orbit', name: 'Orbital Yards', rent: 55, rect: [1180, -560, 160, 220], tint: '#33303a', city: 'montra' },
+  { id: 'genesis', name: 'Genesis Block', rent: 60, rect: [820, -340, 260, 200], tint: '#2e2a40', city: 'montra' },
+  { id: 'pools', name: 'Pool Row', rent: 120, rect: [1080, -340, 260, 200], tint: '#233f48', city: 'montra' },
 ];
 export const cityOfDistrict = (id) => DISTRICTS.find((d) => d.id === id)?.city || 'sunfall';
 export const districtsOf = (city) => DISTRICTS.filter((d) => d.city === city);
@@ -119,16 +119,16 @@ export const PLACES = [
   // Montra Tower on the Plaza: the city's tribute to Montra, the Elysium launchpad $SUNFALL launched on. Its top floor is a bar.
   ['v31', 'bar', 'Montra Sky Lounge', 'oldtown', 680, 320, null],
   // Montra Planet
-  ['v32', 'bar', 'The First Block', 'lpline', 2600, 300, null],
-  ['v33', 'casino', 'The 142x', 'lpline', 2640, 410, null],
-  ['v34', 'bar', 'Anti-Snipe Lounge', 'heights', 2980, 140, 700],
-  ['v35', 'gym', 'Graduation Gym', 'heights', 2620, 150, null],
-  ['v36', 'market', 'Ticker Market', 'pools', 2880, 540, null],
-  ['v37', 'diner', 'Seed Liquidity Diner', 'genesis', 2640, 570, 550],
-  ['v38', 'diner', 'The Fee Tier', 'pools', 3000, 610, null],
-  ['w10', 'office', 'Montra Launch Control', 'launchq', 2800, 380, null],
-  ['w11', 'docks', 'Rocket Docks', 'orbit', 2980, 300, null],
-  ['w12', 'yard', 'Orbital Freight', 'orbit', 2980, 420, null],
+  ['v32', 'bar', 'The First Block', 'lpline', 880, -500, null],
+  ['v33', 'casino', 'The 142x', 'lpline', 920, -390, null],
+  ['v34', 'bar', 'Anti-Snipe Lounge', 'heights', 1260, -660, 700],
+  ['v35', 'gym', 'Graduation Gym', 'heights', 900, -650, null],
+  ['v36', 'market', 'Ticker Market', 'pools', 1160, -260, null],
+  ['v37', 'diner', 'Seed Liquidity Diner', 'genesis', 920, -230, 550],
+  ['v38', 'diner', 'The Fee Tier', 'pools', 1280, -190, null],
+  ['w10', 'office', 'Montra Launch Control', 'launchq', 1080, -420, null],
+  ['w11', 'docks', 'Rocket Docks', 'orbit', 1260, -500, null],
+  ['w12', 'yard', 'Orbital Freight', 'orbit', 1260, -380, null],
 ];
 /** Landmark venues stay the city's: never listed in a fire sale. */
 export const LANDMARK_VENUES = new Set(['v31']);
