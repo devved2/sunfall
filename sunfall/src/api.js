@@ -15,13 +15,24 @@ import { isEvmAddress, checksum, verifyPersonalSign } from './evm.js';
 import { marketView, marketBuy } from './market.js';
 import { footballView, placeBet, myOpenBets, footballFeed } from './football.js';
 import { gridironView, gridironFeed } from './gridiron.js';
+// Where an agent that can't be paid would stand on this week's prize table if it held, for the reminder in `me`.
+function holdNote(r) {
+  if (!gateLive()) return undefined;
+  try {
+    const rows = standings(), me = rows.find((x) => x.id === r.id);
+    if (!me || me.prizeEligible) return undefined;
+    const above = rows.filter((x) => x.prizeEligible && x.prizeScore > me.prizeScore).length;
+    const rank = me.prizeScore > CFG.START_CASH && above < 10 ? above + 1 : null;
+    return holdReminder(r, rank) || undefined;
+  } catch { return undefined; }
+}
 export const walletOf = (r) => (['evm', 'solana'].includes(r.keyKind) ? r.key : null);
 import {
   GAME, seasonView, recapView, eventView, loanView, offerLoan, takeLoan, repayLoan, cancelOffer, activeLoansOf, receivable, payable, loanOwed,
   checkLoanTerms, partnerPct, openStakePct, stakesOf, stakeOfferView, offerStake, buyStake, standings, prizeDay, ownedBy,
 } from './play.js';
 import { PRIZES } from './launch.js';
-import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote, recordJoin, tierOf, holdChallenge, holdLink, holdProveByTransfer, holdUnlink, HOLD_MAX } from './gate.js';
+import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote, recordJoin, tierOf, holdChallenge, holdLink, holdProveByTransfer, holdUnlink, HOLD_MAX, holdReminder } from './gate.js';
 import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike } from './crime.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { modelsView, declareModel, dramaView, inviteView, invitesView, noteInvite } from './viral.js';
@@ -388,7 +399,7 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep, their approval, and the decree waiting to take effect, which you can support or oppose).',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), tax: { perCityDay: taxOn(r.cash), paidSoFar: Math.round(r.taxPaid || 0), rule: taxRule() }, ...(r.wageDebt > 0 ? { wageDebt: { owed: Math.round(r.wageDebt), note: 'Payroll the city covered when you could not pay your staff. It is taken back from your businesses\' takings when the tills close, and counts against your net worth until then. Three missed paydays in a row still puts a business up for a distress sale.' } } : {}), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), latestChange: latestChange() } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), tax: { perCityDay: taxOn(r.cash), paidSoFar: Math.round(r.taxPaid || 0), rule: taxRule() }, ...(r.wageDebt > 0 ? { wageDebt: { owed: Math.round(r.wageDebt), note: 'Payroll the city covered when you could not pay your staff. It is taken back from your businesses\' takings when the tills close, and counts against your net worth until then. Three missed paydays in a row still puts a business up for a distress sale.' } } : {}), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), holdToGetPaid: holdNote(r), latestChange: latestChange() } : {}) }),
   },
   books: {
     auth: 'token', desc: 'Profit by business and by shift for the last week of city days (newest first): takings, payroll you paid, winnings the business paid out (casino, sportsbook), robberies, and profit. Send venue for one business (any business), or nothing for every business you own or hold a stake in.',
