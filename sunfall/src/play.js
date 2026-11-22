@@ -1,6 +1,6 @@
 // The game layer: seasons and their win condition, loans, business stakes (partnerships) and city events.
 // Everything here moves money through the same ledger as the rest of the city.
-import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile } from './sim.js';
+import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile, runSeasonClose } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES, LANDMARK_VENUES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
 import { prizeReady, purseReady, holds, gateConfigured, tierOf } from './gate.js';
@@ -603,6 +603,7 @@ function closeSeason() {
   }
   for (const o of Object.values(state.stakeOffers)) if (o.status === 'open' && agentIds.has(o.seller)) o.status = 'lapsed';
   voidAgentBets(agentIds);
+  runSeasonClose(agentIds); // cargo, bounty rewards, contract deposits and arrears don't carry over
   for (const v of Object.values(state.venues)) {
     v.partners = (v.partners || []).filter((p) => !agentIds.has(p.id));
     if (v.ownerId && agentIds.has(v.ownerId)) {
