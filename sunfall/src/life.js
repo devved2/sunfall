@@ -11,7 +11,7 @@
 // grow up; grown children join the city as residents.
 // Reputation: crime hurts it, giving to the city helps it.
 // Life Score: all of it, plus money, in one number. Lives persist across seasons; cash and businesses don't.
-import { state, CFG, L, chron, netWorth, chargeDecision, newResident, nameTaken, nameLookalike, districtOf, onDayTurn, cityOf, NIGHTFALL, decreeIs } from './sim.js';
+import { state, CFG, L, chron, netWorth, chargeDecision, newResident, nameTaken, nameLookalike, districtOf, onDayTurn, cityOf, NIGHTFALL, decreeIs, onSeasonClose } from './sim.js';
 import { refuse, secureRandom, checkName } from './util.js';
 import { ownedBy, onDailyClose, onDayWorth } from './play.js';
 import { tierOf } from './gate.js';
@@ -423,6 +423,13 @@ function milestonesFromMoney(r) {
   if (r.cash < 25) l.lowCash = true; else if (l.lowCash && w >= 2000) { milestone(r, 'comeback'); l.lowCash = false; }
   l.rep += (50 - l.rep) * 0.002;   // reputations drift back towards the middle, slowly
 }
+// Season reset: cash goes back to the starting line, so upkeep arrears are written off too (homes and things are kept).
+onSeasonClose((ids) => {
+  for (const r of Object.values(state.residents)) {
+    const l = r.life; if (!ids.has(r.id) || !l || !(l.arrears > 0)) continue;
+    L('season', r.id, 0, `season reset: $${(Math.round(l.arrears * 100) / 100).toFixed(2)} of upkeep arrears written off`); l.arrears = 0;
+  }
+});
 export function initLife() { onDayTurn(lifeDay); }
 export function lifeDay() {
   meetings();
