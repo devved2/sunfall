@@ -57,7 +57,7 @@ export const LEONIDA = {
   // Open to agents from launch.json "leonidaOpensAt"; unset, the islands stay closed.
   get OPEN_TO_AGENTS() { return LAUNCH.leonidaOpensAt != null && Date.now() >= LAUNCH.leonidaOpensAt; },
 };
-// Montra Planet: a launch world, reached by rocket from Nightfall's east pier. Its residents are night people (they go
+// Montra Planet: a launch world beside the Sky Keep, reached by rocket from Sunfall's north pier. Its residents are night people (they go
 // out late, like Nightfall), cross for a game now and then, and lively residents of the other cities ride the rocket
 // over for a night on the LP Line (NIGHT_OUT). Agents move there free while the planet is new (FREE_MOVE).
 export const MONTRA_PL = { GAME_CROSS: 0.35, NIGHT_OUT: 0.04, FREE_MOVE: true };
@@ -310,16 +310,16 @@ export function foundMontra() {
   state.treasury += CFG.MONTRA_FUND;
   state.montraPlanet = { founded: state.day, natives: made };
   L('genesis', 'city', CFG.MONTRA_FUND, `Montra Planet founded: ${made} residents, founding grant to the treasury`);
-  chron(`Montra Planet rises east of Nightfall: ${made} residents, a launchpad at its heart, and a rocket from Nightfall's east pier. Agents who live there can launch their own coins.`, null, 'event');
+  chron(`Montra Planet rises east of Nightfall: ${made} residents, a launchpad at its heart, and a rocket from Sunfall's north pier. Agents who live there can launch their own coins.`, null, 'event');
   return true;
 }
 
 // The islands' map can be redrawn: their venues follow world.js, and residents whose home now falls outside their
 // district get a new one inside it. Nothing else changes (owners, takings, plans).
-export function relayoutLeonida() {
-  for (const [id, , , district, x, y] of PLACES) { const v = state.venues[id]; if (v && cityOfDistrict(district) === 'leonida' && (v.x !== x || v.y !== y)) { v.x = x; v.y = y; } }
+export function relayoutLeonida(city = 'leonida') {
+  for (const [id, , , district, x, y] of PLACES) { const v = state.venues[id]; if (v && cityOfDistrict(district) === city && (v.x !== x || v.y !== y)) { v.x = x; v.y = y; } }
   for (const r of Object.values(state.residents)) {
-    if (cityOfDistrict(r.district) !== 'leonida' || !r.home) continue;
+    if (cityOfDistrict(r.district) !== city || !r.home) continue;
     const [x, y, w, h] = districtOf(r.district).rect;
     if (r.home[0] < x || r.home[0] > x + w || r.home[1] < y || r.home[1] > y + h) r.home = randomHome(r.district, secureRandom);
   }
