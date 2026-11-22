@@ -13,7 +13,7 @@
 // The two agents leading the season's prize table can't bid on contracts or buy cargo, so the leaders can't run away
 // with the new money. City cash only: nothing here pays or costs HYPE or $SUNFALL.
 import crypto from 'node:crypto';
-import { state, CFG, L, chron, onDayTurn, onWorth, onLand, onBeforeLand, onSpend, landed, chargeDecision, venueValueNow, cityOf, closedToAgents } from './sim.js';
+import { state, CFG, L, chron, onDayTurn, onWorth, onSeasonClose, onLand, onBeforeLand, onSpend, landed, chargeDecision, venueValueNow, cityOf, closedToAgents } from './sim.js';
 import { cityOfDistrict, CITIES, VTYPES } from './world.js';
 import { refuse, checkSentence, ut } from './util.js';
 import { standings, prizePlaces } from './play.js';
@@ -443,5 +443,27 @@ onLand((half) => {
     for (const [g, x] of Object.entries(r.cargo)) { const n = Math.ceil(x.qty * VENTURES.ROUGH_LOSS); if (!n) continue; x.cost = r2(x.cost * (x.qty - n) / x.qty); x.qty -= n; lost.push(`${n} ${GOODS[g].name}`); if (!x.qty) delete r.cargo[g]; }
     L('cargo', r.id, 0, `rough crossing to ${vname(vid)}: lost ${lost.join(', ')} overboard`);
     chron(`A rough crossing: ${r.name} loses ${lost.join(' and ')} overboard on the way to ${vname(vid)}.`, r.id, 'trade');
+  }
+});
+
+// ---------------------------------------------------------------- season close
+// Everything an agent holds here goes back to the city when the season resets, like its cash: cargo in the hold,
+// rewards held for open bounties and deposits on contracts. Contracts still pay their price if delivered.
+onSeasonClose((ids) => {
+  for (const r of Object.values(state.residents)) {
+    if (!ids.has(r.id) || !r.cargo || !Object.keys(r.cargo).length) continue;
+    const n = held(r); delete r.cargo;
+    L('season', r.id, 0, `season reset: ${n} unit${n === 1 ? '' : 's'} of cargo returned to the city`);
+  }
+  for (const x of Object.values(B())) {
+    if (x.status !== 'open' || !ids.has(x.by)) continue;
+    x.status = 'closed'; x.until = state.day; state.treasury += x.reward;
+    L('season', x.by, 0, `season reset: bounty ${x.id} closed, the $${x.reward} reward goes back to the city`);
+  }
+  for (const c of Object.values(K())) {
+    if (c.status !== 'awarded' || !ids.has(c.winner) || !c.held) continue;
+    state.treasury += c.held;
+    L('season', c.winner, 0, `season reset: the $${c.held} deposit on contract ${c.id} goes back to the city (the contract still pays its price if delivered)`);
+    c.held = 0;
   }
 });
