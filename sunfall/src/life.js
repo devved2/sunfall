@@ -67,6 +67,14 @@ function milestone(r, key) {
   if (['estate', 'airship', 'partnered', 'first_baby', 'grown_child', 'patron', 'fifty_k', 'good_reign'].includes(key)) chron(`${r.name}: ${MILESTONES[key].toLowerCase()}.`, r.id, 'life');
 }
 function pay(r, amt, kind, text) { r.cash -= amt; state.treasury += amt; L(kind, r.id, -amt, text); }
+// Upkeep arrears are paid off from cash as soon as there is cash to pay them: at every day turn, and before a purchase.
+function clearArrears(r) {
+  const l = lifeOf(r);
+  if (!(l.arrears > 0)) return 0;
+  const clear = Math.round(Math.min(l.arrears, Math.max(0, r.cash)) * 100) / 100;
+  if (clear > 0) { pay(r, clear, 'upkeep', 'paid off upkeep arrears'); l.arrears = Math.round((l.arrears - clear) * 100) / 100; }
+  return clear;
+}
 const familyHomeTier = (r) => Math.max(lifeOf(r).home, lifeOf(r).partner ? lifeOf(state.residents[lifeOf(r).partner] || r).home : 0);
 export const upkeepOf = (r) => { const l = lifeOf(r); return HOMES[l.home].upkeep + Object.entries(l.items).reduce((s, [k, n]) => s + ITEMS[k].upkeep * n, 0); };
 export const premiumOf = (r) => { const l = lifeOf(r); return LIFE.INSURE_BASE + LIFE.INSURE_PER_TIER * l.home + (l.items.car ? LIFE.INSURE_CAR : 0) + (l.items.airship ? LIFE.INSURE_AIRSHIP : 0); };
@@ -93,7 +101,8 @@ export function homeBuy(r, { tier }) {
   const l = lifeOf(r);
   if (tier === l.home) refuse(409, `you already live in a ${HOMES[tier].name}`);
   if (tier < l.home) refuse(409, `that's a step down; sell your ${HOMES[l.home].name} with homeSell first if you want to downsize`);
-  if (l.arrears > 0) refuse(409, `clear your ${usd(l.arrears)} upkeep arrears first`);
+  clearArrears(r);
+  if (l.arrears > 0) refuse(409, `you are ${usd(l.arrears)} behind on upkeep and have no cash to clear it; it is paid off from your cash as soon as you have some`);
   const tradeIn = Math.round(HOMES[l.home].price * LIFE.TRADE_IN), cost = HOMES[tier].price - tradeIn;
   const go = chargeDecision(r);
   if (r.cash - CFG.DECISION_COST < cost) refuse(402, `a ${HOMES[tier].name} costs ${usd(HOMES[tier].price)}${tradeIn ? ` (${usd(cost)} after ${usd(tradeIn)} for your ${HOMES[l.home].name})` : ''}; you would hold ${usd(r.cash - CFG.DECISION_COST)}`);
@@ -128,7 +137,8 @@ export function buyItem(r, { item }) {
   const it = ITEMS[item]; if (!it) refuse(422, `item: ${Object.keys(ITEMS).join(', ')}`);
   const l = lifeOf(r), have = l.items[item] || 0;
   if (have >= it.max) refuse(409, it.max === 1 ? `you already have a ${it.name}` : `at most ${it.max} pieces of art`);
-  if (l.arrears > 0) refuse(409, `clear your ${usd(l.arrears)} upkeep arrears first`);
+  clearArrears(r);
+  if (l.arrears > 0) refuse(409, `you are ${usd(l.arrears)} behind on upkeep and have no cash to clear it; it is paid off from your cash as soon as you have some`);
   const go = chargeDecision(r);
   if (r.cash - CFG.DECISION_COST < it.price) refuse(402, `a ${it.name} costs ${usd(it.price)}; you would hold ${usd(r.cash - CFG.DECISION_COST)}`);
   go();
@@ -356,11 +366,11 @@ function upkeep(r) {
   if (decreeIs('upkeepHoliday')) return; // the Keeper's upkeep holiday: no bills today
   const l = lifeOf(r);
   const due = Math.round(upkeepOf(r) * (1 - tierOf(r).upkeepOff)) + (l.insured ? premiumOf(r) : 0) + growing(l).length * LIFE.CHILDCARE; // holder tiers pay less upkeep
-  if (!due) return;
+  if (!due) { clearArrears(r); return; } // arrears from a bill are still paid off when there is no upkeep due
   const paid = Math.min(due, Math.max(0, r.cash));
   if (paid > 0) { r.cash -= paid; state.treasury += paid; L('upkeep', r.id, -paid, `upkeep${l.insured ? ', insurance' : ''}${growing(l).length ? ', childcare' : ''}`); }
   if (due > paid) l.arrears += due - paid;
-  else if (l.arrears > 0) { const clear = Math.min(l.arrears, Math.max(0, r.cash)); if (clear > 0) { pay(r, clear, 'upkeep', 'paid off upkeep arrears'); l.arrears -= clear; } }
+  else clearArrears(r);
   // The bailiffs: too far behind and things go back, the biggest first.
   if (l.arrears > Math.max(20, upkeepOf(r)) * LIFE.ARREARS_DAYS) {
     if (l.items.airship) { delete l.items.airship; delete l.broken.airship; l.arrears = 0; note(r, 'The bailiffs took the airship.', 'setback'); L('setback', r.id, 0, 'the bailiffs took the airship'); chron(`Bailiffs repossessed ${r.name}'s airship.`, r.id, 'life'); }
