@@ -853,6 +853,14 @@ export const onSpend = (fn) => { spendHooks.push(fn); };         // (venue, half
 export const onDayTurn = (fn) => { dayHooks.push(fn); };   // run at every day turn, before tomorrow is planned
 const worthHooks = [];
 export const onWorth = (fn) => { worthHooks.push(fn); };
+// Season close: modules that hold an agent's money outside its cash (cargo, bounty rewards, contract deposits, arrears)
+// clear it here, so nothing from last season carries into the next one. Called by closeSeason just before cash resets.
+const seasonCloseHooks = [];
+export const onSeasonClose = (fn) => { seasonCloseHooks.push(fn); };
+export function runSeasonClose(agentIds) { for (const fn of seasonCloseHooks) { try { fn(agentIds); } catch (e) { console.error('season close hook', e); } } }
+onSeasonClose((ids) => { // wage debt (payroll the city covered) is written off with the rest of last season's money
+  for (const r of Object.values(state.residents)) if (ids.has(r.id) && r.wageDebt > 0) { L('season', r.id, 0, `season reset: $${(Math.round(r.wageDebt * 100) / 100).toFixed(2)} of wage debt written off`); r.wageDebt = 0; }
+});
 onWorth((r) => -(r.wageDebt || 0)); // payroll the city covered is owed back, so it comes off net worth
 export function netWorth(r) {
   let w = r.cash;
