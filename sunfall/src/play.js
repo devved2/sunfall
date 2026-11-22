@@ -1,6 +1,6 @@
 // The game layer: seasons and their win condition, loans, business stakes (partnerships) and city events.
 // Everything here moves money through the same ledger as the rest of the city.
-import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile, runSeasonClose } from './sim.js';
+import { CFG, state, L, chron, netWorth, venueValueNow, seasonFor, payPartners, ensurePlaces, foundNightfall, foundLeonida, foundMontra, relayoutLeonida, planResident, saleFloor, SALE_FLOOR_PCT, readLedgerFile, runSeasonClose } from './sim.js';
 import { VTYPES, DISTRICTS, PLACES, LANDMARK_VENUES } from './world.js';
 import { secureRandom, pick, clamp, refuse } from './util.js';
 import { prizeReady, purseReady, holds, gateConfigured, tierOf } from './gate.js';
@@ -9,6 +9,7 @@ import { VAULT, prizeAddedBetween, freePrizePot, grantAwards, recentAwards } fro
 import { voidAgentBets } from './football.js';
 import { writeDiaries } from './diary.js';
 import { stockGainOf } from './exchange.js';
+import { coinGainOf } from './launchpad.js';
 setPrizeSeason(() => state.season?.n || 1); // bigger prizes from launch.json prizeBoost.fromSeason
 
 export const GAME = {
@@ -114,6 +115,7 @@ export function migrate() {
   if (foundNightfall()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // Nightfall's first natives get today's plan
   if (foundLeonida()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // and the Leonida Islands'
   relayoutLeonida();
+  if (foundMontra()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // and Montra Planet's
   for (const v of Object.values(state.venues)) v.partners ||= [];
   removeAgents();
   purgeAgents();
@@ -365,14 +367,14 @@ export function standings() {
     const worth = netWorth(r), casino = Math.round(r.season.casino || 0), betting = Math.round(r.season.betting || 0);
     const team = PRIZES.teamAgents.includes(r.id), excluded = PRIZES.excluded.includes(r.id);
     const fromAgents = Math.round((r.season.agentJobs || 0) + (r.season.agentInterest || 0) + (r.season.agentRob || 0) + (r.season.agentTakeover || 0) + (r.season.agentBounty || 0));
-    const bargains = bargainsOf(r), stocks = stockGainOf(r), grants = Math.round(r.season.grants || 0);
+    const bargains = bargainsOf(r), stocks = stockGainOf(r), coins = coinGainOf(r), grants = Math.round(r.season.grants || 0);
     return {
       id: r.id, name: { quoted: r.name }, runsOn: r.runsOn ? { quoted: r.runsOn } : null, wallet, team,
       netWorth: worth, cash: Math.round(r.cash), owns: ownedBy(r).length, stakes: stakesOf(r).length,
       interest: Math.round(r.season.interest), jobs: r.season.jobs, credit: r.credit,
       // Prizes reward play, not luck: casino and football winnings this season don't count towards the prize score.
       // Nor does money paid in by other agents (their jobs and their loan interest).
-      casino, betting, fromAgents, bargains, stocks, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains - Math.max(0, stocks) - grants),
+      casino, betting, fromAgents, bargains, stocks, coins, prizeScore: Math.round(worth - Math.max(0, casino) - Math.max(0, betting) - fromAgents - bargains - Math.max(0, stocks) - Math.max(0, coins) - grants),
       prizeEligible: Boolean(wallet) && !team && !excluded && prizeReady(r), purseEligible: !team && !excluded && purseReady(r), excluded: excluded || undefined,
       holder: gateConfigured() && !team ? holds(r) : undefined, tier: gateConfigured() && !team ? (tierOf(r, true).id || undefined) : undefined,
       badge: Boolean(r.perks?.badge && r.perks.badge === state.season?.id),
