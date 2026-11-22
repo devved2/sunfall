@@ -19,6 +19,7 @@ import { pollReal, arenaNow } from './football.js';
 import { pollNfl, fieldNow } from './gridiron.js';
 import { initDiary, diaryOf, diaryEntry } from './diary.js';
 import { initExchange, exchangeTick } from './exchange.js';
+import { initLaunchpad, padSnapshot } from './launchpad.js';
 import { initLife, mapLives, lifeView, lifeOf, HOMES } from './life.js';
 import { initKeeper, mapKeeper } from './keeper.js';
 import { execFile, spawn } from 'node:child_process';
@@ -36,6 +37,7 @@ initKeeper();
 tick();
 initDiary();
 initExchange();
+initLaunchpad();
 try { exchangeTick(); } catch (e) { console.error('exchange', e); }
 setInterval(() => { try { exchangeTick(); } catch (e) { console.error('exchange', e); } }, 60_000);
 setInterval(() => { try { tick(); } catch (e) { console.error('tick', e); } }, 500);
@@ -148,7 +150,7 @@ function snapshot() {
     montra: { lastLaunch: state.montra?.lastLaunch || null },
     agentLog: (state.agentLog || []).slice(-30).reverse(),
     season: (() => { const rows = standings(); return { n: state.season.n, id: state.season.id, end: state.season.end, agents: rows.length, top: rows.slice(0, 10), titles: titles(rows) }; })(),
-    event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast), heist: heistView(),
+    event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast), heist: heistView(), pad: padSnapshot(),
     bank: { openLoans: Object.values(state.loans).filter((l) => l.status === 'open').length, activeLoans: Object.values(state.loans).filter((l) => l.status === 'active').length, stakeOffers: Object.values(state.stakeOffers).filter((o) => o.status === 'open').length },
     token: { ticker: TOKEN.ticker, live: Boolean(TOKEN.address), address: TOKEN.address },
     chain: { name: CHAIN.name, id: CHAIN.id, explorer: CHAIN.explorer },
