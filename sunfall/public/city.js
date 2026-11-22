@@ -297,7 +297,7 @@ function build() {
     land.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -2)); land.receiveShadow = true; scene.add(land);
     land.userData.city = isl.nf ? 'nightfall' : isl.li ? 'leonida' : isl.mp ? 'montra' : 'sunfall'; land.userData.top = true; islandMeshes.push(land);
     const grass = new THREE.Mesh(BOX, new THREE.MeshStandardMaterial({ color: isl.li ? 0xe9d3a8 : isl.mp ? 0x14110a : 0x6f9a52, roughness: 0.95 })); grass.scale.set(x1 - x0 + 3, 1.2, y1 - y0 + 3); grass.position.copy(W((x0 + x1) / 2, (y0 + y1) / 2, -4.6)); scene.add(grass);
-    if (isl.li || isl.mp) continue; // the islands' rock follows their coastline (buildLeonida); Montra's town sits on a planet (buildMontra)
+    if (isl.li || isl.mp) continue; // the islands' rock follows their coastline (buildLeonida); Montra's rock is built in buildMontra
     const rock = rockUnder(x0, y0, x1, y1, isl.depth, rnd); rock.userData.city = land.userData.city; islandMeshes.push(rock); scene.add(rock);
   }
   buildElysiumGlow();
@@ -1282,25 +1282,10 @@ function readBothWays(m) { m.material.side = THREE.FrontSide; const back = new T
 function buildMontra(rnd) {
   const box = (x, y, w, d, h, y0b, mat) => { const m = new THREE.Mesh(BOX, mat); m.scale.set(w, h, d); m.position.copy(W(x, y, y0b)); m.receiveShadow = true; m.castShadow = true; scene.add(m); return m; };
   const additive = (col, op = 0.6) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
-  // the town's plinth, and the planet under it
-  const plinth = rockUnder(815, -746, 1345, -134, 150, rnd); plinth.userData.city = 'montra'; islandMeshes.push(plinth); scene.add(plinth);
-  const R = 215, C0 = W(MP.cx, MP.cy, -55 - R); // most of it above the cloud sea (SEA_Y)
-  const planet = new THREE.Mesh(new THREE.SphereGeometry(R, LITE ? 48 : 96, LITE ? 32 : 64), new THREE.MeshStandardMaterial({ map: planetTexture(rnd), roughness: 0.4, metalness: 0.5, emissive: 0x4a3408, emissiveIntensity: 1 }));
-  const pivot = new THREE.Group(); pivot.position.copy(C0); pivot.rotation.set(0.3, 0, 1.25); scene.add(pivot); // its axis tipped over, so the chart runs round its side
-  pivot.add(planet); planet.userData.city = 'montra'; islandMeshes.push(planet); mp.planet = planet; mp.centre = C0;
-  const atmo = new THREE.Mesh(new THREE.SphereGeometry(R * 1.07, 48, 32), new THREE.MeshBasicMaterial({ color: MGOLD, transparent: true, opacity: 0.12, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-  atmo.position.copy(C0); scene.add(atmo);
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: MGOLD2, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-  halo.scale.setScalar(R * 3.2); halo.position.copy(C0); scene.add(halo);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(R * 1.3, R * 1.75, 128, 1), new THREE.MeshBasicMaterial({ map: ringTexture(), transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false }));
-  { const uv = ring.geometry.attributes.uv, pos = ring.geometry.attributes.position; for (let i = 0; i < uv.count; i++) { const r = Math.hypot(pos.getX(i), pos.getY(i)); uv.setXY(i, (r - R * 1.3) / (R * 0.45), 0.5); } }
-  ring.rotation.x = -Math.PI / 2 + 0.22; ring.rotation.y = 0.12; ring.position.copy(C0); scene.add(ring); mp.ring = ring;
-  // two moons: one chrome, one gold
-  for (const [r, d, sp, col, ph] of [[30, R * 2.3, 0.06, 0xd4d4d4, 0], [18, R * 2.9, -0.04, MGOLD, 2.2]]) {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), new THREE.MeshStandardMaterial({ color: col, metalness: 0.9, roughness: 0.2, emissive: col, emissiveIntensity: 0.1 }));
-    scene.add(m); mp.moons.push({ m, d, sp, ph });
-  }
-  // giant gold coins orbiting the planet, spinning as they go
+  // the town's rock, hanging in the sky like the other islands
+  const plinth = rockUnder(815, -746, 1345, -134, 260, rnd); plinth.userData.city = 'montra'; islandMeshes.push(plinth); scene.add(plinth);
+  const R = 215, C0 = W(MP.cx, MP.cy, -55 - R); mp.centre = C0; // the point the coins circle
+  // giant gold coins orbiting the town, spinning as they go
   { const tex = coinTexture(), face = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.7, roughness: 0.25, emissive: MGOLD, emissiveIntensity: 0.25 }), edge = new THREE.MeshStandardMaterial({ color: 0xc8962c, metalness: 0.9, roughness: 0.3 });
     for (let i = 0; i < (LITE ? 5 : 9); i++) {
       const s2 = 12 + rnd() * 16, m = new THREE.Mesh(new THREE.CylinderGeometry(s2, s2, s2 * 0.18, 32).rotateX(Math.PI / 2), [edge, face, face]);
@@ -1358,10 +1343,8 @@ function buildMontra(rnd) {
   for (let i = 0; i < (LITE ? 5 : 10); i++) puff(MP.x0 - 60 + rnd() * 640, MP.y0 - 60 + rnd() * 640, -380 - rnd() * 120, 320 + rnd() * 260, i % 2);
 }
 function updateMontra(t, dt) {
-  if (!mp.planet) return;
-  mp.planet.rotation.y += dt * 0.02; mp.ring.rotation.z += dt * 0.008;
+  if (!mp.centre) return;
   const c = mp.centre;
-  for (const m of mp.moons) { const a = m.ph + t * m.sp; m.m.position.set(c.x + Math.cos(a) * m.d, c.y + 60 + Math.sin(a * 0.7) * 90, c.z + Math.sin(a) * m.d); }
   for (const k of mp.coins) { const a = k.ph + t * k.sp; k.m.position.set(c.x + Math.cos(a) * k.d, c.y + k.y + Math.sin(t * 0.6 + k.ph) * 12, c.z + Math.sin(a) * k.d); k.m.rotation.y = t * k.spin; }
   for (const k of mp.candles) { k.g.position.y = k.y0 + Math.sin(t * k.sp + k.ph) * 10; k.g.rotation.y = Math.sin(t * 0.3 + k.ph) * 0.4; }
   for (const b of mp.beams) {
