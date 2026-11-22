@@ -116,7 +116,15 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
-const ipOf = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+// The caller's address. Only trust X-Forwarded-For when the request came through the local proxy (Caddy); anyone
+// reaching the app's port directly could write whatever they like there. Caddy adds the real address last.
+const LOOPBACK = /^(127\.|::1$|::ffff:127\.)/;
+const ipOf = (req) => {
+  const sock = req.socket.remoteAddress || 'unknown';
+  if (!LOOPBACK.test(sock)) return sock;
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return xff[xff.length - 1] || sock;
+};
 const originOf = (req) => (process.env.PUBLIC_URL || `${(req.headers['x-forwarded-proto'] || 'http').split(',')[0]}://${req.headers['x-forwarded-host'] || req.headers.host || 'localhost'}`).replace(/\/$/, '');
 const bearer = (req) => { const h = req.headers.authorization || ''; return h.startsWith('Bearer ') ? h.slice(7).trim() : null; };
 
@@ -181,6 +189,11 @@ function events(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
+  // Security headers on every response; the owner's page and the payouts page also refuse to be framed.
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('referrer-policy', 'strict-origin-when-cross-origin');
+  res.setHeader('strict-transport-security', 'max-age=15552000');
+  if (/^\/(me|payouts)(\.html)?$/.test(p)) { res.setHeader('x-frame-options', 'DENY'); res.setHeader('content-security-policy', "frame-ancestors 'none'"); }
   try {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization, mcp-session-id, mcp-protocol-version', 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS' });
@@ -220,15 +233,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/vault' && req.method === 'GET') return send(res, 200, { ok: true, ...(await vaultView()) });
     if (p === '/api/admin/payouts' && req.method === 'GET') {
-      checkAdmin(req.headers['x-admin-key']);
+      checkAdmin(req.headers['x-admin-key'], ipOf(req));
       return send(res, 200, { ok: true, due: dueAwards() });
     }
     if (p === '/api/admin/owners' && req.method === 'GET') {
-      checkAdmin(req.headers['x-admin-key']);
+      checkAdmin(req.headers['x-admin-key'], ipOf(req));
       return send(res, 200, { ok: true, ...(await ownersReport()) });
     }
     if (p === '/api/admin/vault' && req.method === 'POST') {
-      checkAdmin(req.headers['x-admin-key']);
+      checkAdmin(req.headers['x-admin-key'], ipOf(req));
       let body; try { body = JSON.parse((await readBody(req)) || '{}'); } catch { return send(res, 400, { ok: false, reason: 'body must be JSON' }); }
       return send(res, 201, { ok: true, entry: recordFlow(body) });
     }
