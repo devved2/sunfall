@@ -52,7 +52,7 @@ export function residentFromToken(token) {
   if (own && own.exp > Date.now()) return state.residents[own.id] || null;
   return null;
 }
-export const isOwnerSession = (token) => Boolean(token && state.keys['own:' + sha256(String(token))]);
+export const isOwnerSession = (token) => { const o = token && state.keys['own:' + sha256(String(token))]; return Boolean(o && o.exp > Date.now()); };
 const OWNER_SESSION_MS = 7 * 86400_000;
 function issueOwnerSession(r) {
   for (const [k, v] of Object.entries(state.keys)) if (k.startsWith('own:') && (v.exp < Date.now() || v.id === r.id)) delete state.keys[k];
@@ -78,7 +78,14 @@ function issueToken(r) {
   state.keys['tok:' + r.tokenHash] = r.id;
   return token;
 }
-const challenges = new Map(); // in memory: a challenge lives five minutes
+// in memory: a challenge lives five minutes. Capped, so a flood of challenge requests can't eat the server's memory.
+const challenges = new (class extends Map {
+  set(k, v) {
+    if (this.size >= 20000) { const now = Date.now(); for (const [a, b] of this) if (b.exp < now) this.delete(a); }
+    if (this.size >= 20000) refuse(503, 'too many sign-in challenges waiting: try again in a few minutes');
+    return super.set(k, v);
+  }
+})();
 
 // ---------------------------------------------------------------- views
 const halfName = (h) => (h === 'aft' ? 'afternoon' : 'night');
