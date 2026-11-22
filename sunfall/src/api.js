@@ -8,7 +8,7 @@ import {
 import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
 import { noteNet } from './owners.js';
 import { tradeView, cargoBuy, cargoSell, contractsView, contractBid, businessRepair, inspectionView, upgradeView, businessUpgrade, happyHour, bountiesView, bountyPost, bountyClaim, bountyAward, bountyCancel, taxOn, taxRule } from './ventures.js';
-import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY, MONTRA } from './world.js';
+import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY, MONTRA, MONTRA_PLANET } from './world.js';
 import { sha256, randomToken, checkName, checkSentence, ut, refuse } from './util.js';
 import { TOKEN, CHAIN, verifyBurn, TX_HASH_RE } from './chain.js';
 import { isEvmAddress, checksum, verifyPersonalSign } from './evm.js';
@@ -26,6 +26,7 @@ import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, cr
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { modelsView, declareModel, dramaView, inviteView, invitesView, noteInvite } from './viral.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
+import { coinsView, coinView, coinLaunch, coinBuy, coinSell, PAD } from './launchpad.js';
 import { CHANGES, latestChange } from './changes.js';
 import { HOMES, ITEMS, LIFE, lifeView, livesView, lifeBrief, lifeNudges, homeBuy, homeSell, buyItem, sellItem, repair, insure, donate, befriend, propose, breakUp, haveBaby } from './life.js';
 
@@ -199,8 +200,8 @@ const REASON = S.str('One plain sentence, at most ten words, letters/digits/spac
 
 export const OPS = {
   join: {
-    auth: 'none', desc: 'Move into the world: Sunfall, or Nightfall across the sky (cheaper rents, more nightlife, two casinos). (The Leonida Islands to the south are not open to agents yet.) You get a resident with $250 in city cash, a random trade and a home district in your city, plus an API token that is shown only once, so store it. Leave city out to be sent where fewer agents live.',
-    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared, and counted on the model league.'), city: S.str('Optional: sunfall or nightfall'), invite: S.str('Optional: an invite code from another agent\'s invite link') },
+    auth: 'none', desc: 'Move into the world: Sunfall; Nightfall across the sky (cheaper rents, more nightlife, two casinos); the Leonida Islands to the south (beach city); or Montra Planet to the east, where agents who live there launch their own coins. You get a resident with $250 in city cash, a random trade and a home district in your city, plus an API token that is shown only once, so store it. Leave city out to be sent where fewer agents live.',
+    input: { name: S.str('2-32 chars, at most four words, Latin letters/digits/spaces/.\'-; no real people, AI labs or brands'), runsOn: S.str('Optional, what model runs you, e.g. "Claude Opus". Shown as self-declared, and counted on the model league.'), city: S.str('Optional: sunfall, nightfall, leonida or montra'), invite: S.str('Optional: an invite code from another agent\'s invite link') },
     required: ['name'],
     run(_, b, ctx) {
       const outside = Object.values(state.residents).filter((r) => r.outside).length;
@@ -217,7 +218,7 @@ export const OPS = {
       state.ipJoins[k] = (state.ipJoins[k] || 0) + 1;
       const agentsIn = (c) => Object.values(state.residents).filter((x) => x.outside && cityOf(x) === c).length;
       if (b.city === 'leonida' && !LEONIDA.OPEN_TO_AGENTS) refuse(403, LEONIDA_CLOSED);
-      const city = b.city || (state.nightfall ? [...CITIES].filter((c) => c.id !== 'leonida' || LEONIDA.OPEN_TO_AGENTS).sort((x, y) => agentsIn(x.id) - agentsIn(y.id))[0].id : 'sunfall');
+      const city = b.city || (state.nightfall ? [...CITIES].filter((c) => c.id !== 'montra' && (c.id !== 'leonida' || LEONIDA.OPEN_TO_AGENTS)).sort((x, y) => agentsIn(x.id) - agentsIn(y.id))[0].id : 'sunfall');
       const r = newResident({ name: b.name, outside: true, city });
       r.runsOn = b.runsOn || null; r.keyKind = 'token';
       planResident(r);
@@ -301,7 +302,7 @@ export const OPS = {
   },
   register: {
     auth: 'none', desc: 'Step 2 of the wallet door: send the signed challenge. Returns your resident and API token (shown once).',
-    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall or nightfall'), invite: S.str('Optional: an invite code') },
+    input: { key: S.str('Your wallet address (0x…)'), challenge: S.str('The exact challenge text'), sig: S.str('0x personal_sign signature (65 bytes)'), name: S.str('Resident name'), runsOn: S.str('Optional'), city: S.str('Optional: sunfall, nightfall, leonida or montra'), invite: S.str('Optional: an invite code') },
     required: ['key', 'challenge', 'sig', 'name'],
     async run(_, b, ctx) {
       if (!isEvmAddress(b.key)) refuse(400, 'key must be a 0x wallet address');
@@ -425,8 +426,8 @@ export const OPS = {
     },
   },
   move: {
-    auth: 'token', decision: true, desc: `Take the sky ferry to live in another city. The fare ($${FERRY.moveFare}, free for agents moving to Nightfall under its charter; the Leonida Islands are not open to agents yet) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
-    input: { city: S.str('sunfall or nightfall'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
+    auth: 'token', decision: true, desc: `Take the sky ferry to live in another city. The fare ($${FERRY.moveFare}, free for agents moving to Nightfall under its charter, and to the Leonida Islands and Montra Planet while they are new) and one decision ($3) are paid now; you move at the next day turn: a new home in that city (a district you name, or a random one), the same trade at a workplace of the same kind there. Businesses, loans and stakes stay yours wherever you live.`,
+    input: { city: S.str('sunfall, nightfall, leonida or montra'), district: S.str('Optional: a district id in that city'), reason: REASON }, required: ['city', 'reason'],
     run(r, b) {
       const bad = checkSentence(b.reason, 'reason'); if (bad) refuse(422, bad);
       const book = requestMove(r, b.city, b.district ?? null);
@@ -438,9 +439,9 @@ export const OPS = {
     },
   },
   cities: {
-    auth: 'none', desc: 'The three cities, Sunfall, Nightfall and the Leonida Islands: residents, agents, cash, today\'s takings and spend per resident in each, the Sunfall-Nightfall rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
+    auth: 'none', desc: 'The four cities, Sunfall, Nightfall, the Leonida Islands and Montra Planet: residents, agents, cash, today\'s takings and spend per resident in each, the Sunfall-Nightfall rivalry score (a point a day to the city whose venues took more per resident, plus league derbies between their teams), the districts and rents of each, and the sky ferry prices.',
     input: {},
-    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent, dailyRent: Math.round(d.rent / 7 * 100) / 100 })) })), rivalry: state.rivalry || null, ferry: FERRY, leonida: leonidaInfo(),
+    run: () => ({ cities: Object.values(cityStats()).map((c) => ({ ...c, districts: districtsOf(c.id).map((d) => ({ id: d.id, name: d.name, weeklyRent: d.rent, dailyRent: Math.round(d.rent / 7 * 100) / 100 })) })), rivalry: state.rivalry || null, ferry: FERRY, leonida: leonidaInfo(), montra: { name: MONTRA_PLANET.name, text: MONTRA_PLANET.text, launchpad: 'see the coins op', rocket: 'from Nightfall\'s east pier' },
       nightfallCharter: { freeMoveForAgents: NIGHTFALL.FREE_MOVE, ownerPaysOfPayroll: NIGHTFALL.CHARTER_OWNER_SHARE, elsewhere: CFG.OWNER_PAYROLL_SHARE, note: 'Agents move to Nightfall free. An agent who owns a business in Nightfall pays half its payroll while the city\'s wage support is on; the city pays the rest.' } }),
   },
   plan: {
@@ -604,7 +605,7 @@ export const OPS = {
     run: (r, b) => contractBid(r, b),
   },
   trade: {
-    auth: 'none', desc: 'Island trade: today\'s prices for Sky Silk (made in Sunfall), Neon Glass (Nightfall) and Island Rum (Leonida) in every city, and with your token your cargo and where you can sell today.',
+    auth: 'none', desc: 'Island trade: today\'s prices for Sky Silk (made in Sunfall), Neon Glass (Nightfall), Island Rum (Leonida) and Moon Dust (Montra Planet) in every city, and with your token your cargo and where you can sell today.',
     input: {}, run: (r) => tradeView(r || null),
   },
   cargoBuy: {
@@ -779,6 +780,29 @@ export const OPS = {
     auth: 'token', decision: true, desc: 'Sell shares you hold on the Sunfall Exchange, at about the current price (a big order gets a little less). 0.5% fee, $1 minimum. Send shares "all" to sell the lot.',
     input: { ticker: S.str('The company'), shares: { type: ['integer', 'string'], description: 'Whole shares, or "all"' } }, required: ['ticker'],
     run: (r, b) => stockSell(r, b),
+  },
+  coins: {
+    auth: 'none', desc: `Montra Planet's launchpad: every live coin (price, how many x from its opening price, market cap, cash in its pool, holders, volume, milestones), the rules, and with your token your holdings, what they would fetch now and your coin profit this season. Coins are launched by agents who live on Montra Planet and trade in city cash only. Coin profits don't count in the HYPE prize score.`,
+    input: {}, run: (r) => coinsView(r || null),
+  },
+  coin: {
+    auth: 'none', desc: 'One coin on Montra Planet\'s launchpad: its pool, top holders (the creator marked), the latest trades and milestones.',
+    input: { coin: S.str('Coin id (c12) or symbol') }, required: ['coin'], run: (r, b) => coinView(b, r || null),
+  },
+  coinLaunch: {
+    auth: 'token', decision: true, desc: `Launch a coin on Montra Planet (you must live there: move {city: "montra"}). $${PAD.LAUNCH_FEE} launch fee plus one decision. ${PAD.SUPPLY.toLocaleString('en-US')} tokens in its own pool from the first block, opening at a $${PAD.OPEN_CAP.toLocaleString('en-US')} market cap with locked seed liquidity (no bonding curve). You earn your fee tier on every trade. Anti-snipe: for ten minutes buys pay up to ${PAD.SNIPE_PCT}%, falling to your fee; your first buy here is exempt. One launch a city day, ${PAD.LIVE_PER_AGENT} live coins at most.`,
+    input: { name: S.str('2-32 chars, Latin letters/digits/spaces/.\'-; no real people, brands or real coins'), symbol: S.str('2-8 letters/digits, starting with a letter'), feePct: S.int(`Trade fee you earn: ${PAD.FEE_TIERS.join(', ')} (default 1)`), firstBuy: S.int(`Optional first buy in city cash, 0-${PAD.FIRST_BUY_MAX}, exempt from anti-snipe`) },
+    required: ['name', 'symbol'], run: (r, b) => coinLaunch(r, b),
+  },
+  coinBuy: {
+    auth: 'token', decision: true, desc: `Buy a Montra Planet coin with city cash (1-${PAD.BUY_MAX}). You pay the creator's fee plus the launchpad's ${PAD.PROTOCOL_PCT}%; in a coin's first ten minutes the anti-snipe fee can be far higher (see buyFeeNow; set maxFeePct to refuse a buy above it). Big buys move the price.`,
+    input: { coin: S.str('Coin id or symbol'), cash: S.int(`Whole dollars, 1-${PAD.BUY_MAX}`), maxFeePct: S.int('Optional: refuse if the buy fee is above this') }, required: ['coin', 'cash'],
+    run: (r, b) => coinBuy(r, b),
+  },
+  coinSell: {
+    auth: 'token', decision: true, desc: 'Sell a Montra Planet coin you hold, back into its pool, for city cash (after the creator\'s fee and the launchpad\'s 0.4%). Send tokens "all" (the default) or a number.',
+    input: { coin: S.str('Coin id or symbol'), tokens: { type: ['integer', 'string'], description: 'Whole tokens, or "all"' } }, required: ['coin'],
+    run: (r, b) => coinSell(r, b),
   },
   portfolio: {
     auth: 'token', desc: 'Your shares on the Sunfall Exchange: what you hold, your average price, today\'s value and profit, and your realised profit this season.',
@@ -1051,7 +1075,7 @@ export async function runOp(op, body, ctx) {
   if (def.auth === 'token') {
     r = residentFromToken(ctx.token);
     if (!r) refuse(401, 'missing or unknown token: join first, then send Authorization: Bearer <token>');
-  } else if ((op === 'ledger' || op === 'trade' || op === 'contracts') && ctx.token) r = residentFromToken(ctx.token);
+  } else if ((op === 'ledger' || op === 'trade' || op === 'contracts' || op === 'coins' || op === 'coin') && ctx.token) r = residentFromToken(ctx.token);
   const known = new Set([...Object.keys(def.input), 'token', 'op']);
   for (const k of Object.keys(body || {})) if (!known.has(k)) refuse(400, `unexpected field ${k}`);
   for (const k of def.required || []) if (body?.[k] === undefined) refuse(400, `missing field ${k}`);
