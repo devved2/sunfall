@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { sha256, mulberry32, secureRandom, pick, clamp, checkSentence, refuse, nameSkeleton } from './util.js';
-import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LEONIDA_FIRST, LEONIDA_LAST, LINES, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
+import { DISTRICTS, VTYPES, VENUE_TYPES, WTYPES, TRADES, PLACES, FIRST, LAST, LEONIDA_FIRST, LEONIDA_LAST, MONTRA_FIRST, MONTRA_LAST, LINES, CITIES, cityById, cityOfDistrict, districtsOf, FERRY } from './world.js';
 import { beforeDayTurn, afterDayTurn, eventIs, receivable, payable, stakesOf, migrate } from './play.js';
 import { LIMITS, LAUNCH } from './launch.js';
 import { tierOf } from './gate.js';
@@ -18,6 +18,8 @@ export const CFG = {
   NIGHTFALL_FUND: 20000, // the city's founding grant to Nightfall's treasury share, so its payroll is covered from day one
   LEONIDA_NATIVES: Number(process.env.LEONIDA_NATIVES) || 120,
   LEONIDA_FUND: 22000, // the same for the Leonida Islands
+  MONTRA_NATIVES: Number(process.env.MONTRA_NATIVES) || 100,
+  MONTRA_FUND: 20000, // and for Montra Planet
   START_CASH: 250,
   CITY_WAGE_PCT: 80, // the city's own workplaces and venues pay this % of a trade's wage (cut from 100% on 21 Nov 2026 to rebuild the treasury)
   SKY_MINT_TO: 60000, // the one-off Sky Mint grant tops the treasury up to this (21 Nov 2026)
@@ -55,6 +57,10 @@ export const LEONIDA = {
   // Open to agents from launch.json "leonidaOpensAt"; unset, the islands stay closed.
   get OPEN_TO_AGENTS() { return LAUNCH.leonidaOpensAt != null && Date.now() >= LAUNCH.leonidaOpensAt; },
 };
+// Montra Planet: a launch world, reached by rocket from Nightfall's east pier. Its residents are night people (they go
+// out late, like Nightfall), cross for a game now and then, and lively residents of the other cities ride the rocket
+// over for a night on the LP Line (NIGHT_OUT). Agents move there free while the planet is new (FREE_MOVE).
+export const MONTRA_PL = { GAME_CROSS: 0.35, NIGHT_OUT: 0.04, FREE_MOVE: true };
 export const leonidaInfo = () => ({ open: LEONIDA.OPEN_TO_AGENTS, opensAt: LAUNCH.leonidaOpensAt ? new Date(LAUNCH.leonidaOpensAt).toISOString() : null,
   settlerGrant: LEONIDA.SETTLER_GRANT, settlersLeft: Math.max(0, LEONIDA.SETTLERS - (state.leonidaSettlers || 0)) });
 /** The welcome grant for one of the first agents to move to (or join in) the Leonida Islands: once per agent. */
@@ -228,6 +234,7 @@ export function initWorld() {
   chron(`Sunfall opens its gates. ${n} residents wake up.`);
   foundNightfall();
   foundLeonida();
+  foundMontra();
   cityJobs();
   planAll();
   state.season = { n: 1, ...seasonFor(Date.now()) };
@@ -288,6 +295,25 @@ export function foundLeonida() {
   return true;
 }
 
+// Montra Planet is founded once, the same way: its own natives and a founding grant to the treasury.
+export function foundMontra() {
+  if (state.montraPlanet?.founded != null) return false;
+  const rnd = mulberry32(CFG.SEED + 4242);
+  const n = CFG.MONTRA_NATIVES;
+  let made = 0, guard = 0;
+  while (made < n && guard++ < n * 50) {
+    const name = `${pick(MONTRA_FIRST, rnd)} ${pick(MONTRA_LAST, rnd)}`;
+    if (nameTaken(name.toLowerCase())) continue;
+    newResident({ name, rnd, cash: Math.round(150 + rnd() * 260), city: 'montra' });
+    made++;
+  }
+  state.treasury += CFG.MONTRA_FUND;
+  state.montraPlanet = { founded: state.day, natives: made };
+  L('genesis', 'city', CFG.MONTRA_FUND, `Montra Planet founded: ${made} residents, founding grant to the treasury`);
+  chron(`Montra Planet rises east of Nightfall: ${made} residents, a launchpad at its heart, and a rocket from Nightfall's east pier. Agents who live there can launch their own coins.`, null, 'event');
+  return true;
+}
+
 // The islands' map can be redrawn: their venues follow world.js, and residents whose home now falls outside their
 // district get a new one inside it. Nothing else changes (owners, takings, plans).
 export function relayoutLeonida() {
@@ -303,7 +329,7 @@ export function relayoutLeonida() {
 // Moving to the other city: the fare is paid now, the move happens at the next day turn (new home, same trade,
 // a workplace of the same kind in the new city).
 // Agents move to Nightfall free under its charter, and to the Leonida Islands free while they're new; every other move pays the fare.
-export const moveFare = (r, city) => (r.outside && ((city === 'nightfall' && NIGHTFALL.FREE_MOVE) || (city === 'leonida' && LEONIDA.FREE_MOVE)) ? 0 : FERRY.moveFare);
+export const moveFare = (r, city) => (r.outside && ((city === 'nightfall' && NIGHTFALL.FREE_MOVE) || (city === 'leonida' && LEONIDA.FREE_MOVE) || (city === 'montra' && MONTRA_PL.FREE_MOVE)) ? 0 : FERRY.moveFare);
 export function requestMove(r, city, district = null) {
   if (!cityById(city)) refuse(422, `city must be one of ${CITIES.map((c) => c.id).join(', ')}`);
   if (city === cityOf(r)) refuse(409, `you already live in ${cityById(city).name}`);
@@ -459,16 +485,16 @@ function rulesPlan(r) {
   const home = cityOf(r);
   for (const half of HALVES) {
     if (shift === half) { choice[half] = 'work'; continue; }
-    const nightOwl = half === 'night' && home === 'nightfall'; // Nightfall goes out at night
+    const nightOwl = half === 'night' && (home === 'nightfall' || home === 'montra'); // Nightfall and Montra Planet go out at night
     const beachDay = half === 'aft' && home === 'leonida'; // the islands go out in the afternoon
     if (r.cash < 25 || secureRandom() < (nightOwl ? 0.05 + t.thrift * 0.12 : (0.15 + t.thrift * 0.25) * (beachDay ? LEONIDA.BEACH_DAY : 1))) { choice[half] = 'in'; continue; }
     // Nightfall and the islands have no stadium or field of their own: their residents only cross the sky for a game now and then.
-    const games = home === 'sunfall' || secureRandom() < (home === 'leonida' ? LEONIDA.GAME_CROSS : NIGHTFALL.GAME_CROSS);
+    const games = home === 'sunfall' || secureRandom() < (home === 'leonida' ? LEONIDA.GAME_CROSS : home === 'montra' ? MONTRA_PL.GAME_CROSS : NIGHTFALL.GAME_CROSS);
     let options = half === 'aft' ? ['gym', 'diner', 'bar', 'gym', 'diner', 'bar', ...(state.venues.v12 && games ? ['stadium'] : [])] : ['bar', 'market', 'diner', 'bar', 'market', 'diner', ...(state.venues.v13 && games ? ['field'] : [])];
     if (half === 'night' && t.risk > 0.6 && r.cash > 160) options = ['casino', 'casino', 'bar'];
     choice[half] = pick(options);
     // Nightfall's and the islands' crowds bar-hop: they pick any place of that kind in their city, not only the nearest.
-    if ((home === 'nightfall' || home === 'leonida') && !VTYPES[choice[half]].cityOnly) {
+    if (home !== 'sunfall' && !VTYPES[choice[half]].cityOnly) {
       const here = Object.values(state.venues).filter((v) => v.isVenue && v.type === choice[half] && cityOfDistrict(v.district) === home);
       if (here.length > 1) choice[half] = pick(here).id;
     }
@@ -483,6 +509,12 @@ function rulesPlan(r) {
       const kinds = t.risk > 0.6 ? ['bar', 'market', 'casino'] : ['bar', 'market'];
       const there = Object.values(state.venues).filter((v) => v.isVenue && kinds.includes(v.type) && cityOfDistrict(v.district) === 'leonida');
       if (there.length) { choice[half] = pick(there).id; why[half] = pick(LINES.leonida); }
+    }
+    // A rocket to Montra Planet: now and then a lively resident of another city spends the night on the LP Line.
+    if (half === 'night' && home !== 'montra' && state.montraPlanet && typeof choice[half] === 'string' && !state.venues[choice[half]] && t.social > 0.55 && r.cash > 90 && secureRandom() < MONTRA_PL.NIGHT_OUT) {
+      const kinds = t.risk > 0.6 ? ['bar', 'market', 'casino'] : ['bar', 'market'];
+      const there = Object.values(state.venues).filter((v) => v.isVenue && kinds.includes(v.type) && cityOfDistrict(v.district) === 'montra');
+      if (there.length) { choice[half] = pick(there).id; why[half] = pick(LINES.montra); }
     }
     if (state.event?.kind === 'festival' && state.event.day === state.day && secureRandom() < 0.35) {
       const type = state.venues[choice[half]]?.type || choice[half];
