@@ -363,7 +363,7 @@ function badLuck(r) {
 }
 const pickOne = (a) => a[Math.floor(secureRandom() * a.length)];
 function upkeep(r) {
-  if (decreeIs('upkeepHoliday')) return; // the Keeper's upkeep holiday: no bills today
+  if (decreeIs('upkeepHoliday')) { clearArrears(r); return; } // the Keeper's upkeep holiday: no bills today (old arrears still clear)
   const l = lifeOf(r);
   const due = Math.round(upkeepOf(r) * (1 - tierOf(r).upkeepOff)) + (l.insured ? premiumOf(r) : 0) + growing(l).length * LIFE.CHILDCARE; // holder tiers pay less upkeep
   if (!due) { clearArrears(r); return; } // arrears from a bill are still paid off when there is no upkeep due
@@ -433,6 +433,13 @@ export function lifeDay() {
     growUp(r);
     milestonesFromMoney(r);
   }
+  // Watch for the stuck-arrears bug (fixed 22 Nov 2026): after the day turn, an agent with cash should never still be
+  // in arrears, since any cash goes to clearing them. Anyone who is shows up in /healthz as arrearsWatch.stuck.
+  const stuck = Object.values(state.residents).filter((r) => r.outside && lifeOf(r).arrears > 0 && r.cash > 0)
+    .map((r) => ({ id: r.id, name: r.name, arrears: Math.round(lifeOf(r).arrears * 100) / 100, cash: Math.round(r.cash) }));
+  const w = (state.arrearsWatch ||= { since: Date.now(), checks: 0, everStuck: 0 });
+  w.checks++; w.lastCheck = Date.now(); w.day = state.day; w.stuck = stuck; if (stuck.length) { w.everStuck++; w.lastStuck = { t: Date.now(), day: state.day, stuck }; console.error('arrears watch: stuck', JSON.stringify(stuck)); }
+  w.inArrears = Object.values(state.residents).filter((r) => r.outside && lifeOf(r).arrears > 0).length;
 }
 
 // ---------------------------------------------------------------- views
