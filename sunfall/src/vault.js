@@ -2,6 +2,7 @@
 // Inflows (creator fees, service fees, compute, seeding) are split by a public policy into buckets:
 // the weekly prize pot for players and $SUNFALL buy-and-burn. Every inflow and every payout is a line in the
 // city's hash-chained ledger and carries the Elysium transaction that proves it. Amounts are in HYPE.
+import crypto from 'node:crypto';
 import { state, L } from './sim.js';
 import { refuse } from './util.js';
 import { TOKEN, CHAIN, TX_HASH_RE, hypeBalance, txUrl, addressUrl } from './chain.js';
@@ -257,7 +258,18 @@ export async function scanFeeClaims() {
   return added;
 }
 
-export function checkAdmin(key) {
+// Constant-time key check, and ten wrong keys from one address lock that address out for 15 minutes.
+const adminFails = new Map();
+const keyHash = (k) => crypto.createHash('sha256').update(String(k || '')).digest();
+export function checkAdmin(key, ip = '?') {
   if (!VAULT.adminKey) refuse(503, 'recording is off: set ADMIN_KEY on the server');
-  if (key !== VAULT.adminKey) refuse(401, 'wrong admin key');
+  const now = Date.now(), f = adminFails.get(ip), live = f && now - f.t < 900_000;
+  if (live && f.n >= 10) refuse(429, 'too many wrong admin keys from here: try again in 15 minutes');
+  if (!crypto.timingSafeEqual(keyHash(key), keyHash(VAULT.adminKey))) {
+    const e = live ? f : { n: 0, t: now }; e.n++; e.t = now;
+    if (adminFails.size > 5000) adminFails.clear();
+    adminFails.set(ip, e);
+    refuse(401, 'wrong admin key');
+  }
+  adminFails.delete(ip);
 }
