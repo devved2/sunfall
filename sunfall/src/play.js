@@ -116,6 +116,7 @@ export function migrate() {
   if (foundLeonida()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // and the Leonida Islands'
   relayoutLeonida();
   if (foundMontra()) for (const r of Object.values(state.residents)) if (!r.plan) planResident(r); // and Montra Planet's
+  relayoutLeonida('montra'); // Montra Planet moved beside the Sky Keep (22 Nov 2026): venues and homes follow world.js
   for (const v of Object.values(state.venues)) v.partners ||= [];
   removeAgents();
   purgeAgents();
