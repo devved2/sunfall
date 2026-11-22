@@ -188,7 +188,7 @@ const server = http.createServer(async (req, res) => {
       const body = req.method === 'POST' ? await readBody(req) : '';
       return mcpHandler(req, res, body, { ip: ipOf(req), token: bearer(req) });
     }
-    if (p === '/healthz') return send(res, 200, { ok: true, day: state.day, residents: Object.keys(state.residents).length });
+    if (p === '/healthz') return send(res, 200, { ok: true, day: state.day, residents: Object.keys(state.residents).length, arrearsWatch: state.arrearsWatch || null });
     if (p === '/api/state') return sendSnapshot(req, res);
     if (p === '/api/events' && req.method === 'GET') return events(req, res, url);
     if (p === '/api/spec' || (p === '/api/agents' && req.method === 'GET')) return send(res, 200, spec());
