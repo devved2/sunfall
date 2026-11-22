@@ -1276,6 +1276,9 @@ function drawBoard() {
   });
   b.tex.needsUpdate = true;
 }
+// A sign or board that reads the right way round from both sides: the plane shows its front only, and a turned copy
+// rides on it to show the back.
+function readBothWays(m) { m.material.side = THREE.FrontSide; const back = new THREE.Mesh(m.geometry, m.material); back.rotation.y = Math.PI; m.add(back); }
 function buildMontra(rnd) {
   const box = (x, y, w, d, h, y0b, mat) => { const m = new THREE.Mesh(BOX, mat); m.scale.set(w, h, d); m.position.copy(W(x, y, y0b)); m.receiveShadow = true; m.castShadow = true; scene.add(m); return m; };
   const additive = (col, op = 0.6) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
@@ -1337,15 +1340,15 @@ function buildMontra(rnd) {
   { const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     mp.board = { g: c.getContext('2d'), tex };
     const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide, transparent: true });
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(72, 36), mat); face.position.copy(W(tx + 40, ty + 44, 46)); scene.add(face); neonMats.push(mat);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(72, 36), mat); face.position.copy(W(tx + 40, ty + 44, 46)); scene.add(face); readBothWays(face); neonMats.push(mat);
     for (const sx of [-30, 30]) box(tx + 40 + sx, ty + 44, 1.8, 1.8, 28, 0, steel);
     drawBoard(); }
   // the planet's name in gold neon over Graduation Heights, and the milestones floating over the town
   { const sm = new THREE.MeshBasicMaterial({ map: neonTexture('Montra Planet', '#e9b64a'), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }); neonMats.push(sm);
-    const sg = new THREE.Mesh(new THREE.PlaneGeometry(150, 37.5), sm); sg.position.copy(W(MP.cx, MP.y0 - 10, 200)); scene.add(sg); }
+    const sg = new THREE.Mesh(new THREE.PlaneGeometry(150, 37.5), sm); sg.position.copy(W(MP.cx, MP.y0 - 10, 200)); scene.add(sg); readBothWays(sg); }
   for (const [txt, col, x, y, h] of [['16.8x', '#3ddc84', MP.x0 + 70, MP.cy, 150], ['142.6x', '#ffd27a', MP.x1 - 70, MP.cy - 60, 175], ['LFG', '#ff5470', MP.cx + 40, MP.y1 - 30, 120]]) {
     const sm = new THREE.MeshBasicMaterial({ map: neonTexture(txt, col), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }); neonMats.push(sm);
-    const sg = new THREE.Mesh(new THREE.PlaneGeometry(64, 16), sm); sg.position.copy(W(x, y, h)); scene.add(sg); mp.candles.push({ g: sg, y0: sg.position.y, ph: rnd() * 6.28, sp: 0.7 });
+    const sg = new THREE.Mesh(new THREE.PlaneGeometry(64, 16), sm); sg.position.copy(W(x, y, h)); scene.add(sg); readBothWays(sg); mp.candles.push({ g: sg, y0: sg.position.y, ph: rnd() * 6.28, sp: 0.7 });
   }
   // the rocket ferry: a pier on Sunfall's north edge and one on the planet's south edge, and two small rockets between them
   const deck = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.5 });
