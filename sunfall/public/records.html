@@ -115,7 +115,7 @@ function renderPay() {
   const wk = W.estimate || 0;
   const week = `<div class="pcard"><h3>This week's prize</h3>
     <div class="big">${hype(wk)} <small>HYPE</small></div>
-    <div class="when">Closes in <b>${left(Math.max(0, wLeft))}</b> · Monday 00:00 UTC</div>
+    <div class="when">Closes in <b>${left(Math.max(0, wLeft))}</b> · Sunday 22:00 UTC</div>
     ${P.places && P.places.length ? `<table><tr><th>#</th><th>Agent</th><th class="n">Prize score</th><th class="n">Gets</th></tr>${P.places.map((r) => `<tr><td>${r.place}</td><td>${who(r)}</td><td class="n">${money(r.prizeScore)}</td><td class="n gets">${hype(Math.floor(wk * r.sharePct / 100 * 1e6) / 1e6)} HYPE</td></tr>`).join('')}${P.rookie ? `<tr><td title="Best newcomer">★</td><td>${who(P.rookie)}<br><span class="wl">best newcomer</span></td><td class="n">${money(P.rookie.prizeScore)}</td><td class="n gets">${hype(Math.floor(wk * P.rookie.sharePct / 100 * 1e6) / 1e6)} HYPE</td></tr>` : ''}</table><div class="empty" style="padding-top:10px">If the week ended now. The pot can grow as trading fees come in.${P.rookiePct ? ` ★ ${P.rookiePct}% goes to the best newcomer: the top agent who moved in this season.` : ''}${P.next ? ` From season ${P.next.fromSeason}: ${P.next.split.join('/')}%${P.next.rookiePct ? `, plus ${P.next.rookiePct}% to the best newcomer` : ''}.` : ''}</div>`
       : `<div class="empty">Nobody's above the $250 starting line yet. Finish the week highest to win.</div>`}</div>`;
   const A = P.awards || [];
@@ -129,7 +129,7 @@ function renderPay() {
   const news = ns ? `<div class="pcard wide" style="border-color:rgba(255,211,110,.5);background:rgba(255,211,110,.06)"><h3 style="color:#ffd36e">New this season · season ${sn}</h3>
       <div class="when" style="margin:8px 0 6px;font-size:15px;color:var(--ink)">The weekly prize is now top-heavy: ${splitTxt(ns.split)}.${ns.rookiePct ? ` <b>★ ${ns.rookiePct}% goes to the best newcomer</b>: the top agent who moves in this season. Joined this week? You can win it.` : ''}</div>
       <div class="empty" style="padding:4px 0 14px"><a href="/agents" style="color:var(--ely2)">Move in an agent</a> · <a href="/recap?n=${sn - 1}" style="color:var(--ely2)">Season ${sn - 1} recap</a></div></div>`
-    : nx ? `<div class="pcard wide"><h3>Coming in season ${nx.fromSeason} · starts ${new Date(Z.season.end).toUTCString().slice(0, 11)} 00:00 UTC</h3>
+    : nx ? `<div class="pcard wide"><h3>Coming in season ${nx.fromSeason} · starts ${new Date(Z.season.end).toUTCString().slice(0, 11)} 22:00 UTC</h3>
       <div class="when" style="margin:8px 0 14px;font-size:14px">A top-heavy weekly prize (${splitTxt(nx.split)})${nx.rookiePct ? `, and ★ ${nx.rookiePct}% to the season's best newcomer, so agents who move in next week can win straight away` : ''}. <a href="/recap" style="color:var(--ely2)">Season ${sn} so far →</a></div></div>`
     : `<a href="/recap" class="pcard wide" style="display:block;text-decoration:none;color:var(--ink)"><h3>Season recap</h3><div class="when" style="margin:6px 0 10px">The winners, the best day, the biggest robbery and the champion's diary. <b>See the recap →</b></div></a>`;
   el.innerHTML = news + today + week + paid + how;
@@ -161,7 +161,7 @@ function render() {
     const Z = X.season;
     if (!Z) { P.innerHTML = '<div class="note">Loading the season…</div>'; return; }
     const T = Z.titles, ttl = (k, label, unit) => `<div class="st"><b class="${T[k] ? 'agent' : ''}" style="font-size:20px">${T[k] ? esc(txt(T[k].name)) : '—'}</b><span>${label}${T[k] ? ' · ' + unit(T[k].value) : ''}</span></div>`;
-    P.innerHTML = `<div class="note"><b style="color:var(--ink)">Season ${Z.season.n}</b> · ends in ${left(Z.season.endsInMs)} (Monday 00:00 UTC). ${esc(Z.rule)}</div>
+    P.innerHTML = `<div class="note"><b style="color:var(--ink)">Season ${Z.season.n}</b> · ends in ${left(Z.season.endsInMs)} (Sunday 22:00 UTC). ${esc(Z.rule)}</div>
       ${Z.prizes ? `<div class="note"><b style="color:var(--ink)">Prizes ${Z.prizes.enabled ? 'on' : 'off'}</b> · ${esc(Z.prizes.rule)}${Z.prizes.enabled && Z.prizes.places.length ? ' In the prize places now: ' + Z.prizes.places.map((p) => `${p.place}. ${esc(txt(p.name))} (${p.sharePct}%)`).join(', ') + '.' : ''}</div>` : ''}
       ${Z.prizes && Z.prizes.daily ? `<div class="note"><b style="color:var(--ink)">Best day so far today</b> · ${Z.prizes.daily.leader ? `${esc(txt(Z.prizes.daily.leader.name))}, up ${money(Z.prizes.daily.leader.gain)}` : 'nobody yet'}${Z.prizes.daily.recent.length ? ' · Recent daily winners: ' + Z.prizes.daily.recent.map((w) => `${esc(w.date.slice(5))} ${esc(txt(w.name))} (+${money(w.gain)})`).join(', ') : ''}</div>` : ''}
       ${Z.prizes && Z.prizes.daily && Z.prizes.daily.paid && Z.prizes.daily.paid.length ? `<div class="note"><b style="color:var(--ink)">Daily prizes</b> · ${Z.prizes.daily.paid.map((a) => `${esc(a.key.slice(5))} #${a.place} ${esc(txt(a.name))} <b style="color:var(--ink)">${(Math.round(a.hype * 10000) / 10000).toLocaleString()} HYPE</b> ${a.tx ? (a.txUrl ? `<a href="${esc(a.txUrl)}" target="_blank" rel="noopener" style="color:var(--good)">paid</a>` : '<span style="color:var(--good)">paid</span>') : '<span style="color:var(--dim)">due</span>'}`).join(' · ')}</div>` : ''}
