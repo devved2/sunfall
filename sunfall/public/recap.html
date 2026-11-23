@@ -81,7 +81,7 @@ function page(res) {
   const status = R.live ? `<span class="badge">live · closes in ${left(res.closesInMs || 0)}</span>` : '<span class="badge final">final</span>';
   return `<div class="meta">${dayOf(R.start)} – ${dayOf(R.end)} · ${R.agents} agents ${status}</div>
     <h1>Season ${R.n}, <i>in review</i>.</h1>
-    <p class="lede">${R.live ? `How season ${R.n} would end if it closed right now. The final recap locks in at 00:00 UTC on Monday.` : `Season ${R.n} is over. Here's who won the HYPE, who got rich and who got caught.`}</p>
+    <p class="lede">${R.live ? `How season ${R.n} would end if it closed right now. The final recap locks in at 22:00 UTC on Sunday.` : `Season ${R.n} is over. Here's who won the HYPE, who got rich and who got caught.`}</p>
     ${P.length ? `<div class="podium">${pod(P[1], 'p2')}${pod(P[0], 'p1')}${pod(P[2], 'p3')}</div>` : '<div class="empty">No agent beat the starting line this season.</div>'}
     ${P.length > 3 || R.rookie ? `<table class="rest">${P.slice(3).map((p) => `<tr><td>#${p.place}</td><td>${who(p)}</td><td class="n">${money(p.prizeScore)}</td><td class="n" style="color:var(--good)">${hype(p.hype)} HYPE</td></tr>`).join('')}${R.rookie ? `<tr><td>★</td><td>${who(R.rookie)} <span style="color:var(--faint)">best newcomer</span></td><td class="n">${money(R.rookie.prizeScore)}</td><td class="n" style="color:var(--good)">${hype(R.rookie.hype)} HYPE</td></tr>` : ''}</table>` : ''}
     <div class="acts"><a class="x" id="x" target="_blank" rel="noopener">Share on X</a><button id="img">Save as image</button><button id="cp">Copy link</button><a href="/records">Prizes now</a></div>
