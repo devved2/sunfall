@@ -1284,26 +1284,7 @@ function buildMontra(rnd) {
   const additive = (col, op = 0.6) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
   // the town's rock, hanging in the sky like the other islands
   const plinth = rockUnder(815, -746, 1345, -134, 260, rnd); plinth.userData.city = 'montra'; islandMeshes.push(plinth); scene.add(plinth);
-  const R = 215, C0 = W(MP.cx, MP.cy, -55 - R); mp.centre = C0; // the point the coins circle
-  // giant gold coins orbiting the town, spinning as they go
-  { const tex = coinTexture(), face = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.7, roughness: 0.25, emissive: MGOLD, emissiveIntensity: 0.25 }), edge = new THREE.MeshStandardMaterial({ color: 0xc8962c, metalness: 0.9, roughness: 0.3 });
-    for (let i = 0; i < (LITE ? 5 : 9); i++) {
-      const s2 = 12 + rnd() * 16, m = new THREE.Mesh(new THREE.CylinderGeometry(s2, s2, s2 * 0.18, 32).rotateX(Math.PI / 2), [edge, face, face]);
-      scene.add(m); mp.coins.push({ m, d: R * (1.55 + rnd() * 1.3), sp: (rnd() < 0.5 ? -1 : 1) * (0.05 + rnd() * 0.08), ph: rnd() * 6.28, y: -40 + rnd() * 240, spin: 1 + rnd() * 2 });
-    }
-  }
-  // candlesticks drifting in the sky round the town, like a chart come loose
-  { const up = new THREE.MeshStandardMaterial({ color: MUP, emissive: MUP, emissiveIntensity: 0.45, roughness: 0.4 }), dn = new THREE.MeshStandardMaterial({ color: MDOWN, emissive: MDOWN, emissiveIntensity: 0.45, roughness: 0.4 }), wick = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, emissive: 0xffffff, emissiveIntensity: 0.3 });
-    for (let i = 0; i < (LITE ? 8 : 16); i++) {
-      const g = new THREE.Group(), isUp = rnd() < 0.55, bh = 18 + rnd() * 50, bw = 6 + rnd() * 6;
-      const b = new THREE.Mesh(BOX, isUp ? up : dn); b.scale.set(bw, bh, bw); g.add(b);
-      const w1 = new THREE.Mesh(BOX, wick); w1.scale.set(1.2, 10 + rnd() * 16, 1.2); w1.position.y = bh; g.add(w1);
-      const w2 = new THREE.Mesh(BOX, wick); w2.scale.set(1.2, 8 + rnd() * 12, 1.2); w2.position.y = -w2.scale.y; g.add(w2);
-      const a = rnd() * 6.28, dist = 330 + rnd() * 240, x = MP.cx + Math.cos(a) * dist, y = MP.cy + Math.sin(a) * dist * 0.9;
-      if (y > 0) continue; // keep clear of Sunfall
-      g.position.copy(W(x, y, 40 + rnd() * 180)); scene.add(g); mp.candles.push({ g, y0: g.position.y, ph: rnd() * 6.28, sp: 0.4 + rnd() * 0.6 });
-    }
-  }
+  mp.centre = W(MP.cx, MP.cy, -270); // marks Montra as built, for the animation
   // pump and dump beams: green and red light shooting up out of the town now and then
   for (let i = 0; i < (LITE ? 4 : 8); i++) {
     const isUp = i % 2 === 0, mat = additive(isUp ? MUP : MDOWN, 0), x = MP.x0 + 40 + rnd() * (MP.x1 - MP.x0 - 80), y = MP.y0 + 40 + rnd() * (MP.y1 - MP.y0 - 80);
@@ -1345,7 +1326,6 @@ function buildMontra(rnd) {
 function updateMontra(t, dt) {
   if (!mp.centre) return;
   const c = mp.centre;
-  for (const k of mp.coins) { const a = k.ph + t * k.sp; k.m.position.set(c.x + Math.cos(a) * k.d, c.y + k.y + Math.sin(t * 0.6 + k.ph) * 12, c.z + Math.sin(a) * k.d); k.m.rotation.y = t * k.spin; }
   for (const k of mp.candles) { k.g.position.y = k.y0 + Math.sin(t * k.sp + k.ph) * 10; k.g.rotation.y = Math.sin(t * 0.3 + k.ph) * 0.4; }
   for (const b of mp.beams) {
     if (t > b.next) { b.t0 = t; b.next = t + 6 + Math.random() * 14; }
