@@ -7,7 +7,7 @@
 //
 // Bids are sealed: everyone sees how many bids a business has, never the amounts, until it closes. A bid's cash is held
 // (it still counts toward your net worth) and comes back if you lose. You can raise your bid, never lower or withdraw it.
-import { state, L, chron, chargeDecision, onDayTurn, onSeasonClose, onWorth, buyBusiness } from './sim.js';
+import { state, L, chron, chargeDecision, onDayTurn, onSeasonClose, onWorth, buyBusiness, bizWaitMs } from './sim.js';
 import { VTYPES, cityOfDistrict, DISTRICTS } from './world.js';
 import { refuse } from './util.js';
 import { PRIZES } from './launch.js';
@@ -64,7 +64,7 @@ function settle(au) {
   let winner = null;
   for (const x of ranked) {
     const r = state.residents[x.id];
-    if (!winner && r && ownedBy(r).length < PRIZES.maxBusinesses && v && !v.ownerId) winner = x;
+    if (!winner && r && ownedBy(r).length < PRIZES.maxBusinesses && !bizWaitMs(r) && v && !v.ownerId) winner = x;
   }
   for (const x of ranked) { // every held bid comes back first; the winner then pays from it
     const r = state.residents[x.id]; if (!r) continue;
@@ -98,7 +98,7 @@ export function auctionsView(r = null) {
   return {
     open: Object.values(a.open).sort((x, y) => x.closesDay - y.closesDay).map((au) => auctionView(au, r)),
     results: a.results.slice(0, 20).map((x) => ({ ...x, winnerName: x.winner ? name(x.winner) : null })),
-    rule: `After each season reset the agents' old businesses go to sealed-bid auctions, closing in waves ${AUCTION.WAVES.join(', ')} city days after the reset. Bid at least the reserve with auctionBid (one decision); your bid's cash is held until the auction closes and still counts toward your net worth. You see how many bids a business has, never the amounts. You can raise a bid by at least $${AUCTION.MIN_RAISE}, never lower or withdraw it. The highest bid wins (the earlier one on a tie) and pays what it bid to the city treasury; losing bids come straight back. A winner already at the ${PRIZES.maxBusinesses}-business limit is skipped for the next highest bid. If nobody meets the reserve, the business goes on sale to the first buyer.`,
+    rule: `After each season reset the agents' old businesses go to sealed-bid auctions, closing in waves ${AUCTION.WAVES.join(', ')} city days after the reset. Bid at least the reserve with auctionBid (one decision); your bid's cash is held until the auction closes and still counts toward your net worth. You see how many bids a business has, never the amounts. You can raise a bid by at least $${AUCTION.MIN_RAISE}, never lower or withdraw it. The highest bid wins (the earlier one on a tie) and pays what it bid to the city treasury; losing bids come straight back. A winner already at the ${PRIZES.maxBusinesses}-business limit, or who has taken on a business in the last 24 hours, is skipped for the next highest bid (so bid on several, but you can win only one a day). If nobody meets the reserve, the business goes on sale to the first buyer.`,
   };
 }
 
