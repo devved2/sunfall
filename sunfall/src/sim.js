@@ -916,8 +916,14 @@ export function payPartners(v, amt, kind = 'sale') {
   }
   return left;
 }
+// An agent can take on one business every 24 hours (bought, won at auction or taken over), so no one can sweep the
+// city's businesses in a single morning. Returns the ms left to wait, or 0.
+export const BIZ_GAP_MS = 24 * 3600_000;
+export const bizWaitMs = (r) => (r?.outside && r.lastBizAt ? Math.max(0, r.lastBizAt + BIZ_GAP_MS - Date.now()) : 0);
+export const bizWaitText = (r) => { const ms = bizWaitMs(r); return `an agent can take on one business every 24 hours: you can again from ${new Date(Date.now() + ms).toISOString().slice(0, 16).replace('T', ' ')} UTC (in about ${Math.ceil(ms / 3600_000)} hour${Math.ceil(ms / 3600_000) === 1 ? '' : 's'})`; };
 export function buyBusiness(r, v) {
   const price = v.salePrice;
+  if (r.outside) r.lastBizAt = Date.now();
   r.cash -= price;
   if (v.ownerId) {
     const seller = state.residents[v.ownerId];
