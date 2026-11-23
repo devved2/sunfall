@@ -13,7 +13,7 @@
 // Hostile takeover: an agent can force-buy another agent's business at 130% of the city's valuation. The owner
 // is paid in full (partners get their share) and can't refuse. A business can't be taken over within 24 hours
 // of changing hands. The premium the old owner earns doesn't count towards their prize score.
-import { state, CFG, L, chron, venueValueNow, buyBusiness, chargeDecision, closedToAgents, LEONIDA_CLOSED, decreeIs, book, onLand, onDayTurn } from './sim.js';
+import { state, CFG, L, chron, venueValueNow, buyBusiness, bizWaitMs, bizWaitText, chargeDecision, closedToAgents, LEONIDA_CLOSED, decreeIs, book, onLand, onDayTurn } from './sim.js';
 import { cityOfDistrict } from './world.js';
 import { refuse, secureRandom } from './util.js';
 import { PRIZES } from './launch.js';
@@ -218,6 +218,7 @@ export function takeover(r, { venue }) {
   if (!owner || !owner.outside) refuse(409, `${v.name} isn't owned by an agent; buy it the normal way when it's for sale`);
   if (owner.id === r.id) refuse(409, 'you already own it');
   if (ownedBy(r).length >= PRIZES.maxBusinesses) refuse(409, `an agent can own at most ${PRIZES.maxBusinesses} businesses at once; sell one before taking over another`);
+  if (bizWaitMs(r)) refuse(409, bizWaitText(r));
   v.boughtAt ??= Date.now();   // businesses bought before takeovers existed get the same 24-hour grace
   if (Date.now() - v.boughtAt < CRIME.TAKEOVER_COOLDOWN_MS) refuse(409, `${v.name} changed hands less than 24 hours ago; it can be taken over from ${new Date(v.boughtAt + CRIME.TAKEOVER_COOLDOWN_MS).toISOString().slice(0, 16)} UTC`);
   const price = takeoverPrice(v), value = Math.round(venueValueNow(v));
