@@ -1052,10 +1052,12 @@ export { squarePost, chron };
 export function seasonFor(ms) {
   const S = Number(process.env.SEASON_MS); // testing only: short seasons
   if (S > 0) { const start = Math.floor(ms / S) * S; return { id: 't' + start, start, end: start + S }; }
-  const d = new Date(ms);
+  // A season runs Sunday 22:00 to Sunday 22:00 UTC, closing with the day's prize. It is named by the Monday it mostly covers.
+  const OFF = 2 * 3600_000;
+  const d = new Date(ms + OFF);
   const dow = (d.getUTCDay() + 6) % 7; // Monday = 0
-  const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow);
-  return { id: new Date(start).toISOString().slice(0, 10), start, end: start + 7 * 86400_000 };
+  const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow);
+  return { id: new Date(monday).toISOString().slice(0, 10), start: monday - OFF, end: monday - OFF + 7 * 86400_000 };
 }
 
 // ---------------------------------------------------------------- the loop
