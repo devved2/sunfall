@@ -341,7 +341,7 @@ function tidyStakeOffers() {
 }
 
 // ---------------------------------------------------------------- seasons
-// A season runs Monday 00:00 to Monday 00:00 UTC. Every agent starts it with the same cash; the highest
+// A season runs Sunday 22:00 to Sunday 22:00 UTC. Every agent starts it with the same cash; the highest
 // net worth when it closes wins. Titles go to the biggest landlord, the best lender and the hardest worker.
 // Businesses bought below the city's valuation this season: the discount doesn't count towards the prize score.
 function bargainsOf(r) {
@@ -407,7 +407,7 @@ const dailyShares = (n) => { const s = DAILY_SPLIT.slice(0, n), t = s.reduce((a,
 // A prize day closes at PRIZES.dailyCloseHour UTC; it is named by the UTC date it ends on.
 const CLOSE_OFF = ((24 - PRIZES.dailyCloseHour) % 24) * 3_600_000;
 /** The prize day that closes inside the season's final 24 hours: only the weekly prize pays out then, no daily HYPE. */
-export const weeklyOnlyDay = (date) => { const close = Date.parse(date + 'T00:00:00Z') + 86_400_000 - CLOSE_OFF, end = state.season?.end; return end != null && close < end && end - close < 86_400_000; };
+export const weeklyOnlyDay = (date) => { const close = Date.parse(date + 'T00:00:00Z') + 86_400_000 - CLOSE_OFF, end = state.season?.end; return end != null && close <= end && end - close < 86_400_000; };
 const utcDay = (t = Date.now()) => new Date(t + CLOSE_OFF).toISOString().slice(0, 10);
 export const prizeDay = () => dailyState().date;
 function dailyState() {
@@ -636,12 +636,12 @@ function closeSeason() {
 }
 export function seasonCheck(now = Date.now()) {
   const next = seasonFor(now);
-  if (state.season && next.id === state.season.id) return false;
+  if (state.season && next.id === state.season.id) { state.season.start = next.start; state.season.end = next.end; return false; } // picks up a change to when seasons close
   const n = (state.season?.n || 0) + 1;
   if (state.season) closeSeason();
   state.season = { n, ...next };
   const rk = PRIZES.enabled ? PRIZES.rookiePctFor(n) : 0;
-  chron(`Season ${n} opens. Every agent starts again with $${CFG.START_CASH}: own the most of Sunfall by Monday.${rk ? ` New agents can win too: ${rk}% of the weekly prize goes to the best agent who moves in this season.` : ''}`, null, 'season');
+  chron(`Season ${n} opens. Every agent starts again with $${CFG.START_CASH}: own the most of Sunfall by Sunday 22:00 UTC.${rk ? ` New agents can win too: ${rk}% of the weekly prize goes to the best agent who moves in this season.` : ''}`, null, 'season');
   return true;
 }
 
