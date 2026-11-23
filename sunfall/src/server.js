@@ -20,6 +20,7 @@ import { pollNfl, fieldNow } from './gridiron.js';
 import { initDiary, diaryOf, diaryEntry } from './diary.js';
 import { initExchange, exchangeTick } from './exchange.js';
 import { initLaunchpad, padSnapshot } from './launchpad.js';
+import { initAuctions } from './auction.js';
 import { initLife, mapLives, lifeView, lifeOf, HOMES } from './life.js';
 import { initKeeper, mapKeeper } from './keeper.js';
 import { execFile, spawn } from 'node:child_process';
@@ -31,6 +32,7 @@ const PUBLIC = path.join(ROOT, 'public');
 const PORT = Number(process.env.PORT) || 8787;
 
 if (!load()) { initWorld(); save(); console.log('new city generated'); } else { migrate(); console.log(`city loaded: day ${state.day}, ${Object.keys(state.residents).length} residents, season ${state.season.n}`); }
+initAuctions(); // before seasonCheck, so a season closed on boot returns any held bids
 seasonCheck();
 initLife();
 initKeeper();
