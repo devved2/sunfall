@@ -10,6 +10,7 @@ import { voidAgentBets } from './football.js';
 import { writeDiaries } from './diary.js';
 import { stockGainOf } from './exchange.js';
 import { coinGainOf } from './launchpad.js';
+import { openAuctions, carriedOver } from './auction.js';
 setPrizeSeason(() => state.season?.n || 1); // bigger prizes from launch.json prizeBoost.fromSeason
 
 export const GAME = {
@@ -615,15 +616,18 @@ function closeSeason() {
   for (const o of Object.values(state.stakeOffers)) if (o.status === 'open' && agentIds.has(o.seller)) o.status = 'lapsed';
   voidAgentBets(agentIds);
   runSeasonClose(agentIds); // cargo, bounty rewards, contract deposits and arrears don't carry over
+  const relisted = [];
   for (const v of Object.values(state.venues)) {
     v.partners = (v.partners || []).filter((p) => !agentIds.has(p.id));
     if (v.ownerId && agentIds.has(v.ownerId)) {
+      relisted.push(v.id);
       const base = PLACES.find((p) => p[0] === v.id)?.[6];
       v.ownerId = null; v.partners = []; v.distress = 0; v.price = VTYPES[v.type].price;
       // Back on sale at full value, and only after a few city days: no one can scoop the city's businesses in the first minutes of a season.
       v.forSale = true; v.salePrice = Math.max(base || 0, Math.round(VTYPES[v.type].value / 10) * 10); v.heldUntilDay = state.day + GAME.RELIST_HOLD_DAYS;
     }
   }
+  openAuctions([...relisted, ...carriedOver()]); // they go to sealed-bid auctions that close in waves, not to whoever is first
   for (const r of agents) {
     const delta = CFG.START_CASH - r.cash;
     state.treasury -= delta;
