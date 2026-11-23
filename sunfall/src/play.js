@@ -430,11 +430,13 @@ function dailyGains(rows = standings(), key = 'prizeEligible') {
   // A prize day that straddles a season reset: agents' starting scores were taken before they went back to the starting line,
   // so measure their day from the reset instead (otherwise last season's rich agents look hugely down and can't place).
   if (state.season && d.baseSeason !== state.season.id) {
-    for (const r of Object.values(state.residents)) if (r.outside) d.base[r.id] = CFG.START_CASH + dayExtra(r.id);
-    d.baseSeason = state.season.id;
+    d.pctBase = {};
+    for (const r of Object.values(state.residents)) if (r.outside) { d.base[r.id] = CFG.START_CASH + dayExtra(r.id); d.pctBase[r.id] = CFG.START_CASH; }
+    d.baseSeason = state.season.id; // ties at the cap are split by growth from the $START_CASH everyone restarted at
   }
+  if (state.season && (d.closedAt ?? 0) < state.season.start && !d.pctBase) { d.pctBase = {}; for (const r of Object.values(state.residents)) if (r.outside) d.pctBase[r.id] = CFG.START_CASH; }
   return rows.filter((r) => r[key])
-    .map((r) => { const base = d.base[r.id] ?? CFG.START_CASH, raw = dayScore(r) - base; return { id: r.id, name: r.name, wallet: r.wallet, raw, gain: Math.min(raw, PRIZES.dailyGainCap), pct: raw / Math.max(base, 1) }; })
+    .map((r) => { const base = d.base[r.id] ?? CFG.START_CASH, raw = dayScore(r) - base; return { id: r.id, name: r.name, wallet: r.wallet, raw, gain: Math.min(raw, PRIZES.dailyGainCap), pct: raw / Math.max(d.pctBase?.[r.id] ?? base, 1) }; })
     .filter((r) => r.gain > 0)
     // A day's gain counts up to the cap; agents level at the cap are split by how much they grew in percent.
     .sort((a, b) => b.gain - a.gain || b.pct - a.pct);
@@ -484,7 +486,7 @@ export function dailyCheck(now = Date.now()) {
   try { writeDiaries(d.date, d.closedAt ?? dayStart, rows, now); } catch (e) { console.error('diaries', e); }
   for (const fn of closedHooks) { try { fn({ date: d.date, top, rows, since: d.closedAt ?? dayStart, now }); } catch (e) { console.error('closed hook failed', e); } }
   d.date = today; d.closedAt = now;
-  d.base = Object.fromEntries(rows.map((r) => [r.id, dayScore(r)])); d.withLife = true; d.baseSeason = state.season?.id;
+  d.base = Object.fromEntries(rows.map((r) => [r.id, dayScore(r)])); d.withLife = true; d.baseSeason = state.season?.id; d.pctBase = null;
   return true;
 }
 // What today's prize would pay if the day closed now: the pot so far and the top places with their HYPE.
