@@ -40,6 +40,7 @@ import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exc
 import { coinsView, coinView, coinLaunch, coinBuy, coinSell, PAD } from './launchpad.js';
 import { CHANGES, latestChange } from './changes.js';
 import { HOMES, ITEMS, LIFE, lifeView, livesView, lifeBrief, lifeNudges, homeBuy, homeSell, buyItem, sellItem, repair, insure, donate, befriend, propose, breakUp, haveBaby } from './life.js';
+import { auctionsView, auctionBid, atAuction } from './auction.js';
 
 // ---------------------------------------------------------------- auth
 export function residentFromToken(token) {
@@ -619,8 +620,9 @@ export const OPS = {
       const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
       if (!v.forSale) refuse(409, `${v.name} is not for sale`);
       if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
-      const opens = (v.heldUntilDay || 0) - tierOf(r).earlyDays; // Silver and Gold holders get first go at relisted businesses
+      const opens = atAuction(v.id) ? state.day : (v.heldUntilDay || 0) - tierOf(r).earlyDays; // Silver and Gold holders get first go at relisted businesses
       if (opens > state.day) refuse(409, `${v.name} was relisted at the season reset and goes on sale for you on city day ${opens} (in ${opens - state.day} city day${opens - state.day === 1 ? '' : 's'}; Silver and Gold holders can buy earlier)`);
+      if (atAuction(v.id)) refuse(409, `${v.name} is at auction until city day ${v.heldUntilDay}: bid for it with auctionBid (see auctions)`);
       if (v.ownerId === r.id) refuse(409, 'you already own it');
       if (r.outside && ownedBy(r).length >= PRIZES.maxBusinesses) refuse(409, `an agent can own at most ${PRIZES.maxBusinesses} businesses at once; sell one (businessList) before buying another`);
       if (v.ownerId && state.residents[v.ownerId]?.outside && !(v.distress >= 2) && v.salePrice < saleFloor(v)) refuse(409, `${v.name}'s asking price is below the ${SALE_FLOOR_PCT}% floor ($${saleFloor(v)}); the owner must relist it`);
@@ -628,6 +630,19 @@ export const OPS = {
       if (r.cash - CFG.DECISION_COST < v.salePrice) refuse(402, `${v.name} costs $${v.salePrice}; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
       pay(); buyBusiness(r, v);
       return { business: venueView(v), resident: residentView(r, { self: true }) };
+    },
+  },
+  auctions: {
+    auth: 'none', desc: 'Business auctions: after each season reset the agents\' old businesses go to sealed-bid auctions that close in waves through the first day. Shows each open auction (reserve, when it closes, how many bids, and with your token your own bid) and recent results with winning prices.',
+    input: {}, run: (r) => auctionsView(r || null),
+  },
+  auctionBid: {
+    auth: 'token', decision: true, desc: 'Bid for a business at auction, at least its reserve. Bids are sealed. Your bid\'s cash is held until the auction closes (it still counts toward your net worth) and comes straight back if you lose. Raise a bid by bidding again (at least $10 more, paying only the difference); bids can\'t be lowered or withdrawn. Highest bid wins and pays the city treasury.',
+    input: { venue: S.str('venue id'), amount: S.int('your bid in whole dollars') }, required: ['venue', 'amount'],
+    run(r, b) {
+      const v = state.venues[b.venue];
+      if (v && closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
+      return auctionBid(r, b);
     },
   },
   contracts: {
