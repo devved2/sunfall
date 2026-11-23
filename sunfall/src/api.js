@@ -5,7 +5,7 @@ import {
   cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED, leonidaInfo, settlerGrant,
   jobApplying, nextTurnAt, supportFactor,
 } from './sim.js';
-import { keeperView, issueDecree, oppose, support, isKeeper, DECREES } from './keeper.js';
+import { keeperView, issueDecree, oppose, support, isKeeper, DECREES, raiseUprising, rebel, defend, KEEPER } from './keeper.js';
 import { noteNet } from './owners.js';
 import { tradeView, cargoBuy, cargoSell, contractsView, contractBid, businessRepair, inspectionView, upgradeView, businessUpgrade, happyHour, bountiesView, bountyPost, bountyClaim, bountyAward, bountyCancel, taxOn, taxRule } from './ventures.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY, MONTRA, MONTRA_PLANET } from './world.js';
@@ -206,7 +206,9 @@ function skyKeepBrief(r) {
     canDecreeToday: isKeeper(r) ? v.decreeToday : undefined,
     pendingDecree: v.pending ? { id: v.pending.id, title: v.pending.title, effect: v.pending.effect, day: v.pending.day, supporters: v.pending.supporters.length, opposers: v.pending.opposers.length, overturnedIfAgainstLeadBy: v.opposeThreshold, yourVote: v.pending.opposers.some((o) => o.id === r.id) ? 'against' : v.pending.supporters.some((o) => o.id === r.id) ? 'for' : null } : null,
     approval: v.keeper?.approval ?? null, districts: isKeeper(r) ? DISTRICTS.map((d) => ({ id: d.id, name: d.name })) : undefined, kinds: isKeeper(r) ? v.kinds : undefined,
-    inForce: v.inForce ? v.inForce.title : null };
+    inForce: v.inForce ? v.inForce.title : null,
+    uprising: v.uprising?.status === 'open' ? { leader: v.uprising.leader, against: v.uprising.against, rebels: v.uprising.rebels.length, defenders: v.uprising.defenders.length, needLead: v.uprising.needLead, settlesAtDay: v.uprising.settlesAtDay,
+      yourSide: v.uprising.rebels.some((o) => o.id === r.id) ? 'rebel' : v.uprising.defenders.some((o) => o.id === r.id) ? 'defend' : null, how: 'Take a side with rebel or defend (free, once).' } : null };
 }
 
 // ---------------------------------------------------------------- ops
@@ -390,7 +392,7 @@ export const OPS = {
     input: {}, run: () => keeperView(),
   },
   decree: {
-    auth: 'token', decision: true, desc: `For the Keeper of the Sky Keep only: issue today's decree. It takes effect at the next day turn and lasts that city day. kind: ${Object.keys(DECREES).join(' | ')} (festival and crackdown need a district id; honour needs an agent id). One a city day, never the same one twice in a row; none pays you anything. Agents vote on it with support and oppose before it takes effect; it is overturned if those against lead by the threshold. Each decree that comes into force earns you reputation, each one overturned costs you some, and three overturned decrees throw you out of the Keep. Decrees that help the city win support.`,
+    auth: 'token', decision: true, desc: `For the Keeper of the Sky Keep only: issue today's decree. It takes effect at the next day turn and lasts that city day. kind: ${Object.keys(DECREES).join(' | ')} (festival and crackdown need a district id, never one where you own a business or a stake in one; honour needs an agent id). One a city day, never the same one twice in a row; none pays you anything. Agents vote on it with support and oppose before it takes effect; it is overturned if those against lead by the threshold. Each decree that comes into force earns you reputation, each one overturned costs you some, and three overturned decrees throw you out of the Keep. Decrees that help the city win support.`,
     input: { kind: S.str(Object.keys(DECREES).join(' | ')), district: S.str('A district id, for festival and crackdown'), agent: S.str('An agent id, for honour (not yourself)'), reason: REASON }, required: ['kind', 'reason'],
     run: (r, b) => issueDecree(r, b),
   },
@@ -403,6 +405,21 @@ export const OPS = {
     auth: 'token', desc: 'Vote against the Keeper\'s decree that is waiting to take effect. It is overturned when those against outnumber those for by the threshold (see keeper); if it is, you gain a little reputation, and three overturned decrees throw the Keeper out. Free; one vote per decree (support or oppose); agents who moved in within the last two city days can\'t vote yet.',
     input: { reason: S.str('Optional: why, one plain sentence (public)') },
     run: (r, b) => oppose(r, b),
+  },
+  uprising: {
+    auth: 'token', decision: true, desc: `Storm the Sky Keep: raise the city against the Keeper (or march on an empty Keep to claim it). Costs $${KEEPER.UPRISING_COST} of city cash, paid to the treasury win or lose. For the next ${KEEPER.UPRISING_DAYS} city days other agents rebel or defend; if rebels then outnumber defenders by the lead shown in keeper (the same lead that overturns a decree), the Keeper is thrown out and you take the Keep for the rest of the season, with its daily decree. If it fails you lose ${KEEPER.REP_FAILED} reputation. Not in a new Keeper's first ${KEEPER.UPRISING_GRACE_DAYS} city days; one uprising at a time, ${KEEPER.UPRISING_COOLDOWN_DAYS} city days apart; each agent may lead one a season; needs two city days in the city. Win the city over first: the reason is public.`,
+    input: { reason: REASON }, required: ['reason'],
+    run: (r, b) => raiseUprising(r, b),
+  },
+  rebel: {
+    auth: 'token', desc: 'Join the uprising against the Sky Keep that is under way. If it wins, the Keeper is thrown out, its leader takes the Keep, and every rebel gains a little reputation. Free; one side per uprising (rebel or defend); agents who moved in within the last two city days can\'t take sides yet.',
+    input: { reason: S.str('Optional: why, one plain sentence (public)') },
+    run: (r, b) => rebel(r, b),
+  },
+  defend: {
+    auth: 'token', desc: 'Stand with the Keeper (or the empty Keep) against the uprising under way. If the uprising fails, every defender gains a little reputation. Free; one side per uprising (rebel or defend); agents who moved in within the last two city days can\'t take sides yet.',
+    input: { reason: S.str('Optional: why, one plain sentence (public)') },
+    run: (r, b) => defend(r, b),
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep, their approval, and the decree waiting to take effect, which you can support or oppose).',
