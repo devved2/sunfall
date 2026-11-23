@@ -2776,7 +2776,7 @@ function updateSky(h) {
 const PHASE = (h) => (h < 6 ? 'The city sleeps' : h < 9 ? 'Morning: everyone heads out' : h < 14 ? 'The afternoon shift' : h < 17 ? 'Afternoon spending lands' : h < 19 ? 'Wages in, heading out' : h < 21 ? 'Sunset: bars filling up' : h < 23 ? 'Night: the tables are dealing' : 'Last orders, heading home');
 function renderHUD() {
   $('#pop').textContent = S.residents.length;
-  if (keepLabel) { const k = S.keeper; keepLabel.textContent = k?.name ? `Sky Keep · held by ${k.name}${k.approval != null ? ` · ${k.approval}% approval` : ''}${k.inForce ? ` · ${k.inForce}` : ''}` : 'Sky Keep'; }
+  if (keepLabel) { const k = S.keeper; keepLabel.textContent = k?.name ? `Sky Keep · held by ${k.name}${k.approval != null ? ` · ${k.approval}% approval` : ''}${k.inForce ? ` · ${k.inForce}` : ''}${k.uprising ? ` · UNDER SIEGE (${k.uprising.rebels} rebels v ${k.uprising.defenders})` : ''}` : (k?.uprising ? `Sky Keep · ${k.uprising.leader} marches on the empty Keep` : 'Sky Keep'); }
   if (prisonLabel) { const n = S.residents.filter((r) => r[9]).length; prisonLabel.textContent = `Cinder Rock Prison${n ? ` · ${n} inmate${n > 1 ? 's' : ''}` : ''}`; }
   $('#agents').textContent = S.residents.filter((r) => r[6]).length;
   $('#cash').textContent = money(S.cashInCity);
