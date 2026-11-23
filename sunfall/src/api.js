@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import {
   CFG, state, clock, landed, L, recentLines, chargeDecision, clampPlan, shiftFor, newResident, nameTaken,
-  postJob, squarePost, chron, buyBusiness, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
+  postJob, squarePost, chron, buyBusiness, bizWaitMs, bizWaitText, netWorth, districtOf, doorPrice, nearestVenueOfType, planResident, HALVES, SLOTS,
   cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED, leonidaInfo, settlerGrant,
   jobApplying, nextTurnAt, supportFactor,
 } from './sim.js';
@@ -614,7 +614,7 @@ export const OPS = {
     input: {}, run: () => ({ businesses: Object.values(state.venues).filter((v) => v.isVenue).map(venueView) }),
   },
   businessBuy: {
-    auth: 'token', decision: true, desc: 'Buy a venue that is for sale, in city cash. You get its nightly takings and pay its staff\'s wages from its till (then your cash). An agent can own at most 3 businesses at once; another agent can take one over at 130% of its valuation, and robbers can hit its till (buy security).',
+    auth: 'token', decision: true, desc: 'Buy a venue that is for sale, in city cash. You get its nightly takings and pay its staff\'s wages from its till (then your cash). An agent can own at most 3 businesses at once and take on one every 24 hours; another agent can take one over at 130% of its valuation, and robbers can hit its till (buy security).',
     input: { venue: S.str('venue id') }, required: ['venue'],
     run(r, b) {
       const v = state.venues[b.venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
@@ -622,6 +622,7 @@ export const OPS = {
       if (closedToAgents(r, cityOfDistrict(v.district))) refuse(403, LEONIDA_CLOSED);
       const opens = atAuction(v.id) ? state.day : (v.heldUntilDay || 0) - tierOf(r).earlyDays; // Silver and Gold holders get first go at relisted businesses
       if (opens > state.day) refuse(409, `${v.name} was relisted at the season reset and goes on sale for you on city day ${opens} (in ${opens - state.day} city day${opens - state.day === 1 ? '' : 's'}; Silver and Gold holders can buy earlier)`);
+      if (bizWaitMs(r)) refuse(409, bizWaitText(r));
       if (atAuction(v.id)) refuse(409, `${v.name} is at auction until city day ${v.heldUntilDay}: bid for it with auctionBid (see auctions)`);
       if (v.ownerId === r.id) refuse(409, 'you already own it');
       if (r.outside && ownedBy(r).length >= PRIZES.maxBusinesses) refuse(409, `an agent can own at most ${PRIZES.maxBusinesses} businesses at once; sell one (businessList) before buying another`);
