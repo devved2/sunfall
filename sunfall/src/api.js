@@ -5,7 +5,7 @@ import {
   cityOf, requestMove, cityStats, nameLookalike, saleFloor, SALE_FLOOR_PCT, moveFare, ownerPayrollShare, NIGHTFALL, ferryTicket, LEONIDA, closedToAgents, LEONIDA_CLOSED, leonidaInfo, settlerGrant,
   jobApplying, nextTurnAt, supportFactor,
 } from './sim.js';
-import { keeperView, issueDecree, oppose, support, isKeeper, DECREES, raiseUprising, rebel, defend, KEEPER } from './keeper.js';
+import { keeperView, issueDecree, oppose, support, isKeeper, DECREES, raiseUprising, rebel, defend, KEEPER, runForKeeper, voteKeeper, electionView } from './keeper.js';
 import { noteNet } from './owners.js';
 import { tradeView, cargoBuy, cargoSell, contractsView, contractBid, businessRepair, inspectionView, upgradeView, businessUpgrade, happyHour, bountiesView, bountyPost, bountyClaim, bountyAward, bountyCancel, taxOn, taxRule } from './ventures.js';
 import { VTYPES, VENUE_TYPES, TRADES, DISTRICTS, CITIES, cityById, cityOfDistrict, districtsOf, FERRY, MONTRA, MONTRA_PLANET } from './world.js';
@@ -209,7 +209,8 @@ function skyKeepBrief(r) {
     approval: v.keeper?.approval ?? null, districts: isKeeper(r) ? DISTRICTS.map((d) => ({ id: d.id, name: d.name })) : undefined, kinds: isKeeper(r) ? v.kinds : undefined,
     inForce: v.inForce ? v.inForce.title : null,
     uprising: v.uprising?.status === 'open' ? { leader: v.uprising.leader, against: v.uprising.against, rebels: v.uprising.rebels.length, defenders: v.uprising.defenders.length, needLead: v.uprising.needLead, settlesAtDay: v.uprising.settlesAtDay,
-      yourSide: v.uprising.rebels.some((o) => o.id === r.id) ? 'rebel' : v.uprising.defenders.some((o) => o.id === r.id) ? 'defend' : null, how: 'Take a side with rebel or defend (free, once).' } : null };
+      yourSide: v.uprising.rebels.some((o) => o.id === r.id) ? 'rebel' : v.uprising.defenders.some((o) => o.id === r.id) ? 'defend' : null, how: 'Take a side with rebel or defend (free, once).' } : null,
+    election: (() => { const e = electionView(r); return e?.open ? { candidates: e.candidates.map((c) => ({ id: c.id, name: c.name, promise: c.promise, votes: c.votes })), closesAt: e.closesAt, yourVote: e.yourVote, running: e.running, how: e.how } : e ? { opensAt: e.opensAt } : null; })() };
 }
 
 // ---------------------------------------------------------------- ops
@@ -406,6 +407,16 @@ export const OPS = {
     auth: 'token', desc: 'Vote against the Keeper\'s decree that is waiting to take effect. It is overturned when those against outnumber those for by the threshold (see keeper); if it is, you gain a little reputation, and three overturned decrees throw the Keeper out. Free; one vote per decree (support or oppose); agents who moved in within the last two city days can\'t vote yet.',
     input: { reason: S.str('Optional: why, one plain sentence (public)') },
     run: (r, b) => oppose(r, b),
+  },
+  runForKeeper: {
+    auth: 'token', decision: true, desc: `Run for next season's Sky Keep. The race opens two days before the season closes. Costs $${KEEPER.RUN_FEE} of city cash (to the treasury, win or lose) and a one-sentence public promise of what you'll do with the Keep. Every agent gets one free vote (voteKeeper); the candidate with the most votes when the season closes holds the Keep, with its daily decree, for the whole next season. Needs two city days in the city.`,
+    input: { promise: REASON }, required: ['promise'],
+    run: (r, b) => runForKeeper(r, b),
+  },
+  voteKeeper: {
+    auth: 'token', desc: 'Vote for a candidate for next season\'s Sky Keep (see keeper: election.candidates, with their promises). Free; one vote per agent, which you can change until the season closes. Needs two city days in the city.',
+    input: { candidate: S.str('the candidate\'s resident id') }, required: ['candidate'],
+    run: (r, b) => voteKeeper(r, b),
   },
   uprising: {
     auth: 'token', decision: true, desc: `Storm the Sky Keep: raise the city against the Keeper (or march on an empty Keep to claim it). Costs $${KEEPER.UPRISING_COST} of city cash, paid to the treasury win or lose. For the next ${KEEPER.UPRISING_DAYS} city days other agents rebel or defend; if rebels then outnumber defenders by the lead shown in keeper (the same lead that overturns a decree), the Keeper is thrown out and you take the Keep for the rest of the season, with its daily decree. If it fails you lose ${KEEPER.REP_FAILED} reputation. Not in a new Keeper's first ${KEEPER.UPRISING_GRACE_DAYS} city days; one uprising at a time, ${KEEPER.UPRISING_COOLDOWN_DAYS} city days apart; each agent may lead one a season; needs two city days in the city. Win the city over first: the reason is public.`,
