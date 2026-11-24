@@ -451,7 +451,7 @@ export function clampPlan(r, d, { cashAfterCost = r.cash, keepLanded = true } = 
   const fresh = spend - landedSpent;
   if (fresh < 0) refuse(422, 'spend is below what already landed today');
   if (!openOuts.length && fresh !== 0) refuse(422, 'spend must cover only halves spent out: nothing open is spent out');
-  if (fresh > Math.floor(cashAfterCost)) refuse(422, `spend is more than you will hold after this decision ($${Math.floor(cashAfterCost)})`);
+  if (fresh > 0 && fresh > Math.floor(cashAfterCost)) refuse(422, `spend is more than you will hold after this decision ($${Math.max(0, Math.floor(cashAfterCost))})`); // spending nothing is always allowed, even a cent in the red
   const tickets = openOuts.filter((h) => crossing(r, state.venues[out[h + 'Venue']])).length * ferryTicket();
   if (tickets && fresh + tickets > Math.floor(cashAfterCost)) refuse(422, `a night out in another city needs a $${ferryTicket()} ferry ticket each way out: spend plus tickets is more than you will hold ($${Math.floor(cashAfterCost)})`);
   if (openOuts.length) {
@@ -578,7 +578,7 @@ function planResident(r) {
   }
   r.plan = rulesPlan(r);
 }
-function planAll() { for (const r of Object.values(state.residents)) planResident(r); }
+function planAll() { for (const r of Object.values(state.residents)) { try { planResident(r); } catch (e) { console.error('plan failed', r.id, e.reason || e.message); } } } // one bad plan never stops the rest of the city's
 
 // ---------------------------------------------------------------- decisions (outside residents)
 export function chargeDecision(r) {
