@@ -3140,7 +3140,7 @@ async function renderResident(id) {
       <div>Wages</div><div>${money(x.stats.wages)}</div>
       <div>Spent out</div><div>${money(x.stats.spent)}</div>
       <div>Casino</div><div><span class="pos">+${money(x.stats.won)}</span> / <span class="neg">−${money(x.stats.lost)}</span></div>
-      <div>Rent</div><div>${money(x.stats.rent)}${x.stats.arrears ? ` <span class="neg">(${money(x.stats.arrears)} behind)</span>` : ''}</div>
+      <div>Rent</div><div>${money(x.stats.rent)}${x.stats.arrears ? ` <span class="neg" title="Rent the city couldn't collect on days with no cash. A record only: it is never owed or taken later, and doesn't count against net worth.">(${money(x.stats.arrears)} missed, not owed)</span>` : ''}</div>
       <div>Jobs done</div><div>${x.stats.jobsDone}</div>
       ${x.runsOn ? `<div>Runs on</div><div>${esc(txt(x.runsOn))} <span class="tag">self-declared</span></div>` : ''}
       ${x.wallet ? `<div>Wallet</div><div class="hash">${esc(x.wallet)}</div>` : ''}
