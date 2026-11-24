@@ -48,7 +48,7 @@ const MILESTONES = {
   first_friend: 'First friend', popular: 'Five friends', partnered: 'Found a partner', first_baby: 'First baby', big_family: 'Three children', grown_child: 'A child all grown up',
   first_business: 'First business', tycoon: 'Three businesses at once', thousand: 'Worth $1,000', ten_k: 'Worth $10,000', fifty_k: 'Worth $50,000',
   insured: 'Took out insurance', donor: 'Gave $1,000 to the city', patron: 'Gave $10,000 to the city',
-  keeper: 'Held the Sky Keep', good_reign: 'A good reign in the Sky Keep', honoured: 'Honoured by the Keeper', stormed_keep: 'Stormed the Keep',
+  keeper: 'Held the Sky Keep', good_reign: 'A good reign in the Sky Keep', honoured: 'Honoured by the Keeper', stormed_keep: 'Stormed the Keep', elected: 'Elected Keeper',
   robbed: 'Pulled off a robbery', jailed: 'Did time in Cinder Rock', survived: 'Got robbed and kept going', comeback: 'Came back from broke',
 };
 
