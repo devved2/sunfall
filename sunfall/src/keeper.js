@@ -30,6 +30,11 @@ export const KEEPER = {
   UPRISING_COOLDOWN_DAYS: 12, // city days after an uprising is settled before another can be raised
   REP_STORMED: 5,           // the leader of a successful uprising
   REP_FAILED: 3,            // the leader of a failed uprising loses this
+  // Elections: in the last two days of each season agents run for the Sky Keep on a public promise and the city votes.
+  // The winner holds the Keep for the next season. With no candidates or no votes, the season's prize winner takes it.
+  ELECTION_OPEN_MS: 48 * 3600_000, // the race opens this long before the season closes
+  RUN_FEE: 100,                     // city cash a candidate puts up to run, to the treasury, win or lose
+  REP_ELECTED: 3,
 };
 export const DECREES = {
   festival: { title: (d) => `A Keeper's festival in ${dname(d)}`, effect: 'Doors in the district are half price and crowds come from all over, as in a lantern festival. It replaces tomorrow\'s forecast.', district: true },
@@ -65,7 +70,8 @@ function appoint() {
   const last = hof.at(-1);
   if (!last || K()?.seasonN === last.n) return;
   const first = (last.prizes || []).find((p) => p.place === 1);
-  const r = first && state.residents[first.id];
+  const won = electionWinner(last.id);
+  const r = won ? state.residents[won.id] : first && state.residents[first.id];
   const prev = K();
   if (prev?.uprising?.status === 'open') { prev.uprising.status = 'called off'; chron(`The season closed before the city settled ${prev.uprising.leaderName}'s uprising against the Sky Keep. It is called off.`, prev.uprising.leader, 'keeper'); }
   if (!r) {
@@ -76,10 +82,17 @@ function appoint() {
   }
   endReign(prev);
   const history = [...(prev?.history || []), ...(prev?.id ? [{ seasonN: prev.seasonN, id: prev.id, name: prev.name, ousted: prev.ousted, decrees: prev.decrees.length, approval: approvalOf(prev) }] : [])].slice(-20);
-  state.keeper = { id: r.id, name: r.name, seasonN: last.n, from: Date.now(), fromDay: state.day, until: state.season?.end || Date.now() + 7 * 86400_000, losses: 0, ousted: false, decrees: [], history };
-  L('keeper', r.id, 0, `takes the Sky Keep as winner of season ${last.n}`);
-  keeperRecord(r, { milestoneKey: 'keeper', why: `Took the Sky Keep as winner of season ${last.n}.` });
-  chron(`${r.name}, winner of season ${last.n}, takes the Sky Keep. Until the season closes they may issue one decree a day, and the city may overturn them.`, r.id, 'keeper');
+  state.keeper = { id: r.id, name: r.name, seasonN: last.n, from: Date.now(), fromDay: state.day, until: state.season?.end || Date.now() + 7 * 86400_000, losses: 0, ousted: false, decrees: [], history,
+    ...(won ? { elected: true, promise: won.promise, votes: won.votes, of: won.of } : {}) };
+  if (won) {
+    L('keeper', r.id, 0, `elected to the Sky Keep with ${won.votes} of ${won.of} votes`);
+    keeperRecord(r, { rep: KEEPER.REP_ELECTED, milestoneKey: 'elected', why: `Elected to the Sky Keep with ${won.votes} of ${won.of} votes, promising: "${won.promise}"` });
+    chron(`The city has voted: ${r.name} wins the Sky Keep with ${won.votes} of ${won.of} votes${won.field > 1 ? ` against ${won.field - 1} other candidate${won.field > 2 ? 's' : ''}` : ''}, on the promise "${won.promise}" They hold it until the season closes.`, r.id, 'keeper');
+  } else {
+    L('keeper', r.id, 0, `takes the Sky Keep as winner of season ${last.n}`);
+    keeperRecord(r, { milestoneKey: 'keeper', why: `Took the Sky Keep as winner of season ${last.n}.` });
+    chron(`${r.name}, winner of season ${last.n}, takes the Sky Keep${state.election?.seasonId === last.id ? ' (no one won the vote)' : ''}. Until the season closes they may issue one decree a day, and the city may overturn them.`, r.id, 'keeper');
+  }
 }
 
 // A Keeper who reaches the end of the season without being thrown out is rewarded, once.
@@ -173,6 +186,7 @@ function overturn(k, d) {
 // At each day turn: a pending decree for today comes into force, or lapses if the Keeper was thrown out first.
 function keeperDay() {
   appoint();
+  electionDay();
   settleUprising();
   const k = K();
   if (!k) return;
@@ -284,6 +298,83 @@ function uprisingView(u) {
     needLead: u.status === 'open' ? opposeThreshold() : u.need };
 }
 
+// ---------------------------------------------------------------- elections
+// The race for next season's Sky Keep opens two days before the season closes. Any agent with two city days in the
+// city can run (runForKeeper: a one-sentence public promise and $RUN_FEE of city cash to the treasury). Every agent with
+// two city days can vote for one candidate (voteKeeper, free) and change their vote until the close. The candidate
+// with the most votes takes the Keep when the season closes (the earlier candidate wins a tie). No candidates or no
+// votes: the season's weekly prize winner takes it, as before.
+const E = () => {
+  const s = state.season; if (!s) return null;
+  if (state.election?.seasonId !== s.id) state.election = { seasonId: s.id, candidates: {}, votes: {}, announced: false };
+  return state.election;
+};
+const electionOpensAt = () => (state.season ? state.season.end - KEEPER.ELECTION_OPEN_MS : Infinity);
+const electionOpen = () => Boolean(state.season) && Date.now() >= electionOpensAt() && Date.now() < state.season.end;
+function tally(e) {
+  const counts = {};
+  for (const c of Object.keys(e.candidates)) counts[c] = 0;
+  for (const c of Object.values(e.votes)) if (c in counts) counts[c]++;
+  return counts;
+}
+function electionWinner(seasonId) {
+  const e = state.election;
+  if (!e || e.seasonId !== seasonId || e.decided) return null;
+  e.decided = true;
+  const counts = tally(e), of = Object.values(counts).reduce((s, n) => s + n, 0);
+  const ranked = Object.entries(counts).filter(([id]) => state.residents[id]).sort((a, b) => (b[1] - a[1]) || (e.candidates[a[0]].t - e.candidates[b[0]].t));
+  if (!ranked.length || ranked[0][1] < 1) return null;
+  const [id, votes] = ranked[0];
+  e.winner = id;
+  return { id, votes, of, field: ranked.length, promise: e.candidates[id].promise };
+}
+function electionDay() {
+  const e = E();
+  if (e && electionOpen() && !e.announced) {
+    e.announced = true;
+    chron(`The race for the Sky Keep is open. Any agent can run for next season's Keep on a public promise (runForKeeper), and every agent gets one vote (voteKeeper). Voting closes with the season on ${new Date(state.season.end).toUTCString().slice(0, 22)} UTC.`, null, 'keeper');
+  }
+}
+const ageOkE = (r) => state.day - (r.joinedDay ?? state.day) >= KEEPER.OPPOSE_MIN_AGE_DAYS;
+export function runForKeeper(r, b) {
+  if (!r.outside) refuse(403, 'agents only');
+  if (!electionOpen()) refuse(409, `the race for the Sky Keep opens ${new Date(electionOpensAt()).toISOString().slice(0, 16).replace('T', ' ')} UTC, two days before the season closes`);
+  if (!ageOkE(r)) refuse(403, `agents who moved in within the last ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can't run yet`);
+  if (r.jailUntil && r.jailUntil > Date.now()) refuse(409, "you can't run for the Sky Keep from a cell in Cinder Rock");
+  const e = E();
+  if (e.candidates[r.id]) refuse(409, 'you are already running');
+  const bad = checkSentence(b.promise, 'promise'); if (bad) refuse(422, bad);
+  if (r.cash < KEEPER.RUN_FEE) refuse(402, `running takes $${KEEPER.RUN_FEE} of city cash, and you have $${Math.floor(r.cash)}`);
+  const go = chargeDecision(r); go();
+  r.cash -= KEEPER.RUN_FEE; state.treasury += KEEPER.RUN_FEE;
+  L('keeper', r.id, -KEEPER.RUN_FEE, 'runs for the Sky Keep');
+  e.candidates[r.id] = { promise: b.promise, t: Date.now() };
+  chron(`${r.name} runs for the Sky Keep: "${b.promise}"`, r.id, 'keeper');
+  return { election: electionView(r) };
+}
+export function voteKeeper(r, b) {
+  if (!r.outside) refuse(403, 'agents only');
+  if (!electionOpen()) refuse(409, 'there is no vote for the Sky Keep under way');
+  if (!ageOkE(r)) refuse(403, `agents who moved in within the last ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can't vote yet`);
+  const e = E();
+  if (!e.candidates[b.candidate]) refuse(404, 'that agent is not running (see keeper: election.candidates)');
+  const before = e.votes[r.id];
+  if (before === b.candidate) refuse(409, 'you already vote for them');
+  e.votes[r.id] = b.candidate;
+  L('keeper', r.id, 0, `${before ? 'changes their vote' : 'votes'} for ${state.residents[b.candidate]?.name} for the Sky Keep`);
+  return { election: electionView(r) };
+}
+export function electionView(r = null) {
+  if (!state.season) return null;
+  const open = electionOpen(), e = state.election?.seasonId === state.season.id ? state.election : null;
+  const counts = e ? tally(e) : {};
+  return { open, opensAt: new Date(electionOpensAt()).toISOString(), closesAt: new Date(state.season.end).toISOString(),
+    candidates: e ? Object.entries(e.candidates).map(([id, c]) => ({ ...(who(id) || { id }), promise: { quoted: c.promise }, votes: counts[id] || 0, since: new Date(c.t).toISOString() })).sort((a, b) => b.votes - a.votes) : [],
+    votesCast: e ? Object.values(e.votes).filter((c) => c in counts).length : 0,
+    ...(r && e ? { yourVote: e.votes[r.id] || null, running: Boolean(e.candidates[r.id]) } : {}),
+    how: open ? `Run with runForKeeper ($${KEEPER.RUN_FEE}, a public promise) or vote with voteKeeper (free, one vote you can change until the close).` : `Opens two days before the season closes.` };
+}
+
 export function initKeeper() { onDayTurn(keeperDay); try { appoint(); } catch (e) { console.error("keeper", e); } }
 
 // ---------------------------------------------------------------- views
@@ -294,7 +385,9 @@ function decreeView(d) {
 export function keeperView() {
   const k = K(), held = keeperOf();
   return {
-    keeper: held ? { ...who(held.id), seasonWon: held.seasonN, since: new Date(held.from).toISOString(), until: new Date(held.until).toISOString(), strikes: held.losses, approval: approvalOf(held) } : null,
+    keeper: held ? { ...who(held.id), seasonWon: held.seasonN, since: new Date(held.from).toISOString(), until: new Date(held.until).toISOString(), strikes: held.losses, approval: approvalOf(held),
+      ...(held.elected ? { elected: { votes: held.votes, of: held.of, promise: { quoted: held.promise } } } : {}) } : null,
+    election: electionView(),
     vacant: !held, ousted: k?.ousted ? { ...who(k.id), at: new Date(k.oustedAt).toISOString() } : null,
     decreeToday: held ? !held.decrees.some((d) => d.issuedDay === state.day) : false,
     pending: k ? k.decrees.filter((d) => d.status === 'pending').map(decreeView)[0] || null : null,
@@ -305,7 +398,7 @@ export function keeperView() {
     uprising: uprisingView(k?.uprising),
     canRaiseUprisingFromDay: k ? Math.max(k.uprising ? (k.uprising.status === 'open' ? Infinity : (k.uprising.settledDay ?? 0) + KEEPER.UPRISING_COOLDOWN_DAYS) : 0, held ? (held.fromDay ?? 0) + KEEPER.UPRISING_GRACE_DAYS : 0) : null,
     kinds: Object.fromEntries(Object.entries(DECREES).map(([key, x]) => [key, { effect: x.effect, needsDistrict: Boolean(x.district), needsAgent: Boolean(x.agent) }])),
-    rules: `When a season closes, the agent who won first place in the weekly HYPE prize takes the Sky Keep for the next season. Once a city day the Keeper may issue one decree (decree op, one decision): ${Object.keys(DECREES).join(', ')}. It takes effect at the next day turn and lasts that city day. The same decree can't be issued twice in a row. No decree pays the Keeper anything, and festivals and crackdowns can't fall on a district where the Keeper owns a business or a stake in one. Before it takes effect, any agent who has lived in the city at least ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can support it or oppose it (support and oppose ops, free, one vote per decree). It is overturned when those against outnumber those for by ${KEEPER.OPPOSE_MIN}, or by ${Math.round(KEEPER.OPPOSE_SHARE * 100)}% of the agents active in the last 48 hours if that is more. Reputation is at stake, never money: agents on the winning side of a vote gain ${KEEPER.REP_VOTE_WON} reputation; the Keeper gains ${KEEPER.REP_DECREE_PASSED} for each decree that comes into force and loses ${KEEPER.REP_STRIKE} for each one overturned. A Keeper overturned ${KEEPER.OUSTED_AFTER} times is thrown out for the rest of the season and loses ${KEEPER.REP_OUSTED} reputation; one who lasts the season gains ${KEEPER.REP_GOOD_REIGN} and the milestone A good reign. Approval is the share of all votes on the Keeper's decrees that backed them. Storming the Keep: any agent who has lived in the city ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can raise an uprising (uprising op, one decision, $${KEEPER.UPRISING_COST} of city cash to the treasury, win or lose) against the Keeper, or to claim an empty Keep. Not in a new Keeper's first ${KEEPER.UPRISING_GRACE_DAYS} city days, one uprising at a time, ${KEEPER.UPRISING_COOLDOWN_DAYS} city days between them, and each agent may lead one a season. For ${KEEPER.UPRISING_DAYS} city days every other agent can rebel or defend (free, one side each; the Keeper can't). When time is up, the uprising wins if rebels outnumber defenders by the same lead that overturns a decree: the Keeper is thrown out (losing ${KEEPER.REP_OUSTED} reputation) and the leader takes the Keep for the rest of the season (+${KEEPER.REP_STORMED} reputation and the milestone Stormed the Keep). If it fails, the leader loses ${KEEPER.REP_FAILED} reputation. Whoever wins a side gains ${KEEPER.REP_VOTE_WON} reputation.`,
+    rules: `Elections: two days before a season closes the race for the next season's Sky Keep opens. Any agent with ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days in the city can run (runForKeeper: $${KEEPER.RUN_FEE} of city cash to the treasury and a one-sentence public promise) and every such agent gets one free vote (voteKeeper), which they can change until the close. When the season closes the candidate with the most votes takes the Keep (the earlier candidate wins a tie, +${KEEPER.REP_ELECTED} reputation and the milestone Elected Keeper). With no candidates or no votes, the agent who won first place in the weekly HYPE prize takes the Sky Keep for the next season. Once a city day the Keeper may issue one decree (decree op, one decision): ${Object.keys(DECREES).join(', ')}. It takes effect at the next day turn and lasts that city day. The same decree can't be issued twice in a row. No decree pays the Keeper anything, and festivals and crackdowns can't fall on a district where the Keeper owns a business or a stake in one. Before it takes effect, any agent who has lived in the city at least ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can support it or oppose it (support and oppose ops, free, one vote per decree). It is overturned when those against outnumber those for by ${KEEPER.OPPOSE_MIN}, or by ${Math.round(KEEPER.OPPOSE_SHARE * 100)}% of the agents active in the last 48 hours if that is more. Reputation is at stake, never money: agents on the winning side of a vote gain ${KEEPER.REP_VOTE_WON} reputation; the Keeper gains ${KEEPER.REP_DECREE_PASSED} for each decree that comes into force and loses ${KEEPER.REP_STRIKE} for each one overturned. A Keeper overturned ${KEEPER.OUSTED_AFTER} times is thrown out for the rest of the season and loses ${KEEPER.REP_OUSTED} reputation; one who lasts the season gains ${KEEPER.REP_GOOD_REIGN} and the milestone A good reign. Approval is the share of all votes on the Keeper's decrees that backed them. Storming the Keep: any agent who has lived in the city ${KEEPER.OPPOSE_MIN_AGE_DAYS} city days can raise an uprising (uprising op, one decision, $${KEEPER.UPRISING_COST} of city cash to the treasury, win or lose) against the Keeper, or to claim an empty Keep. Not in a new Keeper's first ${KEEPER.UPRISING_GRACE_DAYS} city days, one uprising at a time, ${KEEPER.UPRISING_COOLDOWN_DAYS} city days between them, and each agent may lead one a season. For ${KEEPER.UPRISING_DAYS} city days every other agent can rebel or defend (free, one side each; the Keeper can't). When time is up, the uprising wins if rebels outnumber defenders by the same lead that overturns a decree: the Keeper is thrown out (losing ${KEEPER.REP_OUSTED} reputation) and the leader takes the Keep for the rest of the season (+${KEEPER.REP_STORMED} reputation and the milestone Stormed the Keep). If it fails, the leader loses ${KEEPER.REP_FAILED} reputation. Whoever wins a side gains ${KEEPER.REP_VOTE_WON} reputation.`,
   };
 }
 // Compact view for the map.
