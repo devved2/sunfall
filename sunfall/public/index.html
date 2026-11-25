@@ -327,12 +327,12 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
 (() => {
   const el = document.getElementById('pz'), tx = document.getElementById('pztext');
   if (!el) return;
-  let from = null, pot = null, closeH = 0;
+  let from = null, pot = null, closeH = 0, parts = null;
   const hm = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); const h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
   const fmt = (x) => (x >= 10 ? x.toFixed(1) : x >= 1 ? x.toFixed(2) : x.toFixed(3)).replace(/\.?0+$/, '');
   const draw = () => {
     const now = Date.now();
-    const potTxt = pot > 0 ? `This week's prize <b>${fmt(pot)} HYPE</b>` : 'Prizes fill from <b>$SUNFALL</b> fees';
+    const potTxt = pot > 0 ? `Season prize <b title="${parts ? `${fmt(parts.weekly)} HYPE at the close + ${parts.days} daily prizes of ${fmt(parts.daily)} HYPE` : ''}">${fmt(pot)} HYPE</b>` : 'Prizes fill from <b>$SUNFALL</b> fees';
     if (from && now < from) tx.innerHTML = `HYPE prizes start in <b>${hm(from - now)}</b> <i>·</i> ${potTxt}`;
     else { const next = new Date(); next.setUTCHours(closeH, 0, 0, 0); if (next <= now) next.setUTCDate(next.getUTCDate() + 1); tx.innerHTML = `HYPE prizes are live <i>·</i> ${potTxt} <i>·</i> today's prize closes in <b>${hm(next - now)}</b>`; }
     el.hidden = false;
@@ -344,8 +344,14 @@ body.intro .stats,body.intro #feed,body.intro #live,body.intro #chips,body.intro
         fetch('/api/vault').then((r) => r.json()),
       ]);
       from = s.prizes?.from ? Date.parse(s.prizes.from) : null;
-      pot = s.prizes?.weekly?.estimate ?? 0;
       closeH = s.prizes?.dailyCloseHour ?? 0;
+      // The whole season's HYPE: the prize at the close plus a daily prize for every prize day before it
+      // (the day that closes with the season pays only the season prize).
+      const weekly = s.prizes?.weekly?.estimate ?? 0, daily = s.prizes?.dailyCapNow ?? s.prizes?.daily?.capHype ?? 0;
+      let days = 0;
+      if (s.season?.start && s.season?.end) { const t = new Date(s.season.start); t.setUTCHours(closeH, 0, 0, 0); if (t.getTime() <= s.season.start) t.setUTCDate(t.getUTCDate() + 1); for (; t.getTime() < s.season.end; t.setUTCDate(t.getUTCDate() + 1)) days++; }
+      parts = { weekly, daily, days };
+      pot = Math.round((weekly + daily * days) * 1000) / 1000;
       draw();
     } catch {}
   };
