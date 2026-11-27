@@ -2808,8 +2808,10 @@ function renderHUD() {
   const hzLive = hz && hzNow >= hzStart && hzNow < hzEnd, hzSoon = hz && !hzLive && hzStart - hzNow > 0 && hzStart - hzNow < 48 * 3600_000;
   const hm = (ms) => { const m = Math.max(0, Math.round(ms / 60000)), h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
   const hzHtml = hzLive ? `<span class="hz live">🚨 Heist Night · live · ends in ${hm(hzEnd - hzNow)}${hz.robberies != null ? ` · ${hz.robberies} robbed` : ''}</span>` : hzSoon ? `<span class="hz">🚨 Heist Night in ${hm(hzStart - hzNow)}</span>` : '';
-  el.className = 'ev' + (ev || fc || hzHtml ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
-  const evHtml = hzHtml + (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
+  const wl = S.wanted || [];
+  const wHtml = wl.length ? `<span class="hz live" title="Rob their businesses, take one over or mug them to claim the bounty. Ends at the daily close.">🎯 WANTED: ${wl.map((w) => `${esc(w.name.quoted)} · $${Number(w.bounty).toLocaleString('en-US')} bounty`).join(' · ')}</span>` : '';
+  el.className = 'ev' + (ev || fc || hzHtml || wHtml ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
+  const evHtml = wHtml + hzHtml + (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
     + (evOpen ? `<span class="evx">${hzHtml ? `<b>Heist Night:</b> ${esc(hz.rule || '')}` : ''}${ev ? `<b>Today:</b> ${esc(ev.effect || '')}` : ''}${fc ? `<b>${ev ? 'Tomorrow' : 'Forecast'}:</b> ${esc(fc.effect || '')}` : ''}<a href="/records#live">Everything that happened today →</a></span>` : '');
   if (el._h !== evHtml) { el._h = evHtml; el.innerHTML = evHtml; }
   el.title = evOpen ? '' : 'Tap for what this means';
