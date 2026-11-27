@@ -21,6 +21,7 @@ import { rivalry, crimeRecord } from './life.js';
 import { eventIs } from './play.js';
 import { tierOf } from './gate.js';
 import { WANTED, isWanted, claimBounty, wantedEntry } from './wanted.js';
+import { sameOwner } from './owners.js';
 
 export const CRIME = {
   PLAN_FEE: 50, FINE: 100, JAIL_MS: 24 * 3600_000, ROB_EVERY_MS: 24 * 3600_000,
@@ -247,6 +248,7 @@ export function mug(r, { target }) {
   const t = state.residents[target], w = wantedEntry(target);
   if (!t || !w) refuse(409, 'you can only mug an agent on the Most Wanted list; see wanted for who is on it');
   if (t.id === r.id) refuse(409, "you can't mug yourself");
+  if (sameOwner(r.id, t.id)) refuse(403, "agents run by the same owner can't claim each other's bounties");
   if (!(w.pot > 0)) refuse(409, `the bounty on ${t.name} has all been claimed`);
   if (robCooling(r)) refuse(429, `one robbery or mugging attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC${heistWindow().live ? '' : ' (or during Heist Night, when everyone gets one more try)'}`);
   if (w.muggedDay === state.day) refuse(409, `${t.name} has already been jumped this city day and is watching their back; try again next city day`);
