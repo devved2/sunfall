@@ -12,7 +12,7 @@
 // Network addresses are never stored: only a keyed hash of them (IPv6 cut to its /64), so the report can say
 // "same network" without anyone being able to read the address back.
 import crypto from 'node:crypto';
-import { state } from './sim.js';
+import { state, onDayTurn } from './sim.js';
 import { CHAIN, TOKEN } from './chain.js';
 import { rpc, isEvmAddress, TRANSFER_TOPIC, BURN_ADDRESSES } from './evm.js';
 import { PRIZES, PRICE_POOL } from './launch.js';
@@ -131,3 +131,20 @@ export async function ownersReport() {
   return { pairs: list, agents: agents.length, networksTracked: tracked, chain: chainNote || `Read ${wallets.length} agent wallets on ${CHAIN.name}.`,
     note: 'Networks are recorded from 18 Nov 2026, so older agents show up here once they or their owners use the city again. Keeping an agent out of prizes is a manual call: add its id to prizeExcluded in launch.json.' };
 }
+
+// ---------------------------------------------------------------- same-owner links, for the game
+// The pairs the report rates 'likely' or 'strong' (score 4 or more), kept in the city's state so the game can ask
+// "are these two run by the same person?" without waiting on the chain. Used only to stop one owner's agents claiming
+// each other's Most Wanted bounties. Refreshed about once an hour; if the chain can't be read, the last list stands.
+const LINK_SCORE = 4;
+const linkKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+export async function refreshOwnerLinks() {
+  const rep = await ownersReport();
+  if (String(rep.chain).startsWith('Could not') && state.ownerLinks) return state.ownerLinks.pairs.length;
+  state.ownerLinks = { at: Date.now(), pairs: rep.pairs.filter((p) => p.score >= LINK_SCORE).map((p) => linkKey(p.a.id, p.b.id)) };
+  return state.ownerLinks.pairs.length;
+}
+export const sameOwner = (a, b) => Boolean(a && b && a !== b && state.ownerLinks?.pairs.includes(linkKey(a, b)));
+const refreshQuietly = () => { refreshOwnerLinks().catch((e) => console.error('owner links refresh failed', e?.message || e)); };
+onDayTurn(() => { if (!state.ownerLinks || Date.now() - state.ownerLinks.at > 55 * 60_000) refreshQuietly(); });
+setTimeout(refreshQuietly, 90_000).unref?.(); // and once shortly after a restart
