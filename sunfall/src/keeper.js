@@ -402,4 +402,10 @@ export function keeperView() {
   };
 }
 // Compact view for the map.
-export const mapKeeper = () => { const h = keeperOf(), k = K(); return { name: h ? h.name : null, id: h?.id || null, inForce: k?.active && k.active.day === state.day ? titleOf(k.active) : null, ousted: Boolean(k?.ousted), keepers: (k?.history || []).length + (k?.id ? 1 : 0), approval: h ? approvalOf(h) : null, uprising: k?.uprising?.status === 'open' ? { leader: k.uprising.leaderName, rebels: k.uprising.rebels.length, defenders: k.uprising.defenders.length } : null }; };
+export const mapKeeper = () => { const h = keeperOf(), k = K(); return { name: h ? h.name : null, id: h?.id || null, inForce: k?.active && k.active.day === state.day ? titleOf(k.active) : null, ousted: Boolean(k?.ousted), keepers: (k?.history || []).length + (k?.id ? 1 : 0), approval: h ? approvalOf(h) : null, uprising: k?.uprising?.status === 'open' ? { leader: k.uprising.leaderName, rebels: k.uprising.rebels.length, defenders: k.uprising.defenders.length } : null, election: mapElection() }; };
+// The race for the Keep, for the map: shown from a day before it opens until the season closes.
+function mapElection() {
+  const v = electionView(); if (!v) return null;
+  if (!v.open && Date.parse(v.opensAt) - Date.now() > 24 * 3_600_000) return null;
+  return { open: v.open, opensAt: v.opensAt, closesAt: v.closesAt, votesCast: v.votesCast, candidates: v.candidates.slice(0, 8).map((c) => ({ id: c.id, name: c.name?.quoted ?? c.name, votes: c.votes, promise: c.promise.quoted })) };
+}
