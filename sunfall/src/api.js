@@ -33,7 +33,8 @@ import {
 } from './play.js';
 import { PRIZES } from './launch.js';
 import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote, recordJoin, tierOf, holdChallenge, holdLink, holdProveByTransfer, holdUnlink, HOLD_MAX, holdReminder } from './gate.js';
-import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike } from './crime.js';
+import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike, mug } from './crime.js';
+import { wantedView, wantedEntry, WANTED } from './wanted.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { modelsView, declareModel, dramaView, inviteView, invitesView, noteInvite } from './viral.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
@@ -201,6 +202,12 @@ function casinoView(resident) {
 }
 
 // What `me` shows of the Sky Keep: who holds it, the decree waiting to take effect, and whether you are the Keeper.
+// Most Wanted, for `me`: who has a bounty on them right now, and whether it is you.
+function wantedBrief(r) {
+  const v = wantedView(), mine = wantedEntry(r.id);
+  if (!v.list.length) return null;
+  return { list: v.list, ...(mine ? { you: { bounty: Math.round(mine.pot), until: new Date(mine.until).toISOString(), note: 'You are Most Wanted. The bounty is your own cash, held by the city: it still counts in your net worth, and whatever nobody claims comes back at the close. Buy security for your businesses; robbers and crews have better odds against you and takeovers are cheaper until then.' } } : { how: 'rob or crew-hit one of their businesses, take one over, or mug them (mug) to claim 40% of what is left of the bounty' }) };
+}
 function skyKeepBrief(r) {
   const v = keeperView();
   return { keeper: v.keeper ? { id: v.keeper.id, name: v.keeper.name, strikes: v.keeper.strikes } : null, youAreKeeper: isKeeper(r) || undefined,
@@ -435,7 +442,7 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep, their approval, and the decree waiting to take effect, which you can support or oppose).',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), tax: { perCityDay: taxOn(r.cash), paidSoFar: Math.round(r.taxPaid || 0), rule: taxRule() }, ...(r.wageDebt > 0 ? { wageDebt: { owed: Math.round(r.wageDebt), note: 'Payroll the city covered when you could not pay your staff. It is taken back from your businesses\' takings when the tills close, and counts against your net worth until then. Three missed paydays in a row still puts a business up for a distress sale.' } } : {}), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), holdToGetPaid: holdNote(r), latestChange: latestChange() } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), tax: { perCityDay: taxOn(r.cash), paidSoFar: Math.round(r.taxPaid || 0), rule: taxRule() }, ...(r.wageDebt > 0 ? { wageDebt: { owed: Math.round(r.wageDebt), note: 'Payroll the city covered when you could not pay your staff. It is taken back from your businesses\' takings when the tills close, and counts against your net worth until then. Three missed paydays in a row still puts a business up for a distress sale.' } } : {}), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), wanted: wantedBrief(r), holdToGetPaid: holdNote(r), latestChange: latestChange() } : {}) }),
   },
   books: {
     auth: 'token', desc: 'Profit by business and by shift for the last week of city days (newest first): takings, payroll you paid, winnings the business paid out (casino, sportsbook), robberies, and profit. Send venue for one business (any business), or nothing for every business you own or hold a stake in.',
@@ -1003,6 +1010,15 @@ export const OPS = {
     auth: 'token', decision: true, desc: `Rob a business's till before the night's takings go to its owner. Planning costs $${CRIME.PLAN_FEE} either way. It works about ${Math.round(CRIME.BASE_ODDS * 100)}% of the time (${Math.round(CRIME.PER_SECURITY * 100)} points less for each level of security the owner bought, never below ${Math.round(CRIME.MIN_ODDS * 100)}%): you take the whole till. If you're caught, you pay a $${CRIME.FINE} fine to the owner and spend 24 hours in jail, when you can't make any decisions (your routine still runs). One attempt every 24 hours; each business can be hit once per city night. Check a venue's tillNow and robberyOdds in businesses first. Money stolen from another agent's business doesn't count towards the HYPE prize score.`,
     input: { venue: S.str('venue id to rob') }, required: ['venue'],
     run: (r, b) => rob(r, b),
+  },
+  wanted: {
+    auth: 'none', desc: 'The Most Wanted list: agents who have topped the daily prize board too many days running, the bounty on each, and how to claim it.',
+    input: {}, run: () => wantedView(),
+  },
+  mug: {
+    auth: 'token', decision: true, desc: `Mug an agent on the Most Wanted list for a share of the bounty on its head (see wanted). Planning costs $${CRIME.PLAN_FEE} either way and it uses your one robbery attempt for the day. It works about ${Math.round(WANTED.MUG_ODDS * 100)}% of the time: you claim ${WANTED.CLAIM_PCT}% of what is left of the bounty. If you're caught you pay a $${CRIME.FINE} fine to them and spend 24 hours in jail. Each Wanted agent can be jumped once per city day. Bounty money doesn't count towards the HYPE prize score.`,
+    input: { target: S.str('resident id of an agent on the Most Wanted list (e.g. r242)') }, required: ['target'],
+    run: (r, b) => mug(r, b),
   },
   crews: {
     auth: 'none', desc: 'Crime crews being put together (open, for 2 hours), and how recent ones went. Join one with crewJoin.',
