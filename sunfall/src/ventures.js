@@ -30,7 +30,8 @@ export const VENTURES = {
   CONTRACTS_PER_DAY: 2,
   DEPOSIT_PCT: 25,            // of the contract's top price, put down by the winner when it is awarded
   HOLD: 40,                   // cargo an agent can carry, in units
-  SPREAD: 0.9,                // a market buys back at 90% of its price
+  SPREAD: 0.85,               // a market buys back at 85% of its price (90% until 27 Nov 2026)
+  DUTY: 0.4,                  // customs duty: the city takes this share of any profit on a cargo sale (from 27 Nov 2026)
   ROUGH: 0.06, ROUGH_LOSS: 0.4, // chance a crossing with cargo is rough, and the share of cargo lost
   WEAR: 5,                    // condition a venue loses each city day
   INSPECT: 0.25,              // chance an agent-owned venue is inspected at each day turn
@@ -82,7 +83,7 @@ export function tradeView(r = null) {
   return {
     goods: Object.fromEntries(Object.entries(GOODS).map(([g, d]) => [g, { name: d.name, madeIn: cityName(d.from) }])), prices, day: T().day,
     ...(r ? { you: { city: cityOf(r), canSellIn: marketsFor(r), hold: VENTURES.HOLD, carrying: held(r), cargo: Object.fromEntries(Object.entries(r.cargo || {}).map(([g, x]) => [g, { qty: x.qty, avgCost: r2(x.cost / x.qty) }])) } } : {}),
-    rule: `Goods are cheap where they are made and dear elsewhere; prices change every city day. cargoBuy buys in your own city; cargoSell sells in your own city or in any city you went out in today (a night out across the sky takes your cargo with you; the ferry ticket is the usual one). Markets buy back at ${Math.round(VENTURES.SPREAD * 100)}% of their price. You can carry ${VENTURES.HOLD} units. A crossing with cargo is rough ${Math.round(VENTURES.ROUGH * 100)}% of the time and ${Math.round(VENTURES.ROUGH_LOSS * 100)}% of the cargo goes overboard. The top ${VENTURES.LEADERS_BARRED} on the season's prize table can sell but not buy.`,
+    rule: `Goods are cheap where they are made and dear elsewhere; prices change every city day. cargoBuy buys in your own city; cargoSell sells in your own city or in any city you went out in today (a night out across the sky takes your cargo with you; the ferry ticket is the usual one). Markets buy back at ${Math.round(VENTURES.SPREAD * 100)}% of their price, and the city takes ${Math.round(VENTURES.DUTY * 100)}% of any profit on a sale as customs duty. You can carry ${VENTURES.HOLD} units. A crossing with cargo is rough ${Math.round(VENTURES.ROUGH * 100)}% of the time and ${Math.round(VENTURES.ROUGH_LOSS * 100)}% of the cargo goes overboard. The top ${VENTURES.LEADERS_BARRED} on the season's prize table can sell but not buy.`,
   };
 }
 export function cargoBuy(r, b) {
@@ -105,11 +106,12 @@ export function cargoSell(r, b) {
   const where = marketsFor(r), city = b.city ? b.city : where.find((x) => x !== cityOf(r)) || cityOf(r);
   if (!where.includes(city)) refuse(409, `you can only sell in ${where.map(cityName).join(' or ')} today: go out in another city to sell there`);
   const pay = chargeDecision(r); pay();
-  const price = r2(priceIn(city, g) * VENTURES.SPREAD), got = r2(price * qty), basis = r2(c.cost * qty / c.qty);
+  const price = r2(priceIn(city, g) * VENTURES.SPREAD), gross = r2(price * qty), basis = r2(c.cost * qty / c.qty);
+  const duty = gross > basis ? r2((gross - basis) * VENTURES.DUTY) : 0, got = r2(gross - duty); // the duty stays with the city
   r.cash += got; state.treasury -= got; c.qty -= qty; c.cost = r2(c.cost - basis); if (!c.qty) delete r.cargo[g];
-  L('cargo', r.id, got, `sold ${qty} ${GOODS[g].name} in ${cityName(city)} at $${price} (${got - basis >= 0 ? 'profit' : 'loss'} $${Math.abs(r2(got - basis))})`);
+  L('cargo', r.id, got, `sold ${qty} ${GOODS[g].name} in ${cityName(city)} at $${price}${duty ? `, $${duty} customs duty` : ''} (${got - basis >= 0 ? 'profit' : 'loss'} $${Math.abs(r2(got - basis))})`);
   if (Math.abs(got - basis) >= 60) chron(`${r.name} ${got >= basis ? 'made' : 'lost'} $${Math.round(Math.abs(got - basis))} running ${GOODS[g].name} to ${cityName(city)}.`, r.id, 'trade');
-  return { sold: { good: g, qty, price, got, profit: r2(got - basis), city }, trade: tradeView(r) };
+  return { sold: { good: g, qty, price, gross, duty, got, profit: r2(got - basis), city }, trade: tradeView(r) };
 }
 // Cargo counts in net worth at what the agent's own market would pay for it today.
 onWorth((r) => Object.entries(r.cargo || {}).reduce((s, [g, x]) => s + x.qty * (priceIn(cityOf(r), g) || 0) * VENTURES.SPREAD, 0));
