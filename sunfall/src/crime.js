@@ -20,6 +20,7 @@ import { PRIZES } from './launch.js';
 import { rivalry, crimeRecord } from './life.js';
 import { eventIs } from './play.js';
 import { tierOf } from './gate.js';
+import { WANTED, isWanted, claimBounty, wantedEntry } from './wanted.js';
 
 export const CRIME = {
   PLAN_FEE: 50, FINE: 100, JAIL_MS: 24 * 3600_000, ROB_EVERY_MS: 24 * 3600_000,
@@ -55,7 +56,7 @@ onDayTurn(() => heistTick());
 const heistCount = (k, v = 1) => { if (heistWindow().live) { const H = (state.heist ||= {}); H[k] = (H[k] || 0) + v; } };
 const ownedBy = (r) => Object.values(state.venues).filter((v) => v.ownerId === r.id);
 export const jailedUntil = (r) => (r?.jailUntil && r.jailUntil > Date.now() ? r.jailUntil : null);
-export const robOdds = (v, robber = null) => Math.max(0.05, Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0) + (heistWindow().live ? HEIST.ODDS : 0) + (robber ? tierOf(robber).robBonus : 0) - (decreeIs('crackdown', v.district) ? 0.25 : 0));
+export const robOdds = (v, robber = null) => Math.max(0.05, Math.max(CRIME.MIN_ODDS, CRIME.BASE_ODDS - CRIME.PER_SECURITY * (v.security || 0)) + (eventIs('crimewave') ? CRIME.WAVE_BONUS : 0) + (heistWindow().live ? HEIST.ODDS : 0) + (robber ? tierOf(robber).robBonus : 0) + (isWanted(v.ownerId) ? WANTED.ODDS : 0) - (decreeIs('crackdown', v.district) ? 0.25 : 0));
 
 export function rob(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
@@ -89,7 +90,8 @@ export function rob(r, { venue }) {
     heistCount('n'); heistCount('take', take);
     chron(safe ? `Heist Night: ${r.name} robbed ${v.name}, the till and the safe, $${Math.round(take)}.` : `${r.name} robbed ${v.name} and got away with the whole till: $${Math.round(take)}.`, r.id, 'crime');
     crimeRecord(r, 'robbed'); if (owner?.outside) { crimeRecord(owner, 'victim'); rivalry(r, owner, `robbed ${v.name}`); }
-    return { robbery: { venue: v.id, name: v.name, success: true, took: take, odds } };
+    const bounty = claimBounty(owner, [r], `robbed ${v.name}`);
+    return { robbery: { venue: v.id, name: v.name, success: true, took: take, odds, ...(bounty ? { bounty } : {}) } };
   }
   const fine = Math.min(CRIME.FINE, Math.max(0, r.cash));
   r.cash -= fine;
@@ -178,6 +180,7 @@ export function crewStrike(r, { crew }) {
       crimeRecord(m, 'robbed'); if (owner?.outside) rivalry(m, owner, `robbed ${v.name}`);
     }
     if (owner?.outside) crimeRecord(owner, 'victim');
+    claimBounty(owner, team, `crew hit on ${v.name}`);
     c.status = 'struck'; c.result = { success: true, take: Math.round(take), share, odds }; heistCount('n', team.length); heistCount('take', take);
     chron(`A crew of ${team.length} (${names}) hit ${v.name}: the till and the safe, $${Math.round(take)} split ${team.length} ways.`, r.id, 'crime');
     return { crew: crewView(c) };
@@ -209,7 +212,7 @@ export function security(r, { venue, level }) {
   return { venue: v.id, name: v.name, security: level, robberyOdds: robOdds(v) };
 }
 
-export const takeoverPrice = (v) => Math.ceil(venueValueNow(v) * CRIME.TAKEOVER_PREMIUM);
+export const takeoverPrice = (v) => Math.ceil(venueValueNow(v) * (isWanted(v.ownerId) ? WANTED.TAKEOVER_PREMIUM : CRIME.TAKEOVER_PREMIUM));
 export function takeover(r, { venue }) {
   if (!r.outside) refuse(403, 'agents only');
   const v = state.venues[venue]; if (!v || !v.isVenue) refuse(404, 'no such venue');
@@ -223,7 +226,7 @@ export function takeover(r, { venue }) {
   if (Date.now() - v.boughtAt < CRIME.TAKEOVER_COOLDOWN_MS) refuse(409, `${v.name} changed hands less than 24 hours ago; it can be taken over from ${new Date(v.boughtAt + CRIME.TAKEOVER_COOLDOWN_MS).toISOString().slice(0, 16)} UTC`);
   const price = takeoverPrice(v), value = Math.round(venueValueNow(v));
   const pay = chargeDecision(r);
-  if (r.cash - CFG.DECISION_COST < price) refuse(402, `a hostile takeover of ${v.name} costs $${price} (130% of its $${value} valuation); you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
+  if (r.cash - CFG.DECISION_COST < price) refuse(402, `a hostile takeover of ${v.name} costs $${price} (${Math.round(price / Math.max(value, 1) * 100)}% of its $${value} valuation); you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
   pay();
   // The premium over the valuation is money paid in by another agent: kept out of the old owner's prize score.
   const ownerShare = 1 - (v.partners || []).reduce((s, p) => s + p.pct, 0) / 100;
@@ -232,5 +235,38 @@ export function takeover(r, { venue }) {
   buyBusiness(r, v);
   crimeRecord(r, 'takeover'); rivalry(r, owner, `took over ${v.name}`);
   chron(`Hostile takeover: ${r.name} forced ${owner.name} out of ${v.name}, paying $${price}.`, r.id, 'business');
-  return { takeover: { venue: v.id, name: v.name, price, from: { quoted: owner.name } } };
+  const bounty = claimBounty(owner, [r], `took over ${v.name}`);
+  return { takeover: { venue: v.id, name: v.name, price, from: { quoted: owner.name }, ...(bounty ? { bounty } : {}) } };
+}
+
+// ---------------------------------------------------------------- mugging the Most Wanted
+// Only an agent on the Most Wanted list can be mugged. It costs the usual planning fee and uses the hunter's one
+// robbery attempt for the day. Success claims a share of the bounty; failure is the usual fine (paid to the target) and jail.
+export function mug(r, { target }) {
+  if (!r.outside) refuse(403, 'agents only');
+  const t = state.residents[target], w = wantedEntry(target);
+  if (!t || !w) refuse(409, 'you can only mug an agent on the Most Wanted list; see wanted for who is on it');
+  if (t.id === r.id) refuse(409, "you can't mug yourself");
+  if (!(w.pot > 0)) refuse(409, `the bounty on ${t.name} has all been claimed`);
+  if (robCooling(r)) refuse(429, `one robbery or mugging attempt every 24 hours; next from ${new Date(r.lastRob + CRIME.ROB_EVERY_MS).toISOString().slice(0, 16)} UTC${heistWindow().live ? '' : ' (or during Heist Night, when everyone gets one more try)'}`);
+  if (w.muggedDay === state.day) refuse(409, `${t.name} has already been jumped this city day and is watching their back; try again next city day`);
+  const pay = chargeDecision(r);
+  if (r.cash - CFG.DECISION_COST < CRIME.PLAN_FEE) refuse(402, `planning a mugging costs $${CRIME.PLAN_FEE}; you would hold $${Math.floor(r.cash - CFG.DECISION_COST)}`);
+  pay();
+  r.cash -= CRIME.PLAN_FEE; state.treasury += CRIME.PLAN_FEE;
+  L('rob', r.id, -CRIME.PLAN_FEE, `planned to mug ${t.name}`);
+  r.lastRob = Date.now(); w.muggedDay = state.day;
+  const odds = Math.round(Math.min(0.85, WANTED.MUG_ODDS + tierOf(r).robBonus + (heistWindow().live ? HEIST.ODDS : 0)) * 100) / 100;
+  if (secureRandom() < odds) {
+    crimeRecord(r, 'robbed'); crimeRecord(t, 'victim'); rivalry(r, t, 'mugged them for the bounty');
+    const bounty = claimBounty(t, [r], 'mugging');
+    return { mugging: { target: t.id, name: { quoted: t.name }, success: true, bounty, odds } };
+  }
+  const fine = Math.min(CRIME.FINE, Math.max(0, r.cash));
+  r.cash -= fine; t.cash += fine;
+  L('rob', t.id, fine, 'fine paid by a mugger who was caught');
+  r.jailUntil = Date.now() + CRIME.JAIL_MS; crimeRecord(r, 'caught'); rivalry(r, t, 'tried to mug them');
+  L('rob', r.id, -fine, `caught trying to mug ${t.name}: fined and sent to Cinder Rock Prison for 24 hours`);
+  chron(`${r.name} went after the bounty on ${t.name} and was caught. Fined $${Math.round(fine)} and sent to Cinder Rock Prison for 24 hours.`, r.id, 'crime');
+  return { mugging: { target: t.id, name: { quoted: t.name }, success: false, fine, jailedUntil: new Date(r.jailUntil).toISOString(), odds } };
 }
