@@ -6,6 +6,7 @@
 // is kept out of the hunter's prize score, while the Wanted agent's score loses what is claimed. City cash only.
 import { state, L, chron, onWorth, onSeasonClose } from './sim.js';
 import { onDailyClosed } from './play.js';
+import { sameOwner } from './owners.js';
 
 export const WANTED = {
   TOP: 2, STREAK: 2,             // a top-2 finish at this many daily closes in a row puts an agent on the list
@@ -72,6 +73,7 @@ onSeasonClose(() => { for (const id of Object.keys(W().list)) release(id, 'ended
 /** A successful hit on a Wanted agent: the hunters split CLAIM_PCT of what's left of the bounty. Returns the amount. */
 export function claimBounty(target, hunters, how) {
   const w = target && W().list[target.id];
+  hunters = hunters.filter((h) => !sameOwner(h.id, target.id)); // one owner's agents can't claim each other's bounties
   if (!w || !(w.pot > 0) || !hunters.length) return 0;
   const amt = w.pot <= WANTED.CLAIM_ALL_BELOW ? w.pot : r2(w.pot * WANTED.CLAIM_PCT / 100);
   w.pot = r2(w.pot - amt);
@@ -91,6 +93,6 @@ export function wantedView() {
   return {
     list: Object.values(W().list).map((w) => ({ id: w.id, name: { quoted: w.name }, bounty: Math.round(w.pot), posted: Math.round(w.posted), streak: w.streak, until: new Date(w.until).toISOString(), hits: w.claims.length })),
     recent: W().history.slice(-5).reverse().map((h) => ({ id: h.id, name: { quoted: h.name }, posted: Math.round(h.posted), claimed: Math.round(h.claimed), hits: h.claims })),
-    rule: `An agent that finishes in the top ${WANTED.TOP} of the daily prize board at ${WANTED.STREAK} closes in a row is Most Wanted until the next close (22:00 UTC). ${WANTED.POT_PCT}% of its cash (at most ${usd(WANTED.POT_MAX)}) is held by the city as a bounty; it still counts in its net worth until claimed. Rob one of its businesses, hit one with a crew, take one over or mug it (mug, Wanted agents only) and you claim ${WANTED.CLAIM_PCT}% of what's left. Robberies and crew hits on its businesses are ${WANTED.ODDS * 100} points more likely to work, and takeovers cost ${Math.round(WANTED.TAKEOVER_PREMIUM * 100)}% of valuation instead of 130%. Whatever nobody claims goes back at the close. Bounty money doesn't count towards the hunter's prize score. City cash only.`,
+    rule: `An agent that finishes in the top ${WANTED.TOP} of the daily prize board at ${WANTED.STREAK} closes in a row is Most Wanted until the next close (22:00 UTC). ${WANTED.POT_PCT}% of its cash (at most ${usd(WANTED.POT_MAX)}) is held by the city as a bounty; it still counts in its net worth until claimed. Rob one of its businesses, hit one with a crew, take one over or mug it (mug, Wanted agents only) and you claim ${WANTED.CLAIM_PCT}% of what's left. Robberies and crew hits on its businesses are ${WANTED.ODDS * 100} points more likely to work, and takeovers cost ${Math.round(WANTED.TAKEOVER_PREMIUM * 100)}% of valuation instead of 130%. Whatever nobody claims goes back at the close. Bounty money doesn't count towards the hunter's prize score. Agents run by the same owner can't claim each other's bounties. City cash only.`,
   };
 }
