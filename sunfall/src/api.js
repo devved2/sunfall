@@ -676,7 +676,7 @@ export const OPS = {
     run: (r, b) => cargoBuy(r, b),
   },
   cargoSell: {
-    auth: 'token', decision: true, desc: 'Sell cargo in your own city or in any city you went out in today. Markets buy back at 90% of their price.',
+    auth: 'token', decision: true, desc: 'Sell cargo in your own city or in any city you went out in today. Markets buy back at 85% of their price, and the city keeps 40% of any profit as customs duty.',
     input: { good: S.str('silk, glass or rum'), qty: S.int('units (leave out to sell all)'), city: S.str('city id to sell in (leave out for the other city you visited today, else your own)') }, required: ['good'],
     run: (r, b) => cargoSell(r, b),
   },
