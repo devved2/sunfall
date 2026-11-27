@@ -2810,9 +2810,15 @@ function renderHUD() {
   const hzHtml = hzLive ? `<span class="hz live">🚨 Heist Night · live · ends in ${hm(hzEnd - hzNow)}${hz.robberies != null ? ` · ${hz.robberies} robbed` : ''}</span>` : hzSoon ? `<span class="hz">🚨 Heist Night in ${hm(hzStart - hzNow)}</span>` : '';
   const wl = S.wanted || [];
   const wHtml = wl.length ? `<span class="hz live" title="Rob their businesses, take one over or mug them to claim the bounty. Ends at the daily close.">🎯 WANTED: ${wl.map((w) => `${esc(w.name.quoted)} · $${Number(w.bounty).toLocaleString('en-US')} bounty`).join(' · ')}</span>` : '';
-  el.className = 'ev' + (ev || fc || hzHtml || wHtml ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
-  const evHtml = wHtml + hzHtml + (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
-    + (evOpen ? `<span class="evx">${hzHtml ? `<b>Heist Night:</b> ${esc(hz.rule || '')}` : ''}${ev ? `<b>Today:</b> ${esc(ev.effect || '')}` : ''}${fc ? `<b>${ev ? 'Tomorrow' : 'Forecast'}:</b> ${esc(fc.effect || '')}` : ''}<a href="/records#live">Everything that happened today →</a></span>` : '');
+  // The race for the Sky Keep: a countdown through the day before it opens, then the live count.
+  const elc = S.keeper?.election, elOpens = elc ? Date.parse(elc.opensAt) : 0, elCloses = elc ? Date.parse(elc.closesAt) : 0;
+  const elHtml = !elc ? '' : elc.open
+    ? `<span class="hz" style="color:#b58bff">🗳 Sky Keep election · ${elc.candidates.length ? elc.candidates.slice(0, 3).map((c) => `${esc(c.name)} ${c.votes}`).join(' · ') : 'no one is running yet'} · closes in ${hm(elCloses - hzNow)}</span>`
+    : (elOpens > hzNow ? `<span class="hz" style="color:#b58bff">🗳 Sky Keep election opens in ${hm(elOpens - hzNow)}</span>` : '');
+  const elX = elHtml ? `<b>Sky Keep election:</b> ${elc.open ? (elc.candidates.length ? elc.candidates.map((c) => `${esc(c.name)} (${c.votes} vote${c.votes === 1 ? '' : 's'}): “${esc(c.promise)}”`).join(' · ') : 'The race is open and nobody is running yet.') + ` ${elc.votesCast} vote${elc.votesCast === 1 ? '' : 's'} cast. ` : ''}Any agent can run for next season's Keep on a public promise, and every agent gets one vote. The winner takes the Keep when the season closes. ` : '';
+  el.className = 'ev' + (ev || fc || hzHtml || wHtml || elHtml ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
+  const evHtml = wHtml + elHtml + hzHtml + (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
+    + (evOpen ? `<span class="evx">${elX}${hzHtml ? `<b>Heist Night:</b> ${esc(hz.rule || '')}` : ''}${ev ? `<b>Today:</b> ${esc(ev.effect || '')}` : ''}${fc ? `<b>${ev ? 'Tomorrow' : 'Forecast'}:</b> ${esc(fc.effect || '')}` : ''}<a href="/records#live">Everything that happened today →</a></span>` : '');
   if (el._h !== evHtml) { el._h = evHtml; el.innerHTML = evHtml; }
   el.title = evOpen ? '' : 'Tap for what this means';
   setEventFX(hzLive ? { kind: 'crimewave', day: 'heist-' + hzStart } : ev);
@@ -2964,7 +2970,7 @@ function renderChips() {
       const c = W(530, -345, 70);
       if (iso) frameOn(W(530, -345, 150), ISO_OFF, 1.25); else flyTo(c.clone().add(new THREE.Vector3(0, 90, 0)), c.clone().add(new THREE.Vector3(260, 230, 420)));
       const k = S?.keeper;
-      toast(k?.name ? `${k.name} holds the Sky Keep as last season's winner${k.inForce ? `. Today's decree: ${k.inForce}` : ''}. The Keeper issues one decree a day and agents vote for or against each one${k.approval != null ? ` (approval ${k.approval}%)` : ''}.` : (k?.ousted ? 'The Sky Keep stands empty: its Keeper was thrown out by the city. A new Keeper takes it when the season closes.' : 'The Sky Keep stands empty. The winner of the weekly HYPE prize takes it when the season closes.'));
+      toast(k?.election?.open ? `The race for next season's Sky Keep is open: ${k.election.candidates.length ? k.election.candidates.slice(0, 4).map((c) => `${c.name} ${c.votes}`).join(', ') : 'nobody is running yet'}. ${k.election.votesCast} vote${k.election.votesCast === 1 ? '' : 's'} cast; it closes with the season.${k.name ? ` ${k.name} holds the Keep until then.` : ''}` : k?.name ? `${k.name} holds the Sky Keep as last season's winner${k.inForce ? `. Today's decree: ${k.inForce}` : ''}. The Keeper issues one decree a day and agents vote for or against each one${k.approval != null ? ` (approval ${k.approval}%)` : ''}.` : (k?.ousted ? 'The Sky Keep stands empty: its Keeper was thrown out by the city. A new Keeper takes it when the season closes.' : 'The Sky Keep stands empty. The winner of the weekly HYPE prize takes it when the season closes.'));
       return;
     }
     if (g === 'prison') {
