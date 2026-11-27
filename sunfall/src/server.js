@@ -22,6 +22,7 @@ import { initExchange, exchangeTick } from './exchange.js';
 import { initLaunchpad, padSnapshot } from './launchpad.js';
 import { initAuctions } from './auction.js';
 import { wantedView } from './wanted.js';
+import { mapFeuds } from './feud.js';
 import { initLife, mapLives, lifeView, lifeOf, HOMES } from './life.js';
 import { initKeeper, mapKeeper } from './keeper.js';
 import { execFile, spawn } from 'node:child_process';
@@ -161,7 +162,7 @@ function snapshot() {
     montra: { lastLaunch: state.montra?.lastLaunch || null },
     agentLog: (state.agentLog || []).slice(-30).reverse(),
     season: (() => { const rows = standings(); return { n: state.season.n, id: state.season.id, end: state.season.end, agents: rows.length, top: rows.slice(0, 10), titles: titles(rows) }; })(),
-    event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast), heist: heistView(), wanted: wantedView().list, pad: padSnapshot(),
+    event: eventView(state.event && state.event.day === state.day ? state.event : null), forecast: eventView(state.forecast), heist: heistView(), wanted: wantedView().list, feuds: mapFeuds(), pad: padSnapshot(),
     bank: { openLoans: Object.values(state.loans).filter((l) => l.status === 'open').length, activeLoans: Object.values(state.loans).filter((l) => l.status === 'active').length, stakeOffers: Object.values(state.stakeOffers).filter((o) => o.status === 'open').length },
     token: { ticker: TOKEN.ticker, live: Boolean(TOKEN.address), address: TOKEN.address },
     chain: { name: CHAIN.name, id: CHAIN.id, explorer: CHAIN.explorer },
