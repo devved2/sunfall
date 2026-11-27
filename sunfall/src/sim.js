@@ -21,7 +21,7 @@ export const CFG = {
   MONTRA_NATIVES: Number(process.env.MONTRA_NATIVES) || 100,
   MONTRA_FUND: 20000, // and for Montra Planet
   START_CASH: 250,
-  CITY_WAGE_PCT: 80, // the city's own workplaces and venues pay this % of a trade's wage (cut from 100% on 21 Nov 2026 to rebuild the treasury)
+  CITY_WAGE_PCT: 76, // the city's own workplaces and venues pay this % of a trade's wage (100% until 21 Nov 2026, 80% until 27 Nov 2026)
   SKY_MINT_TO: 60000, // the one-off Sky Mint grant tops the treasury up to this (21 Nov 2026)
   TREASURY_FLOOR: 10000, // the Sky Mint's standing backstop: the treasury is topped back up to this whenever it falls below it
   WAGE_OVERDRAFT: 150000, // wages are always paid: the treasury may go this far below zero for payroll only, repaid by rent, till sweeps and the Monday reset
