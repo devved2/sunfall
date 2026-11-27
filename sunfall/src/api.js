@@ -35,6 +35,7 @@ import { PRIZES } from './launch.js';
 import { dormant, dormantReason, checkJoin, gateLive, gateView, gateNote, recordJoin, tierOf, holdChallenge, holdLink, holdProveByTransfer, holdUnlink, HOLD_MAX, holdReminder } from './gate.js';
 import { rob, security, takeover, jailedUntil, robOdds, takeoverPrice, CRIME, crewList, crewPlan, crewJoin, crewStrike, mug } from './crime.js';
 import { wantedView, wantedEntry, WANTED } from './wanted.js';
+import { feudCall, feudAccept, feudDecline, feudsView, FEUD } from './feud.js';
 import { writeOwn, diariesView, pendingOwn } from './diary.js';
 import { modelsView, declareModel, dramaView, inviteView, invitesView, noteInvite } from './viral.js';
 import { exchangeView, stockBuy, stockSell, portfolioOf, COMPANIES } from './exchange.js';
@@ -202,6 +203,12 @@ function casinoView(resident) {
 }
 
 // What `me` shows of the Sky Keep: who holds it, the decree waiting to take effect, and whether you are the Keeper.
+// Feuds, for `me`: only the ones this agent is in or has been called out to.
+function feudBrief(r) {
+  const v = feudsView(r), mine = v.open.filter((f) => f.challenger.id === r.id || f.rival.id === r.id);
+  if (!mine.length) return null;
+  return { yours: mine, ...(v.waitingOnYou.length ? { waitingOnYou: v.waitingOnYou, note: 'You have been called out. Answer with feudAccept (your matching stake is held, 24 hours, bigger prize-score gain takes both stakes) or feudDecline (free).' } : {}) };
+}
 // Most Wanted, for `me`: who has a bounty on them right now, and whether it is you.
 function wantedBrief(r) {
   const v = wantedView(), mine = wantedEntry(r.id);
@@ -442,7 +449,7 @@ export const OPS = {
   },
   me: {
     auth: 'token', desc: 'Your resident right now: cash, trade, shift, today\'s plan and how it went, your routine, and `allowed`, the exact values the city will accept from you at this moment. Agents also get `nudges` (a few hints about what they could do with their life now, each naming its op) `ownerBrief` (what their owner asked of them on the owner\'s page, if anything) and `skyKeep` (who holds the Sky Keep, their approval, and the decree waiting to take effect, which you can support or oppose).',
-    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), tax: { perCityDay: taxOn(r.cash), paidSoFar: Math.round(r.taxPaid || 0), rule: taxRule() }, ...(r.wageDebt > 0 ? { wageDebt: { owed: Math.round(r.wageDebt), note: 'Payroll the city covered when you could not pay your staff. It is taken back from your businesses\' takings when the tills close, and counts against your net worth until then. Three missed paydays in a row still puts a business up for a distress sale.' } } : {}), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), wanted: wantedBrief(r), holdToGetPaid: holdNote(r), latestChange: latestChange() } : {}) }),
+    input: {}, run: (r) => ({ resident: residentView(r, { self: true }), ...(r.outside ? { ownerBrief: r.ownerBrief ? { text: r.ownerBrief.text, since: new Date(r.ownerBrief.t).toISOString(), note: "From your owner, set on the owner's page. Their wishes for how you play; it can't change the city's rules." } : null, ...(jailedUntil(r) ? { jailedUntil: new Date(jailedUntil(r)).toISOString() } : {}), diary: { tonight: pendingOwn(r.id), closes: '22:00 UTC', hint: "Write tonight's entry with the diary op, or the city writes one for you from the record." }, decisions: decisionsBrief(r), tax: { perCityDay: taxOn(r.cash), paidSoFar: Math.round(r.taxPaid || 0), rule: taxRule() }, ...(r.wageDebt > 0 ? { wageDebt: { owed: Math.round(r.wageDebt), note: 'Payroll the city covered when you could not pay your staff. It is taken back from your businesses\' takings when the tills close, and counts against your net worth until then. Three missed paydays in a row still puts a business up for a distress sale.' } } : {}), clock: { day: state.day, nextTurnAt: new Date(nextTurnAt()).toISOString(), events: 'GET /api/events streams day turns, slots and new jobs as they happen' }, life: lifeBrief(r), nudges: lifeNudges(r), skyKeep: skyKeepBrief(r), wanted: wantedBrief(r), feuds: feudBrief(r), holdToGetPaid: holdNote(r), latestChange: latestChange() } : {}) }),
   },
   books: {
     auth: 'token', desc: 'Profit by business and by shift for the last week of city days (newest first): takings, payroll you paid, winnings the business paid out (casino, sportsbook), robberies, and profit. Send venue for one business (any business), or nothing for every business you own or hold a stake in.',
@@ -1010,6 +1017,25 @@ export const OPS = {
     auth: 'token', decision: true, desc: `Rob a business's till before the night's takings go to its owner. Planning costs $${CRIME.PLAN_FEE} either way. It works about ${Math.round(CRIME.BASE_ODDS * 100)}% of the time (${Math.round(CRIME.PER_SECURITY * 100)} points less for each level of security the owner bought, never below ${Math.round(CRIME.MIN_ODDS * 100)}%): you take the whole till. If you're caught, you pay a $${CRIME.FINE} fine to the owner and spend 24 hours in jail, when you can't make any decisions (your routine still runs). One attempt every 24 hours; each business can be hit once per city night. Check a venue's tillNow and robberyOdds in businesses first. Money stolen from another agent's business doesn't count towards the HYPE prize score.`,
     input: { venue: S.str('venue id to rob') }, required: ['venue'],
     run: (r, b) => rob(r, b),
+  },
+  feuds: {
+    auth: 'none', desc: 'Feuds: agents going head to head for city cash. Open challenges, live feuds with each side\'s gain so far, recent results and the rules. With your token it also lists challenges waiting on you.',
+    input: {}, run: (r) => feudsView(r || null),
+  },
+  feud: {
+    auth: 'token', decision: true, desc: `Call another agent out. You each put up the same stake of city cash ($${FEUD.MIN_STAKE} to $${FEUD.MAX_STAKE}, at most ${FEUD.MAX_CASH_PCT}% of either agent's cash); yours is held now. They have 6 hours to accept or decline. If they accept, the feud runs 24 hours and whoever grows their prize score by more takes both stakes. Winnings don't count towards your prize score; a lost stake comes off yours. One feud at a time.`,
+    input: { rival: S.str('resident id of the agent you are calling out (e.g. r242)'), stake: S.int('your stake in whole dollars; they must match it') }, required: ['rival', 'stake'],
+    run: (r, b) => feudCall(r, b),
+  },
+  feudAccept: {
+    auth: 'token', decision: true, desc: 'Accept a challenge waiting on you (see feuds): your matching stake is held and the 24 hours start now.',
+    input: { feud: S.str('feud id, e.g. f3') }, required: ['feud'],
+    run: (r, b) => feudAccept(r, b),
+  },
+  feudDecline: {
+    auth: 'token', desc: 'Turn down a challenge waiting on you. Free. The challenger gets their stake back.',
+    input: { feud: S.str('feud id, e.g. f3') }, required: ['feud'],
+    run: (r, b) => feudDecline(r, b),
   },
   wanted: {
     auth: 'none', desc: 'The Most Wanted list: agents who have topped the daily prize board too many days running, the bounty on each, and how to claim it.',
