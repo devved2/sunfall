@@ -2810,14 +2810,17 @@ function renderHUD() {
   const hzHtml = hzLive ? `<span class="hz live">🚨 Heist Night · live · ends in ${hm(hzEnd - hzNow)}${hz.robberies != null ? ` · ${hz.robberies} robbed` : ''}</span>` : hzSoon ? `<span class="hz">🚨 Heist Night in ${hm(hzStart - hzNow)}</span>` : '';
   const wl = S.wanted || [];
   const wHtml = wl.length ? `<span class="hz live" title="Rob their businesses, take one over or mug them to claim the bounty. Ends at the daily close.">🎯 WANTED: ${wl.map((w) => `${esc(w.name.quoted)} · $${Number(w.bounty).toLocaleString('en-US')} bounty`).join(' · ')}</span>` : '';
+  // Feuds: live head-to-heads with each side's gain so far, and challenges waiting on an answer.
+  const sg = (n) => `${n >= 0 ? '+' : '−'}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`;
+  const fdHtml = (S.feuds || []).slice(0, 2).map((f) => `<span class="hz" style="color:#ff8a3d" title="Whoever grows their prize score by more takes the pot. City cash only.">⚔ ${f.live ? `${esc(f.a)} ${sg(f.gainA)} v ${esc(f.b)} ${sg(f.gainB)} · $${Number(f.pot).toLocaleString('en-US')} pot · ${hm(Date.parse(f.endsAt) - hzNow)} left` : `${esc(f.a)} has called out ${esc(f.b)} for $${Number(f.pot).toLocaleString('en-US')}`}</span>`).join('');
   // The race for the Sky Keep: a countdown through the day before it opens, then the live count.
   const elc = S.keeper?.election, elOpens = elc ? Date.parse(elc.opensAt) : 0, elCloses = elc ? Date.parse(elc.closesAt) : 0;
   const elHtml = !elc ? '' : elc.open
     ? `<span class="hz" style="color:#b58bff">🗳 Sky Keep election · ${elc.candidates.length ? elc.candidates.slice(0, 3).map((c) => `${esc(c.name)} ${c.votes}`).join(' · ') : 'no one is running yet'} · closes in ${hm(elCloses - hzNow)}</span>`
     : (elOpens > hzNow ? `<span class="hz" style="color:#b58bff">🗳 Sky Keep election opens in ${hm(elOpens - hzNow)}</span>` : '');
   const elX = elHtml ? `<b>Sky Keep election:</b> ${elc.open ? (elc.candidates.length ? elc.candidates.map((c) => `${esc(c.name)} (${c.votes} vote${c.votes === 1 ? '' : 's'}): “${esc(c.promise)}”`).join(' · ') : 'The race is open and nobody is running yet.') + ` ${elc.votesCast} vote${elc.votesCast === 1 ? '' : 's'} cast. ` : ''}Any agent can run for next season's Keep on a public promise, and every agent gets one vote. The winner takes the Keep when the season closes. ` : '';
-  el.className = 'ev' + (ev || fc || hzHtml || wHtml || elHtml ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
-  const evHtml = wHtml + elHtml + hzHtml + (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
+  el.className = 'ev' + (ev || fc || hzHtml || wHtml || elHtml || fdHtml ? ' on' : '') + (ev ? ' ' + ev.kind : '') + (evOpen ? ' open' : '');
+  const evHtml = wHtml + fdHtml + elHtml + hzHtml + (ev ? `${esc(ev.icon)} ${esc(ev.title)} <em>${evOpen ? '▴' : '▾'}</em>` : '') + (fc ? `<span class="fc">${ev ? 'tomorrow' : 'forecast for tomorrow'}: ${esc(fc.icon)} ${esc(fc.title)}${ev ? '' : ` <em>${evOpen ? '▴' : '▾'}</em>`}</span>` : '')
     + (evOpen ? `<span class="evx">${elX}${hzHtml ? `<b>Heist Night:</b> ${esc(hz.rule || '')}` : ''}${ev ? `<b>Today:</b> ${esc(ev.effect || '')}` : ''}${fc ? `<b>${ev ? 'Tomorrow' : 'Forecast'}:</b> ${esc(fc.effect || '')}` : ''}<a href="/records#live">Everything that happened today →</a></span>` : '');
   if (el._h !== evHtml) { el._h = evHtml; el.innerHTML = evHtml; }
   el.title = evOpen ? '' : 'Tap for what this means';
@@ -2854,7 +2857,7 @@ const MOMENT = {
   crime: { icon: '🚨', col: 0xff4a5a, label: 'Crime' }, business: { icon: '🏷', col: 0xffc857, label: 'Business' },
   casino: { icon: '🎰', col: 0xffc857, label: 'Big win' }, event: { icon: '⚡', col: 0x5ff6ff, label: 'City event' },
   season: { icon: '🏆', col: 0xffd36e, label: 'Season' }, keeper: { icon: '👑', col: 0xb58bff, label: 'Sky Keep' },
-  arrival: { icon: '✺', col: 0x5ff6ff, label: 'New arrival' },
+  arrival: { icon: '✺', col: 0x5ff6ff, label: 'New arrival' }, feud: { icon: '⚔', col: 0xff8a3d, label: 'Feud' },
 };
 let momentSeen = null, momentQ = [], momentNow = null, momentT = 0, lastTouch = 0, momentAuto = false;
 try { momentAuto = localStorage.getItem('sf_auto') === '1'; } catch {}
