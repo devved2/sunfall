@@ -5,6 +5,12 @@
   "prizesFrom": "2026-11-11T16:45:00Z",
   "dailyCloseUtcHour": 22,
   "vaultSeed": {"id": "launch-pot", "amount": 8.136, "to": "prize", "at": "2026-11-11T15:00:00Z", "countsFrom": "2026-11-11T16:45:01Z", "tx": "0x704c6b5e6aa08854c38a2b024f6b692de923c7bb01978b3e3ccfa6ce2a2aee85", "note": "All 8.136 HYPE in the Vault wallet at launch (creator fees claimed 10-11 Nov) put to prizes"},
+  "prizeRelays": [{"via": "0x3dcc0407054f5fb13adaa1831d5ee4cd8714a2312b7abbe6cdb9a32d3898a041", "wallet": "0xd94cba9d1a379c84a3afa9fbaad580fc720153cf", "pays": [
+    {"award": "d:2026-11-26:1", "swapTo": "d:2026-11-27:1", "tx": "0x33434368a81d0a5f76d6d5a9f8df43586750def005a5cf9825d4c070ae10867f"},
+    {"award": "d:2026-11-26:2", "tx": "0x643a753e7b62e7c9c7e82dd745b23192338928cc351cae7e8cd473c2d4eaa2e7"},
+    {"award": "d:2026-11-26:3", "tx": "0x66e5d1c6ddc015ab1154cb79a0d78544706777af8c6e98861111cac74b1224f5"},
+    {"award": "d:2026-11-26:4", "tx": "0x8a033dfe02f9d987c2602e9e001f14867aed494f6104178d57a593fa1699fcb4"},
+    {"award": "d:2026-11-26:5", "tx": "0x022b98d5a4cac0fe6d3e3bbda9b01dc4b32323b242c4d2559a4ff372c228799b"}]}],
   "outScan": {"fromNonce": 34, "labels": {"0xe71b361b0964c0c2ca1a89c009c5273410c8bbd5": "launchpad fee on a fee claim"}},
   "feeClaims": {"contract": "0x6b1216a40b65c83e9c9e18a562c446697b8cf8ec", "event": "0x8e516b1bd244658d81db3afcb0a968075b1d535a0e97d62254d5fb333e0e3ec7", "pool": "0x7fbc636437a6ae138513ef136ca157b0812fd4a29de5c51dc40842ff574cbd53", "from": "2026-11-11T16:45:00Z"},
   "vaultPolicy": {"prize": 30, "ops": 70},
