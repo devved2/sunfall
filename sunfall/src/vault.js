@@ -170,6 +170,7 @@ export async function scanOutflows() {
   let added = 0;
   try {
     linkEarlyPayments();
+    try { applyPrizeRelays(); } catch (e) { console.error('prize relays', e.message); }
     const st = (v().outScan ||= { nonce: os.fromNonce, block: null });
     const W = VAULT.wallet.toLowerCase();
     const nonceAt = async (b) => parseInt(await rpc(CHAIN.rpc, 'eth_getTransactionCount', [VAULT.wallet, hx(b)]), 16);
@@ -210,6 +211,43 @@ function recordOut(tx) {
  * same HYPE, sent from 3 days before the award to any time after) and moves it over: the prize shows as paid with
  * its transaction, and the HYPE counts against the prize pot instead of the team's share.
  */
+/**
+ * Prizes paid through another wallet (launch.json "prizeRelays"). Sometimes the Vault sends one lump to a second
+ * wallet, which then pays the winners. The scan above can only see the lump, and records it as team spending. Each
+ * relay names that lump (`via`, the Vault's transaction) and the payments made from it (`pays`: award id and the
+ * transaction that paid it). Here each payment is recorded against its award, as paid from the prize pot, and the
+ * same HYPE is taken off the lump, so nothing is counted twice. `swapTo` handles one mix-up: when a later payment
+ * of the same size to the same wallet was matched to this award first, that later payment is moved to the award
+ * it was really for (`swapTo`) before this one is recorded. Safe to run again: paid awards are left alone.
+ */
+export function applyPrizeRelays() {
+  let n = 0;
+  for (const relay of LAUNCH.prizeRelays || []) {
+    const lump = v().entries.find((e) => e.kind === 'out' && e.tx.toLowerCase() === String(relay.via).toLowerCase());
+    if (!lump) continue;
+    for (const p of relay.pays || []) {
+      const aw = awards().find((a) => a.id === p.award);
+      if (!aw || !TX_HASH_RE.test(p.tx || '') || (aw.tx || '').toLowerCase() === p.tx.toLowerCase()) continue;
+      if (v().entries.some((e) => e.kind === 'out' && e.tx.toLowerCase() === p.tx.toLowerCase())) continue;
+      if (aw.tx) { // a later payment took this award's place: move it to the award it was for
+        const other = p.swapTo && awards().find((a) => a.id === p.swapTo && !a.tx && a.wallet.toLowerCase() === aw.wallet.toLowerCase() && Math.abs(a.hype - aw.hype) < 1e-6);
+        const was = other && v().entries.find((e) => e.kind === 'out' && e.award === aw.id && e.tx === aw.tx);
+        if (!was) continue;
+        was.award = other.id; was.note = other.label; other.tx = was.tx; other.paidAt = was.t;
+        aw.tx = null; aw.paidAt = null;
+      }
+      const take = Math.min(amt(lump), aw.hype);
+      lump.amount = r4(amt(lump) - take);
+      if (!/passed on as prizes/.test(lump.note || '')) lump.note = `${(lump.note || '').replace(' (recorded automatically)', '')}; part passed on as prizes`.slice(0, 140);
+      const e = { i: ++v().n, t: p.t || lump.t, day: lump.day, kind: 'out', source: null, use: 'prize', to: null, amount: r4(aw.hype), tx: p.tx, note: `${aw.label} (paid via ${String(relay.wallet).slice(0, 6)}…${String(relay.wallet).slice(-4)})`.slice(0, 140), award: aw.id };
+      v().entries.push(e);
+      aw.tx = p.tx; aw.paidAt = e.t; n++;
+      L('vault', 'vault', 0, `relayed prize ${aw.id}: ${aw.hype} HYPE, tx ${p.tx.slice(0, 14)}, taken off ${lump.tx.slice(0, 14)}`);
+    }
+  }
+  return n;
+}
+
 export function linkEarlyPayments() {
   let n = 0;
   for (const aw of awards().filter((a) => !a.tx)) {
