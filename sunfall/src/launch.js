@@ -36,6 +36,8 @@ export const LAUNCH = {
       // when it counts as reaching the prize pot for the daily prize (e.g. the first prize day), if later than when it's recorded
       countsFromMs: Number.isFinite(Date.parse(cfg.vaultSeed.countsFrom)) ? Date.parse(cfg.vaultSeed.countsFrom) : 0 } : null,
   // HYPE sent from the Vault wallet, recorded automatically from this nonce on; labels name known recipients.
+  // Prizes paid through another wallet: [{ via: the Vault's transaction that funded it, wallet, pays: [{ award, tx, swapTo? }] }]
+  prizeRelays: Array.isArray(cfg.prizeRelays) ? cfg.prizeRelays.filter((r) => r && /^0x[0-9a-fA-F]{64}$/.test(r.via) && Array.isArray(r.pays)) : [],
   outScan: cfg.outScan && Number.isInteger(cfg.outScan.fromNonce) && cfg.outScan.fromNonce >= 0
     ? { fromNonce: cfg.outScan.fromNonce, labels: Object.fromEntries(Object.entries(cfg.outScan.labels || {}).filter(([a, l]) => /^0x[0-9a-fA-F]{40}$/.test(a) && typeof l === 'string').map(([a, l]) => [a.toLowerCase(), l.slice(0, 80)])) } : null,
   purgedAgents: Array.isArray(cfg.purgedAgents) ? cfg.purgedAgents.filter((x) => typeof x === 'string' && /^r\d+$/.test(x)) : [],
